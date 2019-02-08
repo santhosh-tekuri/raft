@@ -82,7 +82,7 @@ func (r *Raft) appendEntries(req *appendEntriesRequest) *appendEntriesResponse {
 			return resp
 		} else {
 			prevEntry := &entry{}
-			r.log.getEntry(req.prevLogIndex, prevEntry)
+			r.storage.getEntry(req.prevLogIndex, prevEntry)
 			prevLogTerm = prevEntry.term
 			if req.prevLogTerm != prevLogTerm {
 				// term did not match
@@ -107,9 +107,9 @@ func (r *Raft) appendEntries(req *appendEntriesRequest) *appendEntriesResponse {
 				break
 			}
 			se := &entry{} // store entry
-			r.log.getEntry(e.index, se)
+			r.storage.getEntry(e.index, se)
 			if se.term != e.term {
-				r.log.deleteGTE(e.index)
+				r.storage.deleteGTE(e.index)
 				newEntries = req.entries[i:]
 				break
 			}
@@ -117,7 +117,7 @@ func (r *Raft) appendEntries(req *appendEntriesRequest) *appendEntriesResponse {
 
 		// append any new entries not already in the log
 		for _, e := range newEntries {
-			r.log.append(e)
+			r.storage.append(e)
 		}
 		if n := len(newEntries); n > 0 {
 			last := newEntries[n-1]

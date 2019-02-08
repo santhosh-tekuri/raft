@@ -32,7 +32,7 @@ type Raft struct {
 	members []*member
 	wg      sync.WaitGroup
 
-	stable   Stable
+	storage  storage
 	term     uint64
 	server   *server
 	state    state
@@ -43,7 +43,6 @@ type Raft struct {
 	electionTimer    *time.Timer
 	lastContact      time.Time // last time we had contact from the leader node
 
-	log          logEntries
 	lastLogIndex uint64
 	lastLogTerm  uint64
 	commitIndex  uint64
@@ -64,8 +63,7 @@ func New(addrs []string, stable Stable, log Log) *Raft {
 
 	return &Raft{
 		addr:             addrs[0],
-		stable:           stable,
-		log:              logEntries{storage: log},
+		storage:          storage{Stable: stable, log: log},
 		members:          members,
 		state:            follower,
 		heartbeatTimeout: heartbeatTimeout,
@@ -75,15 +73,15 @@ func New(addrs []string, stable Stable, log Log) *Raft {
 func (r *Raft) Start() error {
 	var err error
 
-	if r.term, r.votedFor, err = r.stable.Get(); err != nil {
+	if err = r.storage.init(); err != nil {
 		return err
 	}
 
-	if err = r.log.init(); err != nil {
+	if r.term, r.votedFor, err = r.storage.GetVars(); err != nil {
 		return err
 	}
 
-	last, err := r.log.lastEntry()
+	last, err := r.storage.lastEntry()
 	if err != nil {
 		return err
 	}
@@ -127,14 +125,14 @@ func (r *Raft) setTerm(term uint64) {
 	if r.term == term {
 		return
 	}
-	if err := r.stable.Set(term, ""); err != nil {
+	if err := r.storage.SetVars(term, ""); err != nil {
 		panic(fmt.Sprintf("stable.Set failed: %v", err))
 	}
 	r.term, r.votedFor = term, ""
 }
 
 func (r *Raft) setVotedFor(v string) {
-	if err := r.stable.Set(r.term, v); err != nil {
+	if err := r.storage.SetVars(r.term, v); err != nil {
 		panic(fmt.Sprintf("save votedFor failed: %v", err))
 	}
 	r.votedFor = v

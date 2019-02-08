@@ -2,13 +2,16 @@ package raft
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 )
 
-var ErrNotFound = errors.New("not found")
+type Stable interface {
+	GetVars() (term uint64, votedFor string, err error)
+	SetVars(term uint64, votedFor string) error
+}
 
 type Log interface {
+	Empty() (bool, error)
 	First() ([]byte, error)
 	Last() ([]byte, error)
 	Get(offset uint64) ([]byte, error)
@@ -17,19 +20,20 @@ type Log interface {
 	DeleteLast(n uint64) error
 }
 
-type logEntries struct {
-	storage Log
+type storage struct {
+	Stable
+	log Log
 
 	// zero for no entries. note that we never have an entry with index zero
 	first, last uint64
 }
 
-func (l *logEntries) lastEntry() (*entry, error) {
-	b, err := l.storage.Last()
+func (s *storage) lastEntry() (*entry, error) {
+	if s.count() == 0 {
+		return nil, nil
+	}
+	b, err := s.log.Last()
 	if err != nil {
-		if err == ErrNotFound {
-			return nil, nil
-		}
 		return nil, err
 	}
 	entry := &entry{}
@@ -37,13 +41,13 @@ func (l *logEntries) lastEntry() (*entry, error) {
 	return entry, nil
 }
 
-func (l *logEntries) init() error {
+func (s *storage) init() error {
+	if empty, err := s.log.Empty(); err != nil || empty {
+		return err
+	}
 	getIndex := func(get func() ([]byte, error)) (uint64, error) {
 		b, err := get()
 		if err != nil {
-			if err == ErrNotFound {
-				return 0, nil
-			}
 			return 0, err
 		}
 		entry := &entry{}
@@ -54,25 +58,25 @@ func (l *logEntries) init() error {
 	}
 
 	var err error
-	if l.first, err = getIndex(l.storage.First); err != nil {
+	if s.first, err = getIndex(s.log.First); err != nil {
 		return err
 	}
-	if l.last, err = getIndex(l.storage.Last); err != nil {
+	if s.last, err = getIndex(s.log.Last); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (l *logEntries) count() uint64 {
-	if l.first == 0 {
+func (s *storage) count() uint64 {
+	if s.first == 0 {
 		return 0
 	}
-	return l.last - l.first + 1
+	return s.last - s.first + 1
 }
 
-func (l *logEntries) getEntry(index uint64, entry *entry) {
-	offset := index - l.first
-	b, err := l.storage.Get(offset)
+func (s *storage) getEntry(index uint64, entry *entry) {
+	offset := index - s.first
+	b, err := s.log.Get(offset)
 	if err != nil {
 		panic(fmt.Sprintf("failed to get entry: %v", err))
 	}
@@ -81,52 +85,52 @@ func (l *logEntries) getEntry(index uint64, entry *entry) {
 	}
 }
 
-func (l *logEntries) append(entry *entry) {
+func (s *storage) append(entry *entry) {
 	w := new(bytes.Buffer)
 	if err := entry.encode(w); err != nil {
 		panic(fmt.Sprintf("failed to encode entry: %v", err))
 	}
-	if err := l.storage.Append(w.Bytes()); err != nil {
+	if err := s.log.Append(w.Bytes()); err != nil {
 		panic(fmt.Sprintf("failed to append entry: %v", err))
 	}
-	if l.first == 0 {
-		l.first = entry.index
+	if s.first == 0 {
+		s.first = entry.index
 	}
-	l.last = entry.index
+	s.last = entry.index
 }
 
-func (l *logEntries) deleteLTE(index uint64) {
-	if l.count() == 0 {
+func (s *storage) deleteLTE(index uint64) {
+	if s.count() == 0 {
 		panic("[BUG] deleteLTE on empty log")
 	}
-	n := index - l.first + 1
-	if n > l.count() {
+	n := index - s.first + 1
+	if n > s.count() {
 		panic("[BUG] deleteLTE: not enough entries")
 	}
-	if err := l.storage.DeleteFirst(n); err != nil {
+	if err := s.log.DeleteFirst(n); err != nil {
 		panic(fmt.Sprintf("deleteFirst failed: %v", err))
 	}
-	if index == l.last {
-		l.first, l.last = 0, 0
+	if index == s.last {
+		s.first, s.last = 0, 0
 	} else {
-		l.first = index + 1
+		s.first = index + 1
 	}
 }
 
-func (l *logEntries) deleteGTE(index uint64) {
-	if l.count() == 0 {
+func (s *storage) deleteGTE(index uint64) {
+	if s.count() == 0 {
 		panic("[BUG] deleteGTE on empty log")
 	}
-	n := l.last - index + 1
-	if n > l.count() {
+	n := s.last - index + 1
+	if n > s.count() {
 		panic("[BUG] deleteGTE: not enough entries")
 	}
-	if err := l.storage.DeleteLast(n); err != nil {
+	if err := s.log.DeleteLast(n); err != nil {
 		panic(fmt.Sprintf("deleteLast failed: %v", err))
 	}
-	if index == l.first {
-		l.first, l.last = 0, 0
+	if index == s.first {
+		s.first, s.last = 0, 0
 	} else {
-		l.last = index - 1
+		s.last = index - 1
 	}
 }

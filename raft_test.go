@@ -3,6 +3,8 @@ package raft
 import (
 	"testing"
 	"time"
+
+	"github.com/santhosh-tekuri/raft/inmem"
 )
 
 func TestRaft(t *testing.T) {
@@ -15,7 +17,8 @@ func TestRaft(t *testing.T) {
 		copy(members, addrs)
 		members[0], members[i] = members[i], members[0]
 		t.Log("members", members)
-		servers[i] = New(members, &inmemStable{}, &inmemLog{})
+		storage := new(inmem.Storage)
+		servers[i] = New(members, storage, storage)
 		if err := servers[i].Start(); err != nil {
 			t.Fatalf("failed to start raft: %v", err)
 		}
