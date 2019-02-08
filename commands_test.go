@@ -3,11 +3,16 @@ package raft
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"reflect"
 	"testing"
 )
 
 func TestCommands(t *testing.T) {
+	type command interface {
+		decode(r io.Reader) error
+		encode(w io.Writer) error
+	}
 	tests := []command{
 		&entry{index: 3, term: 5, typ: 2, data: []byte("sleep")},
 		&requestVoteRequest{term: 5, candidateID: "localhost:1234", lastLogIndex: 3, lastLogTerm: 5},

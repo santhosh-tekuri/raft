@@ -24,11 +24,6 @@ type entry struct {
 	data  []byte
 }
 
-// implemented for testing purpose only
-func (e *entry) getTerm() uint64 {
-	panic("entry.getTerm() should not be called")
-}
-
 func (e *entry) decode(r io.Reader) error {
 	var err error
 
