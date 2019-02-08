@@ -159,6 +159,14 @@ type newEntry struct {
 	respCh chan<- interface{}
 }
 
+func (ne newEntry) sendReesponse(resp interface{}) {
+	if ne.respCh != nil {
+		go func() {
+			ne.respCh <- resp
+		}()
+	}
+}
+
 type NotLeaderError struct {
 	Leader string
 }

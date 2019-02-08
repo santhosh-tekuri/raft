@@ -7,6 +7,8 @@ func (r *Raft) runLeader() {
 	}
 
 	r.notifyLastLogIndexCh()
+
+	// start replication routine for each follower
 	for _, m := range r.members {
 		if m.addr == r.addr {
 			continue
@@ -20,27 +22,37 @@ func (r *Raft) runLeader() {
 		go m.replicate(r.storage, heartbeat, r.commitIndex, stopCh)
 	}
 
+	// add a blank no-op entry into log at the start of its term
+	r.processNewEntry(newEntry{
+		entry: &entry{
+			typ: entryNoop,
+		},
+	})
+
 	for r.state == leader {
 		select {
 		case rpc := <-r.server.rpcCh:
 			r.processRPC(rpc)
 
 		case newEntry := <-r.applyCh:
-			newEntry.index = r.lastLogIndex + 1
-			newEntry.term = r.term
-
-			// append entry to local log
-			r.storage.append(newEntry.entry)
-			r.lastLogIndex++
-			r.notifyLastLogIndexCh()
-
-			// todo
-			newEntry.respCh <- NotLeaderError{r.leaderID}
-
+			r.processNewEntry(newEntry)
 		case f := <-r.inspectCh:
 			f(r)
 		}
 	}
+}
+
+func (r *Raft) processNewEntry(newEntry newEntry) {
+	newEntry.index = r.lastLogIndex + 1
+	newEntry.term = r.term
+
+	// append entry to local log
+	r.storage.append(newEntry.entry)
+	r.lastLogIndex++
+	r.notifyLastLogIndexCh()
+
+	// todo
+	newEntry.sendReesponse(NotLeaderError{r.leaderID})
 }
 
 // notify replicators about change to lastLogIndex

@@ -21,7 +21,7 @@ func (r *Raft) runFollower() {
 			return
 
 		case newEntry := <-r.applyCh:
-			newEntry.respCh <- NotLeaderError{r.leaderID}
+			newEntry.sendReesponse(NotLeaderError{r.leaderID})
 		case f := <-r.inspectCh:
 			f(r)
 		}
