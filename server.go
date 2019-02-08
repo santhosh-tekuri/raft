@@ -2,6 +2,7 @@ package raft
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -9,6 +10,10 @@ import (
 	"sync"
 	"time"
 )
+
+// ErrServerClosed is returned by the Raft's Serve and ListenAndServe
+// methods after a call to Shutdown
+var ErrServerClosed = errors.New("raft: Server closed")
 
 type rpc struct {
 	req    command
@@ -37,13 +42,13 @@ func (s *server) listen(address string) error {
 	return nil
 }
 
-func (s *server) serve() {
+func (s *server) serve() error {
 	for {
 		conn, err := s.listener.Accept()
 		if err != nil {
 			select {
 			case <-s.shutdownCh:
-				return
+				return ErrServerClosed
 			default:
 				continue
 			}

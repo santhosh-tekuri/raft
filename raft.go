@@ -75,8 +75,7 @@ func (r *Raft) ListenAndServe() error {
 	if err := r.Listen(); err != nil {
 		return err
 	}
-	r.Serve()
-	return nil
+	return r.Serve()
 }
 
 func (r *Raft) Listen() error {
@@ -104,11 +103,11 @@ func (r *Raft) Listen() error {
 	return nil
 }
 
-func (r *Raft) Serve() {
+func (r *Raft) Serve() error {
 	defer r.wg.Done()
 	r.wg.Add(2)
 	go r.loop()
-	r.server.serve()
+	return r.server.serve()
 }
 
 func (r *Raft) loop() {
