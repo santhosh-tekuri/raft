@@ -10,46 +10,46 @@ type member struct {
 	timeout          time.Duration
 	heartbeatTimeout time.Duration
 
-	clientsLock sync.Mutex
-	clients     []*client
-	maxClients  int
+	connPoolMu sync.Mutex
+	connPool   []*netConn
+	maxConns   int
 }
 
-func (m *member) getClient() (*client, error) {
-	m.clientsLock.Lock()
-	defer m.clientsLock.Unlock()
+func (m *member) getConn() (*netConn, error) {
+	m.connPoolMu.Lock()
+	defer m.connPoolMu.Unlock()
 
-	num := len(m.clients)
+	num := len(m.connPool)
 	if num == 0 {
 		return dial(m.addr, m.timeout)
 	}
-	var client *client
-	client, m.clients[num-1] = m.clients[num-1], nil
-	m.clients = m.clients[:num-1]
-	return client, nil
+	var conn *netConn
+	conn, m.connPool[num-1] = m.connPool[num-1], nil
+	m.connPool = m.connPool[:num-1]
+	return conn, nil
 }
 
-func (m *member) returnClient(client *client) {
-	m.clientsLock.Lock()
-	defer m.clientsLock.Unlock()
+func (m *member) returnConn(conn *netConn) {
+	m.connPoolMu.Lock()
+	defer m.connPoolMu.Unlock()
 
-	if len(m.clients) < m.maxClients {
-		m.clients = append(m.clients, client)
+	if len(m.connPool) < m.maxConns {
+		m.connPool = append(m.connPool, conn)
 	} else {
-		client.close()
+		conn.close()
 	}
 }
 
 func (m *member) doRPC(typ rpcType, req, resp command) error {
-	c, err := m.getClient()
+	conn, err := m.getConn()
 	if err != nil {
 		return err
 	}
-	if err = c.doRPC(typ, req, resp); err != nil {
-		c.close()
+	if err = conn.doRPC(typ, req, resp); err != nil {
+		conn.close()
 		return err
 	}
-	m.returnClient(c)
+	m.returnConn(conn)
 	return nil
 }
 
@@ -63,10 +63,6 @@ func (m *member) appendEntries(req *appendEntriesRequest) (*appendEntriesRespons
 	resp := new(appendEntriesResponse)
 	err := m.doRPC(rpcAppendEntries, req, resp)
 	return resp, err
-}
-
-func (m *member) sendHeartbeat(req *appendEntriesRequest) {
-
 }
 
 func (m *member) sendHeartbeats(heartbeat *appendEntriesRequest, stopCh <-chan struct{}) {
