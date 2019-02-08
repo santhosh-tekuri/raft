@@ -32,7 +32,7 @@ type Raft struct {
 	members []*member
 	wg      sync.WaitGroup
 
-	storage  storage
+	storage  *storage
 	term     uint64
 	server   *server
 	state    state
@@ -63,7 +63,7 @@ func New(addrs []string, stable Stable, log Log) *Raft {
 
 	return &Raft{
 		addr:             addrs[0],
-		storage:          storage{Stable: stable, log: log},
+		storage:          &storage{Stable: stable, log: log},
 		server:           new(server),
 		members:          members,
 		state:            follower,

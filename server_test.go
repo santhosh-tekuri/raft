@@ -79,7 +79,7 @@ func TestServer(t *testing.T) {
 			defer c.close()
 			resp := reflect.New(reflect.TypeOf(test.resp).Elem()).Interface().(command)
 			if err := c.doRPC(test.typ, test.req, resp); err != nil {
-				t.Fatalf("client.do() failed: %v", err)
+				t.Fatalf("c.doRPC() failed: %v", err)
 			}
 			if !reflect.DeepEqual(resp, test.resp) {
 				t.Fatalf("response mismatch: got %#v, want %#v", resp, test.resp)

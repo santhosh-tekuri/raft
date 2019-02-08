@@ -3,6 +3,7 @@ package raft
 import (
 	"bytes"
 	"fmt"
+	"sync"
 )
 
 type Stable interface {
@@ -24,8 +25,15 @@ type storage struct {
 	Stable
 	log Log
 
+	mu sync.RWMutex
 	// zero for no entries. note that we never have an entry with index zero
 	first, last uint64
+}
+
+func (s *storage) getLast() uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.last
 }
 
 func (s *storage) lastEntry() (*entry, error) {
@@ -58,16 +66,23 @@ func (s *storage) init() error {
 	}
 
 	var err error
-	if s.first, err = getIndex(s.log.First); err != nil {
+	var first, last uint64
+	if first, err = getIndex(s.log.First); err != nil {
 		return err
 	}
-	if s.last, err = getIndex(s.log.Last); err != nil {
+	if last, err = getIndex(s.log.Last); err != nil {
 		return err
 	}
+	s.mu.Lock()
+	s.first, s.last = first, last
+	s.mu.Unlock()
+
 	return nil
 }
 
 func (s *storage) count() uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	if s.first == 0 {
 		return 0
 	}
@@ -77,7 +92,10 @@ func (s *storage) count() uint64 {
 // todo: can we avoid panics
 
 func (s *storage) getEntry(index uint64, entry *entry) {
+	s.mu.RLock()
 	offset := index - s.first
+	s.mu.RUnlock()
+
 	b, err := s.log.Get(offset)
 	if err != nil {
 		panic(fmt.Sprintf("failed to get entry: %v", err))
@@ -95,10 +113,13 @@ func (s *storage) append(entry *entry) {
 	if err := s.log.Append(w.Bytes()); err != nil {
 		panic(fmt.Sprintf("failed to append entry: %v", err))
 	}
+
+	s.mu.Lock()
 	if s.first == 0 {
 		s.first = entry.index
 	}
 	s.last = entry.index
+	s.mu.Unlock()
 }
 
 func (s *storage) deleteLTE(index uint64) {
@@ -112,11 +133,14 @@ func (s *storage) deleteLTE(index uint64) {
 	if err := s.log.DeleteFirst(n); err != nil {
 		panic(fmt.Sprintf("deleteFirst failed: %v", err))
 	}
+
+	s.mu.Lock()
 	if index == s.last {
 		s.first, s.last = 0, 0
 	} else {
 		s.first = index + 1
 	}
+	s.mu.Unlock()
 }
 
 func (s *storage) deleteGTE(index uint64) {
@@ -130,9 +154,28 @@ func (s *storage) deleteGTE(index uint64) {
 	if err := s.log.DeleteLast(n); err != nil {
 		panic(fmt.Sprintf("deleteLast failed: %v", err))
 	}
+
+	s.mu.Lock()
 	if index == s.first {
 		s.first, s.last = 0, 0
 	} else {
 		s.last = index - 1
+	}
+	s.mu.Unlock()
+}
+
+// fills entries in range [minIndex, maxIndex] inclusive into given request
+func (s *storage) fillEntries(req *appendEntriesRequest, minIndex, maxIndex uint64) {
+	if minIndex == 1 {
+		req.prevLogIndex, req.prevLogTerm = 0, 0
+	} else {
+		prevEntry := &entry{}
+		s.getEntry(minIndex-1, prevEntry)
+		req.prevLogIndex, req.prevLogTerm = prevEntry.index, prevEntry.term
+	}
+	req.entries = make([]*entry, maxIndex-minIndex+1)
+	for i := range req.entries {
+		req.entries[i] = &entry{}
+		s.getEntry(minIndex+uint64(i), req.entries[i])
 	}
 }
