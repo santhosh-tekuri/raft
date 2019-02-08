@@ -52,12 +52,10 @@ func (r *Raft) requestVote(req *requestVoteRequest) *requestVoteResponse {
 	resp.voteGranted = true
 	r.lastContact = time.Now()
 	r.electionTimer.Stop()
-	debug(r, "updated lastContact")
 	return resp
 }
 
 func (r *Raft) appendEntries(req *appendEntriesRequest) *appendEntriesResponse {
-	debug(r, "rcvd", req)
 	resp := &appendEntriesResponse{
 		term:    r.term,
 		success: false,
@@ -94,7 +92,6 @@ func (r *Raft) appendEntries(req *appendEntriesRequest) *appendEntriesResponse {
 	// valid request: stop election timer
 	r.lastContact = time.Now()
 	r.electionTimer.Stop()
-	debug(r, "updated lastContact")
 
 	if len(req.entries) > 0 { // todo: should we check this. what if leader wants us to truncate
 		// if an existing entry conflicts with a new one (same index
@@ -116,6 +113,7 @@ func (r *Raft) appendEntries(req *appendEntriesRequest) *appendEntriesResponse {
 		}
 
 		// append any new entries not already in the log
+		debug(r, "appending", len(newEntries), "entries")
 		for _, e := range newEntries {
 			r.storage.append(e)
 		}
@@ -134,7 +132,6 @@ func (r *Raft) appendEntries(req *appendEntriesRequest) *appendEntriesResponse {
 
 	resp.success = true
 	r.lastContact = time.Now()
-	debug(r, "updated lastContact")
 	return resp
 }
 
@@ -143,6 +140,7 @@ func (r *Raft) appendEntries(req *appendEntriesRequest) *appendEntriesResponse {
 func (r *Raft) checkTerm(cmd command) {
 	if cmd.getTerm() > r.term {
 		r.setTerm(cmd.getTerm())
+		debug(r, r.state, "-> follower")
 		r.state = follower
 	}
 }

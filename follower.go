@@ -15,9 +15,11 @@ func (r *Raft) runFollower() {
 			// convert to candidate
 		case <-r.electionTimer.C:
 			// heartbeat failed. transition to candidate
-			debug(r, "no contact within electionTimeout")
+			debug(r, "electionTimeout follower -> candidate")
 			r.state = candidate
 			return
+		case newEntry := <-r.applyCh:
+			newEntry.respCh <- NotLeaderError{r.leaderID}
 		}
 	}
 }

@@ -47,6 +47,8 @@ type Raft struct {
 	lastLogTerm  uint64
 	commitIndex  uint64
 	lastApplied  uint64
+
+	applyCh chan newEntry
 }
 
 func New(addrs []string, stable Stable, log Log) *Raft {
@@ -55,9 +57,10 @@ func New(addrs []string, stable Stable, log Log) *Raft {
 	members := make([]*member, len(addrs))
 	for i, addr := range addrs {
 		members[i] = &member{
-			addr:             addr,
-			timeout:          10 * time.Second,
-			heartbeatTimeout: heartbeatTimeout,
+			addr:              addr,
+			timeout:           10 * time.Second, // todo
+			heartbeatTimeout:  heartbeatTimeout,
+			leaderLastIndexCh: make(chan uint64, 1),
 		}
 	}
 
@@ -68,6 +71,7 @@ func New(addrs []string, stable Stable, log Log) *Raft {
 		members:          members,
 		state:            follower,
 		heartbeatTimeout: heartbeatTimeout,
+		applyCh:          make(chan newEntry, 100), // todo configurable capacity
 	}
 }
 
@@ -124,7 +128,7 @@ func (r *Raft) loop() {
 }
 
 func (r *Raft) String() string {
-	return fmt.Sprintf("%s %d %9s %s|", r.addr, r.term, r.state, r.votedFor)
+	return fmt.Sprintf("%s %d %9s |", r.addr, r.term, r.state)
 }
 
 func (r *Raft) quorumSize() int {
@@ -146,6 +150,29 @@ func (r *Raft) setVotedFor(v string) {
 		panic(fmt.Sprintf("save votedFor failed: %v", err))
 	}
 	r.votedFor = v
+}
+
+type newEntry struct {
+	*entry
+	respCh chan<- interface{}
+}
+
+type NotLeaderError struct {
+	Leader string
+}
+
+func (e NotLeaderError) Error() string {
+	return "node is not the leader"
+}
+
+func (r *Raft) Apply(cmd []byte, respCh chan<- interface{}) {
+	r.applyCh <- newEntry{
+		entry: &entry{
+			typ:  0, // todo
+			data: cmd,
+		},
+		respCh: respCh,
+	}
 }
 
 func randomTimeout(min time.Duration) time.Duration {

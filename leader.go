@@ -5,6 +5,8 @@ func (r *Raft) runLeader() {
 		term:     r.term,
 		leaderID: r.addr,
 	}
+
+	r.notifyLastLogIndexCh()
 	for _, m := range r.members {
 		if m.addr == r.addr {
 			continue
@@ -22,6 +24,30 @@ func (r *Raft) runLeader() {
 		select {
 		case rpc := <-r.server.rpcCh:
 			r.processRPC(rpc)
+		case newEntry := <-r.applyCh:
+			newEntry.index = r.lastLogIndex + 1
+			newEntry.term = r.term
+
+			// append entry to local log
+			r.storage.append(newEntry.entry)
+			r.lastLogIndex++
+			r.notifyLastLogIndexCh()
+
+			// todo
+			newEntry.respCh <- NotLeaderError{r.leaderID}
+		}
+	}
+}
+
+// notify replicators about change to lastLogIndex
+func (r *Raft) notifyLastLogIndexCh() {
+	for _, m := range r.members {
+		if m.addr != r.addr {
+			select {
+			case m.leaderLastIndexCh <- r.lastLogIndex:
+			case <-m.leaderLastIndexCh:
+				m.leaderLastIndexCh <- r.lastLogIndex
+			}
 		}
 	}
 }

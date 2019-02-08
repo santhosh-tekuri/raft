@@ -17,6 +17,9 @@ type member struct {
 
 	nextIndex  uint64
 	matchIndex uint64
+
+	// leader notifies replicator when its lastLogIndex changes
+	leaderLastIndexCh chan uint64
 }
 
 func (m *member) getConn() (*netConn, error) {
@@ -95,7 +98,7 @@ func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, le
 	req := &appendEntriesRequest{}
 	*req = *heartbeat
 
-	lastIndex := storage.getLast()
+	lastIndex := <-m.leaderLastIndexCh // non-blocking
 
 	// know which entries to replicate: fixes m.nextIndex and m.matchIndex
 	// after loop: m.nextIndex == m.matchIndex + 1
@@ -133,13 +136,17 @@ func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, le
 
 		// send heartbeat during idle periods to
 		// prevent election timeouts
+	loop:
 		for {
 			select {
 			case <-stopCh:
 				return
+			case lastIndex = <-m.leaderLastIndexCh:
+				break loop // to replicate new entry
 			case <-afterRandomTimeout(m.heartbeatTimeout / 10):
+				debug("heartbeat ->")
+				m.retryAppendEntries(heartbeat, stopCh)
 			}
-			m.retryAppendEntries(heartbeat, stopCh)
 		}
 	}
 }

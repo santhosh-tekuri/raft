@@ -28,15 +28,17 @@ func (r *Raft) runCandidate() {
 				}
 				if votesNeeded <= 0 {
 					r.electionTimer.Stop()
+					debug(r, "candidate -> leader")
 					r.state = leader
 					r.leaderID = r.addr
-					debug(r, "i am the leader")
 					return
 				}
 			}
 		case <-r.electionTimer.C:
 			// election timeout elapsed: start new election
 			return
+		case newEntry := <-r.applyCh:
+			newEntry.respCh <- NotLeaderError{r.leaderID}
 		}
 	}
 }

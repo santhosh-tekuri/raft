@@ -17,10 +17,18 @@ type command interface {
 	encode(w io.Writer) error
 }
 
+type entryType uint8
+
+const (
+	entryCommand entryType = iota
+	entryInspect
+	entryNoop
+)
+
 type entry struct {
 	index uint64
 	term  uint64
-	typ   uint8
+	typ   entryType
 	data  []byte
 }
 
@@ -33,9 +41,11 @@ func (e *entry) decode(r io.Reader) error {
 	if e.term, err = readUint64(r); err != nil {
 		return err
 	}
-	if e.typ, err = readUint8(r); err != nil {
+	typ, err := readUint8(r)
+	if err != nil {
 		return err
 	}
+	e.typ = entryType(typ)
 	if e.data, err = readBytes(r); err != nil {
 		return err
 	}
@@ -49,7 +59,7 @@ func (e *entry) encode(w io.Writer) error {
 	if err := writeUint64(w, e.term); err != nil {
 		return err
 	}
-	if err := writeUint8(w, e.typ); err != nil {
+	if err := writeUint8(w, uint8(e.typ)); err != nil {
 		return err
 	}
 	if err := writeBytes(w, e.data); err != nil {
