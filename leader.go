@@ -19,7 +19,7 @@ func (r *Raft) runLeader() {
 
 	for r.state == leader {
 		select {
-		case rpc := <-r.server.calls:
+		case rpc := <-r.server.rpcCh:
 			r.processRPC(rpc)
 		}
 	}

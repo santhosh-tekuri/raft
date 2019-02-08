@@ -17,7 +17,7 @@ type rpc struct {
 
 type server struct {
 	listener net.Listener
-	calls    chan rpc
+	rpcCh    chan rpc
 
 	// to handle safe shutdown
 	shutdownCh chan struct{}
@@ -31,7 +31,7 @@ func startServer(address string) (*server, error) {
 	}
 	s := &server{
 		listener:   listener,
-		calls:      make(chan rpc),
+		rpcCh:      make(chan rpc),
 		shutdownCh: make(chan struct{}),
 	}
 	go s.serve()
@@ -99,23 +99,23 @@ func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) erro
 	}
 
 	respChan := make(chan command, 1)
-	call := rpc{respChan: respChan}
+	rpc := rpc{respChan: respChan}
 
 	switch typ {
 	case rpcRequestVote:
 		req := &requestVoteRequest{}
-		call.req = req
+		rpc.req = req
 	case rpcAppendEntries:
 		req := &appendEntriesRequest{}
-		call.req = req
+		rpc.req = req
 	default:
 		return fmt.Errorf("unknown rpcType: %d", typ)
 	}
 
-	if err := call.req.decode(r); err != nil {
+	if err := rpc.req.decode(r); err != nil {
 		return err
 	}
-	s.calls <- call
+	s.rpcCh <- rpc
 	resp := <-respChan
 	if err := resp.encode(w); err != nil {
 		return err
@@ -127,5 +127,5 @@ func (s *server) shutdown() {
 	close(s.shutdownCh)
 	s.listener.Close()
 	s.clients.Wait()
-	close(s.calls)
+	close(s.rpcCh)
 }

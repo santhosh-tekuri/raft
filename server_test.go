@@ -63,11 +63,11 @@ func TestServer(t *testing.T) {
 			defer s.shutdown()
 
 			go func() {
-				for call := range s.calls {
-					if !reflect.DeepEqual(call.req, test.req) {
-						t.Errorf("request mismatch: got %#v, want %#v", call.req, test.req)
+				for rpc := range s.rpcCh {
+					if !reflect.DeepEqual(rpc.req, test.req) {
+						t.Errorf("request mismatch: got %#v, want %#v", rpc.req, test.req)
 					}
-					call.respChan <- test.resp
+					rpc.respChan <- test.resp
 				}
 			}()
 
