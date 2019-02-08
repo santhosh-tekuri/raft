@@ -20,6 +20,9 @@ type member struct {
 
 	// leader notifies replicator when its lastLogIndex changes
 	leaderLastIndexCh chan uint64
+
+	// leader notifies replicator when its commitIndex changes
+	leaderCommitIndexCh chan uint64
 }
 
 func (m *member) getConn() (*netConn, error) {
@@ -91,7 +94,7 @@ func (m *member) retryAppendEntries(req *appendEntriesRequest, stopCh <-chan str
 
 const maxAppendEntries = 64
 
-func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, leaderCommitIndex uint64, stopCh <-chan struct{}) {
+func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, stopCh <-chan struct{}) {
 	// send initial empty AppendEntries RPCs (heartbeat) to each follower
 	debug("heartbeat ->")
 	m.retryAppendEntries(heartbeat, stopCh)
@@ -99,10 +102,17 @@ func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, le
 	req := &appendEntriesRequest{}
 	*req = *heartbeat
 
-	lastIndex := <-m.leaderLastIndexCh // non-blocking
+	// non-blocking
+	lastIndex := <-m.leaderLastIndexCh
+	commitIndex := <-m.leaderCommitIndexCh
 
 	// know which entries to replicate: fixes m.nextIndex and m.matchIndex
 	// after loop: m.nextIndex == m.matchIndex + 1
+	//
+	// NOTE:
+	//   we are not sending req.leaderCommitIndex, because
+	//   we do not want follower to move its commit index, while we are
+	//   trying to figure out which entries to replicate
 	for lastIndex >= m.nextIndex {
 		storage.fillEntries(req, m.nextIndex, m.nextIndex-1) // zero entries
 		resp, err := m.retryAppendEntries(req, stopCh)
@@ -119,6 +129,8 @@ func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, le
 	}
 
 	for {
+		req.leaderCommitIndex = commitIndex
+
 		// replicate entries [m.nextIndex, lastIndex] to follower
 		for m.matchIndex < lastIndex {
 			maxIndex := min(lastIndex, m.nextIndex+uint64(maxAppendEntries)-1)
@@ -144,6 +156,8 @@ func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, le
 			case <-stopCh:
 				return
 			case lastIndex = <-m.leaderLastIndexCh:
+				break loop // to replicate new entry
+			case commitIndex = <-m.leaderCommitIndexCh:
 				break loop // to replicate new entry
 			case <-afterRandomTimeout(m.heartbeatTimeout / 10):
 				debug("heartbeat ->")

@@ -7,6 +7,7 @@ func (r *Raft) runLeader() {
 	}
 
 	r.notifyLastLogIndexCh()
+	r.notifyCommitIndexCh()
 
 	// start replication routine for each follower
 	for _, m := range r.members {
@@ -19,7 +20,7 @@ func (r *Raft) runLeader() {
 
 		stopCh := make(chan struct{})
 		defer close(stopCh)
-		go m.replicate(r.storage, heartbeat, r.commitIndex, stopCh)
+		go m.replicate(r.storage, heartbeat, stopCh)
 	}
 
 	// add a blank no-op entry into log at the start of its term
@@ -63,6 +64,19 @@ func (r *Raft) notifyLastLogIndexCh() {
 			case m.leaderLastIndexCh <- r.lastLogIndex:
 			case <-m.leaderLastIndexCh:
 				m.leaderLastIndexCh <- r.lastLogIndex
+			}
+		}
+	}
+}
+
+// notify replicators about change to commitIndex
+func (r *Raft) notifyCommitIndexCh() {
+	for _, m := range r.members {
+		if m.addr != r.addr {
+			select {
+			case m.leaderCommitIndexCh <- r.commitIndex:
+			case <-m.leaderCommitIndexCh:
+				m.leaderCommitIndexCh <- r.commitIndex
 			}
 		}
 	}

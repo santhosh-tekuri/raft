@@ -121,6 +121,7 @@ func (r *Raft) appendEntries(req *appendEntriesRequest) *appendEntriesResponse {
 			last := newEntries[n-1]
 			r.lastLogIndex, r.lastLogTerm = last.index, last.term
 		}
+
 	}
 
 	// If leaderCommit > commitIndex, set commitIndex =
