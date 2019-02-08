@@ -74,6 +74,8 @@ func (s *storage) count() uint64 {
 	return s.last - s.first + 1
 }
 
+// todo: can we avoid panics
+
 func (s *storage) getEntry(index uint64, entry *entry) {
 	offset := index - s.first
 	b, err := s.log.Get(offset)
