@@ -21,7 +21,7 @@ type server struct {
 
 	// to handle safe shutdown
 	shutdownCh chan struct{}
-	clients    sync.WaitGroup
+	clientsWg  sync.WaitGroup
 }
 
 func startServer(address string) (*server, error) {
@@ -49,14 +49,14 @@ func (s *server) serve() {
 				continue
 			}
 		}
-		s.clients.Add(1)
+		s.clientsWg.Add(1)
 		go s.handleClient(conn)
 	}
 }
 
 func (s *server) handleClient(conn net.Conn) {
 	defer conn.Close()
-	defer s.clients.Done()
+	defer s.clientsWg.Done()
 	r := bufio.NewReader(conn)
 	w := bufio.NewWriter(conn)
 	for {
@@ -126,6 +126,6 @@ func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) erro
 func (s *server) shutdown() {
 	close(s.shutdownCh)
 	s.listener.Close()
-	s.clients.Wait()
+	s.clientsWg.Wait()
 	close(s.rpcCh)
 }
