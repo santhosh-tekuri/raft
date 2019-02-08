@@ -17,6 +17,7 @@ func (r *Raft) runFollower() {
 			// heartbeat failed. transition to candidate
 			debug(r, "electionTimeout follower -> candidate")
 			r.state = candidate
+			stateChanged(r)
 			return
 
 		case newEntry := <-r.applyCh:

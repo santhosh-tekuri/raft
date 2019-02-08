@@ -30,6 +30,7 @@ func (r *Raft) runCandidate() {
 					r.electionTimer.Stop()
 					debug(r, "candidate -> leader")
 					r.state = leader
+					stateChanged(r)
 					r.leaderID = r.addr
 					return
 				}

@@ -9,14 +9,23 @@ import (
 
 func TestRaft(t *testing.T) {
 	addrs := freeAddrs(3)
-	t.Log("cluster", addrs)
+
+	leaderCh := make(chan *Raft, 1)
+	stateChanged = func(r *Raft) {
+		if r.state == leader {
+			select {
+			case leaderCh <- r:
+			default:
+			}
+		}
+	}
+	defer func() { stateChanged = func(*Raft) {} }()
 
 	rr := make([]*Raft, len(addrs))
 	for i := range rr {
 		members := make([]string, len(rr))
 		copy(members, addrs)
 		members[0], members[i] = members[i], members[0]
-		t.Log("members", members)
 		storage := new(inmem.Storage)
 		rr[i] = New(members, storage, storage)
 		if err := rr[i].Listen(); err != nil {
@@ -26,15 +35,17 @@ func TestRaft(t *testing.T) {
 		// todo: defer server shutdown
 	}
 
-	t.Log("sleeping....")
-	time.Sleep(10 * time.Second)
-
-	for _, r := range rr {
-		if r.getState() == leader {
-			debug(r, "request apply cmd")
-			r.Apply([]byte("how are you?"), nil)
+	select {
+	case r := <-leaderCh:
+		if r.getState() != leader {
+			t.Fatal("leader lost leadership")
 		}
+		debug(r, "request apply cmd")
+		r.Apply([]byte("how are you?"), nil)
+	case <-time.After(10 * time.Second):
+		t.Fatal("no leader even after 10 sec")
 	}
+
 	time.Sleep(10 * time.Second)
 }
 

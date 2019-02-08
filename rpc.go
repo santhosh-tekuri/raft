@@ -142,5 +142,6 @@ func (r *Raft) checkTerm(cmd command) {
 		r.setTerm(cmd.getTerm())
 		debug(r, r.state, "-> follower")
 		r.state = follower
+		stateChanged(r)
 	}
 }
