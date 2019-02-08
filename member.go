@@ -93,6 +93,7 @@ const maxAppendEntries = 64
 
 func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, leaderCommitIndex uint64, stopCh <-chan struct{}) {
 	// send initial empty AppendEntries RPCs (heartbeat) to each follower
+	debug("heartbeat ->")
 	m.retryAppendEntries(heartbeat, stopCh)
 
 	req := &appendEntriesRequest{}
@@ -122,6 +123,7 @@ func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, le
 		for m.matchIndex < lastIndex {
 			maxIndex := min(lastIndex, m.nextIndex+uint64(maxAppendEntries)-1)
 			storage.fillEntries(req, m.nextIndex, maxIndex)
+			debug("sending", len(req.entries), "entries to", m.addr)
 			resp, err := m.retryAppendEntries(req, stopCh)
 			if err != nil {
 				return
