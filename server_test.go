@@ -56,10 +56,11 @@ func TestServer(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s, err := startServer(addr)
-			if err != nil {
-				t.Fatalf("startServer failed: %v", err)
+			s := new(server)
+			if err := s.listen(addr); err != nil {
+				t.Fatalf("server.listen failed: %v", err)
 			}
+			go s.serve()
 			defer s.shutdown()
 
 			go func() {

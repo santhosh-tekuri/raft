@@ -64,13 +64,22 @@ func New(addrs []string, stable Stable, log Log) *Raft {
 	return &Raft{
 		addr:             addrs[0],
 		storage:          storage{Stable: stable, log: log},
+		server:           new(server),
 		members:          members,
 		state:            follower,
 		heartbeatTimeout: heartbeatTimeout,
 	}
 }
 
-func (r *Raft) Start() error {
+func (r *Raft) ListenAndServe() error {
+	if err := r.Listen(); err != nil {
+		return err
+	}
+	r.Serve()
+	return nil
+}
+
+func (r *Raft) Listen() error {
 	var err error
 
 	if err = r.storage.init(); err != nil {
@@ -89,18 +98,20 @@ func (r *Raft) Start() error {
 		r.lastLogIndex, r.lastLogTerm = last.index, last.term
 	}
 
-	r.server, err = startServer(r.addr)
-	if err != nil {
+	if err = r.server.listen(r.addr); err != nil {
 		return err
 	}
-
-	r.wg.Add(1)
-	go r.run()
-
 	return nil
 }
 
-func (r *Raft) run() {
+func (r *Raft) Serve() {
+	defer r.wg.Done()
+	r.wg.Add(2)
+	go r.loop()
+	r.server.serve()
+}
+
+func (r *Raft) loop() {
 	for {
 		switch r.state {
 		case follower:

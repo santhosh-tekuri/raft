@@ -21,21 +21,20 @@ type server struct {
 
 	// to handle safe shutdown
 	shutdownCh chan struct{}
-	clientsWg  sync.WaitGroup
+	wg         sync.WaitGroup
 }
 
-func startServer(address string) (*server, error) {
+func (s *server) listen(address string) error {
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	s := &server{
+	*s = server{
 		listener:   listener,
 		rpcCh:      make(chan rpc),
 		shutdownCh: make(chan struct{}),
 	}
-	go s.serve()
-	return s, nil
+	return nil
 }
 
 func (s *server) serve() {
@@ -49,14 +48,14 @@ func (s *server) serve() {
 				continue
 			}
 		}
-		s.clientsWg.Add(1)
+		s.wg.Add(1)
 		go s.handleClient(conn)
 	}
 }
 
 func (s *server) handleClient(conn net.Conn) {
 	defer conn.Close()
-	defer s.clientsWg.Done()
+	defer s.wg.Done()
 	r := bufio.NewReader(conn)
 	w := bufio.NewWriter(conn)
 	for {
@@ -126,6 +125,6 @@ func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) erro
 func (s *server) shutdown() {
 	close(s.shutdownCh)
 	s.listener.Close()
-	s.clientsWg.Wait()
+	s.wg.Wait()
 	close(s.rpcCh)
 }

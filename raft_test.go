@@ -19,9 +19,10 @@ func TestRaft(t *testing.T) {
 		t.Log("members", members)
 		storage := new(inmem.Storage)
 		servers[i] = New(members, storage, storage)
-		if err := servers[i].Start(); err != nil {
-			t.Fatalf("failed to start raft: %v", err)
+		if err := servers[i].Listen(); err != nil {
+			t.Fatalf("raft.listen failed: %v", err)
 		}
+		go servers[i].Serve()
 		// todo: defer server shutdown
 	}
 
