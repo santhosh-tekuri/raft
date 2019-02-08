@@ -16,7 +16,7 @@ func (r *Raft) processRPC(rpc rpc) {
 	default:
 		// todo
 	}
-	rpc.respChan <- resp
+	rpc.respCh <- resp
 }
 
 func (r *Raft) requestVote(req *requestVoteRequest) *requestVoteResponse {

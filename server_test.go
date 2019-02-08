@@ -67,7 +67,7 @@ func TestServer(t *testing.T) {
 					if !reflect.DeepEqual(rpc.req, test.req) {
 						t.Errorf("request mismatch: got %#v, want %#v", rpc.req, test.req)
 					}
-					rpc.respChan <- test.resp
+					rpc.respCh <- test.resp
 				}
 			}()
 

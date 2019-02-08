@@ -11,8 +11,8 @@ import (
 )
 
 type rpc struct {
-	req      command
-	respChan chan<- command
+	req    command
+	respCh chan<- command
 }
 
 type server struct {
@@ -98,8 +98,8 @@ func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) erro
 		break
 	}
 
-	respChan := make(chan command, 1)
-	rpc := rpc{respChan: respChan}
+	respCh := make(chan command, 1)
+	rpc := rpc{respCh: respCh}
 
 	switch typ {
 	case rpcRequestVote:
@@ -116,7 +116,7 @@ func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) erro
 		return err
 	}
 	s.rpcCh <- rpc
-	resp := <-respChan
+	resp := <-respCh
 	if err := resp.encode(w); err != nil {
 		return err
 	}
