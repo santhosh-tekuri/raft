@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"log"
 	"sync"
 	"time"
 )
@@ -13,6 +14,9 @@ type member struct {
 	connPoolMu sync.Mutex
 	connPool   []*netConn
 	maxConns   int
+
+	nextIndex  uint64
+	matchIndex uint64
 }
 
 func (m *member) getConn() (*netConn, error) {
@@ -82,14 +86,60 @@ func (m *member) retryAppendEntries(req *appendEntriesRequest, stopCh <-chan str
 	}
 }
 
-func (m *member) sendHeartbeats(heartbeat *appendEntriesRequest, stopCh <-chan struct{}) {
+const maxAppendEntries = 64
+
+func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, leaderCommitIndex uint64, stopCh <-chan struct{}) {
+	// send initial empty AppendEntries RPCs (heartbeat) to each follower
 	m.retryAppendEntries(heartbeat, stopCh)
-	for {
-		select {
-		case <-stopCh:
+
+	req := &appendEntriesRequest{}
+	*req = *heartbeat
+
+	lastIndex := storage.getLast()
+
+	// know which entries to replicate: fixes m.nextIndex and m.matchIndex
+	// after loop: m.nextIndex == m.matchIndex + 1
+	for lastIndex >= m.nextIndex {
+		storage.fillEntries(req, m.nextIndex, m.nextIndex-1) // zero entries
+		resp, err := m.retryAppendEntries(req, stopCh)
+		if err != nil {
 			return
-		case <-afterRandomTimeout(m.heartbeatTimeout / 10):
 		}
-		m.retryAppendEntries(heartbeat, stopCh)
+		if resp.success {
+			m.matchIndex = req.prevLogIndex
+			break
+		} else {
+			m.nextIndex--
+			continue
+		}
+	}
+
+	for {
+		// replicate entries [m.nextIndex, lastIndex] to follower
+		for m.matchIndex < lastIndex {
+			maxIndex := min(lastIndex, m.nextIndex+uint64(maxAppendEntries)-1)
+			storage.fillEntries(req, m.nextIndex, maxIndex)
+			resp, err := m.retryAppendEntries(req, stopCh)
+			if err != nil {
+				return
+			}
+			if resp.success {
+				m.nextIndex = maxIndex + 1
+				m.matchIndex = maxIndex
+			} else {
+				log.Println("[WARN] should not happend") // todo
+			}
+		}
+
+		// send heartbeat during idle periods to
+		// prevent election timeouts
+		for {
+			select {
+			case <-stopCh:
+				return
+			case <-afterRandomTimeout(m.heartbeatTimeout / 10):
+			}
+			m.retryAppendEntries(heartbeat, stopCh)
+		}
 	}
 }

@@ -1,10 +1,7 @@
 package raft
 
 func (r *Raft) runLeader() {
-	// send initial empty AppendEntries RPCs
-	// (heartbeat) to each server; repeat during idle periods to
-	// prevent election timeouts
-	req := &appendEntriesRequest{
+	heartbeat := &appendEntriesRequest{
 		term:     r.term,
 		leaderID: r.addr,
 	}
@@ -12,9 +9,13 @@ func (r *Raft) runLeader() {
 		if m.addr == r.addr {
 			continue
 		}
+
+		// follower's nextIndex initialized to leader last log index + 1
+		m.nextIndex = r.lastLogIndex + 1
+
 		stopCh := make(chan struct{})
 		defer close(stopCh)
-		go m.sendHeartbeats(req, stopCh)
+		go m.replicate(r.storage, heartbeat, r.commitIndex, stopCh)
 	}
 
 	for r.state == leader {

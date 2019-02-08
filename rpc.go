@@ -127,8 +127,9 @@ func (r *Raft) appendEntries(req *appendEntriesRequest) *appendEntriesResponse {
 
 	// If leaderCommit > commitIndex, set commitIndex =
 	// min(leaderCommit, index of last new entry)
-	if req.leaderCommitIndex > r.commitIndex {
-		r.commitIndex = min(req.leaderCommitIndex, r.lastLogIndex)
+	// note: req.leaderCommitIndex==0 for heatbeat requests
+	if req.leaderCommitIndex > 0 && req.leaderCommitIndex > r.commitIndex {
+		r.commitIndex = min(req.leaderCommitIndex, req.lastLogIndex())
 	}
 
 	resp.success = true
