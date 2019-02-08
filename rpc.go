@@ -96,7 +96,7 @@ func (r *Raft) appendEntries(req *appendEntriesRequest) *appendEntriesResponse {
 	r.electionTimer.Stop()
 	debug(r, "updated lastContact")
 
-	if len(req.entries) > 0 {
+	if len(req.entries) > 0 { // todo: should we check this. what if leader wants us to truncate
 		// if an existing entry conflicts with a new one (same index
 		// but different terms), delete the existing entry and all that
 		// follow it

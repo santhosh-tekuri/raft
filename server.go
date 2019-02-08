@@ -78,7 +78,7 @@ func (s *server) handleClient(conn net.Conn) {
 
 func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) error {
 	var typ rpcType
-	// reads rpcType of next rpc. handles shutdown signal
+	// close client if idle, on shutdown signal
 	for {
 		conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 		b, err := r.ReadByte()
