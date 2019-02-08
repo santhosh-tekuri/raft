@@ -5,12 +5,15 @@ import (
 	"io"
 )
 
+// byteOrder used for encode/decode
+var byteOrder = binary.LittleEndian
+
 func readUint64(r io.Reader) (uint64, error) {
 	b := make([]byte, 8)
 	if _, err := io.ReadFull(r, b); err != nil {
 		return 0, err
 	}
-	return binary.LittleEndian.Uint64(b), nil
+	return byteOrder.Uint64(b), nil
 }
 
 func readUint32(r io.Reader) (uint32, error) {
@@ -18,7 +21,7 @@ func readUint32(r io.Reader) (uint32, error) {
 	if _, err := io.ReadFull(r, b); err != nil {
 		return 0, err
 	}
-	return binary.LittleEndian.Uint32(b), nil
+	return byteOrder.Uint32(b), nil
 }
 
 func readUint8(r io.Reader) (uint8, error) {
@@ -58,14 +61,14 @@ func readString(r io.Reader) (string, error) {
 
 func writeUint64(w io.Writer, v uint64) error {
 	b := make([]byte, 8)
-	binary.LittleEndian.PutUint64(b, v)
+	byteOrder.PutUint64(b, v)
 	_, err := w.Write(b)
 	return err
 }
 
 func writeUint32(w io.Writer, v uint32) error {
 	b := make([]byte, 4)
-	binary.LittleEndian.PutUint32(b, v)
+	byteOrder.PutUint32(b, v)
 	_, err := w.Write(b)
 	return err
 }
