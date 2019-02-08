@@ -65,31 +65,31 @@ func (m *member) appendEntries(req *appendEntriesRequest) (*appendEntriesRespons
 	return resp, err
 }
 
-func (m *member) sendHeartbeats(heartbeat *appendEntriesRequest, stopCh <-chan struct{}) {
+func (m *member) retryAppendEntries(req *appendEntriesRequest, stopCh <-chan struct{}) (*appendEntriesResponse, error) {
 	var failures uint64
-	send := func(req *appendEntriesRequest) (*appendEntriesResponse, error) {
-		debug("sending appentries", m.addr, req)
+	for {
 		resp, err := m.appendEntries(req)
-		debug("done", m.addr)
 		if err != nil {
 			failures++
 			select {
 			case <-time.After(backoff(failures)):
+				continue
 			case <-stopCh:
+				return resp, err
 			}
-		} else {
-			failures = 0
 		}
-		return resp, err
+		return resp, nil
 	}
+}
 
-	send(heartbeat)
+func (m *member) sendHeartbeats(heartbeat *appendEntriesRequest, stopCh <-chan struct{}) {
+	m.retryAppendEntries(heartbeat, stopCh)
 	for {
 		select {
 		case <-stopCh:
 			return
 		case <-afterRandomTimeout(m.heartbeatTimeout / 10):
 		}
-		send(heartbeat)
+		m.retryAppendEntries(heartbeat, stopCh)
 	}
 }
