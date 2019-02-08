@@ -24,6 +24,7 @@ func (r *Raft) runLeader() {
 		select {
 		case rpc := <-r.server.rpcCh:
 			r.processRPC(rpc)
+
 		case newEntry := <-r.applyCh:
 			newEntry.index = r.lastLogIndex + 1
 			newEntry.term = r.term
@@ -35,6 +36,9 @@ func (r *Raft) runLeader() {
 
 			// todo
 			newEntry.respCh <- NotLeaderError{r.leaderID}
+
+		case f := <-r.inspectCh:
+			f(r)
 		}
 	}
 }

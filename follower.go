@@ -18,8 +18,11 @@ func (r *Raft) runFollower() {
 			debug(r, "electionTimeout follower -> candidate")
 			r.state = candidate
 			return
+
 		case newEntry := <-r.applyCh:
 			newEntry.respCh <- NotLeaderError{r.leaderID}
+		case f := <-r.inspectCh:
+			f(r)
 		}
 	}
 }

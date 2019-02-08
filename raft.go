@@ -48,7 +48,8 @@ type Raft struct {
 	commitIndex  uint64
 	lastApplied  uint64
 
-	applyCh chan newEntry
+	applyCh   chan newEntry
+	inspectCh chan func(*Raft)
 }
 
 func New(addrs []string, stable Stable, log Log) *Raft {
@@ -72,6 +73,7 @@ func New(addrs []string, stable Stable, log Log) *Raft {
 		state:            follower,
 		heartbeatTimeout: heartbeatTimeout,
 		applyCh:          make(chan newEntry, 100), // todo configurable capacity
+		inspectCh:        make(chan func(*Raft)),
 	}
 }
 
@@ -168,11 +170,24 @@ func (e NotLeaderError) Error() string {
 func (r *Raft) Apply(cmd []byte, respCh chan<- interface{}) {
 	r.applyCh <- newEntry{
 		entry: &entry{
-			typ:  0, // todo
+			typ:  entryCommand,
 			data: cmd,
 		},
 		respCh: respCh,
 	}
+}
+
+// inspect blocks until f got executed.
+// It is safe to invoke this from multiple goroutines.
+// used for testing purposes only
+func (r *Raft) inspect(f func(*Raft)) {
+	var wg sync.WaitGroup
+	wg.Add(1)
+	r.inspectCh <- func(r *Raft) {
+		f(r)
+		wg.Done()
+	}
+	wg.Wait()
 }
 
 func randomTimeout(min time.Duration) time.Duration {
