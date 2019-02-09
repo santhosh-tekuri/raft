@@ -17,9 +17,12 @@ type member struct {
 	connPool   []*netConn
 	maxConns   int
 
-	nextIndex    uint64
-	matchIndex   uint64
-	matchedIndex uint64 // owned exclusively by raft main goroutine
+	nextIndex  uint64
+	matchIndex uint64
+
+	// owned exclusively by raft main goroutine
+	// used to recalculateMatch
+	matchedIndex uint64
 
 	// leader notifies replicator when its lastLogIndex changes
 	leaderLastIndexCh chan uint64
@@ -134,6 +137,15 @@ func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, ma
 	for {
 		req.leaderCommitIndex = commitIndex
 
+		// if follower log is upto date, ask him to update its commitIndex
+		if matchIndex := m.getMatchIndex(); matchIndex >= lastIndex {
+			storage.fillEntries(req, matchIndex+1, matchIndex) // zero entries
+			debug(heartbeat.leaderID, "asking", m.addr, "to set commitIndex =", commitIndex)
+			if _, err := m.retryAppendEntries(req, stopCh); err != nil {
+				return
+			}
+		}
+
 		// replicate entries [m.nextIndex, lastIndex] to follower
 		for m.getMatchIndex() < lastIndex {
 			maxIndex := min(lastIndex, m.nextIndex+uint64(maxAppendEntries)-1)
@@ -161,6 +173,7 @@ func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, ma
 			case lastIndex = <-m.leaderLastIndexCh:
 				break loop // to replicate new entry
 			case commitIndex = <-m.leaderCommitIndexCh:
+				debug(m.addr, "got commitIndex update", commitIndex)
 				break loop // to replicate new entry
 			case <-afterRandomTimeout(m.heartbeatTimeout / 10):
 				debug("heartbeat ->")

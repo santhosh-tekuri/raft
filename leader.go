@@ -2,7 +2,6 @@ package raft
 
 import (
 	"container/list"
-	"fmt"
 	"sort"
 )
 
@@ -61,26 +60,8 @@ func (r *Raft) runLeader() {
 				}
 			}
 
-			for idx := r.recalculateMatch(termStartIndex); r.commitIndex < idx; {
-				entry := &entry{}
-				r.storage.getEntry(r.commitIndex+1, entry)
-				var resp interface{}
-				debug(r, "applying cmd", entry.index)
-				if entry.typ != entryNoop {
-					resp = r.fsm.Apply(entry.data)
-				}
-				r.commitIndex++
-				r.notifyCommitIndexCh()
-
-				elem := newEntries.Front()
-				newEntry := elem.Value.(newEntry)
-				if newEntry.index == entry.index {
-					newEntry.sendResponse(resp)
-					newEntries.Remove(elem)
-				} else {
-					panic(fmt.Sprintf("[BUG] got entry %d, want %d", newEntry.index, entry.index))
-				}
-			}
+			r.recalculateMatch(termStartIndex)
+			r.fsmApply(newEntries)
 
 		case newEntry := <-r.applyCh:
 			r.processNewEntry(newEntries, newEntry)
@@ -93,7 +74,7 @@ func (r *Raft) runLeader() {
 // If there exists an N such that N > commitIndex, a majority
 // of matchIndex[i] ≥ N, and log[N].term == currentTerm:
 // set commitIndex = N
-func (r *Raft) recalculateMatch(termStartIndex uint64) uint64 {
+func (r *Raft) recalculateMatch(termStartIndex uint64) {
 	matched := make(decrUint64Slice, len(r.members))
 	for i, m := range r.members {
 		if m.addr == r.addr {
@@ -106,9 +87,9 @@ func (r *Raft) recalculateMatch(termStartIndex uint64) uint64 {
 	sort.Sort(matched)
 	majorityMatchIndex := matched[r.quorumSize()-1]
 	if majorityMatchIndex > r.commitIndex && majorityMatchIndex >= termStartIndex {
-		return majorityMatchIndex
+		r.commitIndex = majorityMatchIndex
+		r.notifyCommitIndexCh()
 	}
-	return r.commitIndex
 }
 
 func (r *Raft) processNewEntry(newEntries *list.List, newEntry newEntry) {

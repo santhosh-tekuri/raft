@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -51,17 +52,34 @@ func TestRaft(t *testing.T) {
 	}
 
 	time.Sleep(10 * time.Second)
+	for _, r := range rr {
+		if cmd := r.fsm.(*fsmMock).lastCommand(); string(cmd) != "how are you?" {
+			t.Errorf("%s lastCommand. got %q, want %q", r.getState(), string(cmd), "how are you?")
+		}
+	}
 }
 
 // ---------------------------------------------
 
 type fsmMock struct {
+	mu   sync.RWMutex
 	cmds [][]byte
 }
 
 func (fsm *fsmMock) Apply(cmd []byte) interface{} {
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
 	fsm.cmds = append(fsm.cmds, cmd)
 	return "applied: " + string(cmd)
+}
+
+func (fsm *fsmMock) lastCommand() []byte {
+	fsm.mu.RLock()
+	defer fsm.mu.RUnlock()
+	if len(fsm.cmds) == 0 {
+		return nil
+	}
+	return fsm.cmds[len(fsm.cmds)-1]
 }
 
 // ---------------------------------------------

@@ -121,7 +121,6 @@ func (r *Raft) appendEntries(req *appendEntriesRequest) *appendEntriesResponse {
 			last := newEntries[n-1]
 			r.lastLogIndex, r.lastLogTerm = last.index, last.term
 		}
-
 	}
 
 	// If leaderCommit > commitIndex, set commitIndex =
@@ -129,6 +128,7 @@ func (r *Raft) appendEntries(req *appendEntriesRequest) *appendEntriesResponse {
 	// note: req.leaderCommitIndex==0 for heatbeat requests
 	if req.leaderCommitIndex > 0 && req.leaderCommitIndex > r.commitIndex {
 		r.commitIndex = min(req.leaderCommitIndex, req.lastLogIndex())
+		r.fsmApply(nil)
 	}
 
 	resp.success = true
