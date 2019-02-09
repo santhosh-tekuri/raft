@@ -6,29 +6,7 @@ import (
 )
 
 func (r *Raft) runLeader() {
-	heartbeat := &appendEntriesRequest{
-		term:     r.term,
-		leaderID: r.addr,
-	}
-
-	r.notifyLastLogIndexCh()
-	r.notifyCommitIndexCh()
-
-	recalculateMatchCh := make(chan *member, 2*len(r.members)) // room given for any new members
-
-	// start replication routine for each follower
-	for _, m := range r.members {
-		if m.addr == r.addr {
-			continue
-		}
-
-		// follower's nextIndex initialized to leader last log index + 1
-		m.nextIndex = r.lastLogIndex + 1
-
-		stopCh := make(chan struct{})
-		defer close(stopCh)
-		go m.replicate(r.storage, heartbeat, recalculateMatchCh, stopCh)
-	}
+	termStartIndex := r.lastLogIndex + 1
 
 	newEntries := list.New()
 
@@ -39,8 +17,25 @@ func (r *Raft) runLeader() {
 		},
 	})
 
-	// note: we already commited one entry in current term just above
-	termStartIndex := r.lastLogIndex
+	recalculateMatchCh := make(chan *member, 2*len(r.members)) // room given for any new members
+
+	// start replication routine for each follower
+	heartbeat := &appendEntriesRequest{
+		term:     r.term,
+		leaderID: r.addr,
+	}
+	for _, m := range r.members {
+		if m.addr == r.addr {
+			continue
+		}
+
+		// follower's nextIndex initialized to leader last log index + 1
+		m.nextIndex = termStartIndex
+
+		stopCh := make(chan struct{})
+		defer close(stopCh)
+		go m.replicate(r.storage, heartbeat, r.lastLogIndex, r.commitIndex, recalculateMatchCh, stopCh)
+	}
 
 	for r.state == leader {
 		select {
@@ -100,7 +95,7 @@ func (r *Raft) storeNewEntry(newEntries *list.List, newEntry newEntry) {
 	entry.term = r.term
 
 	// append entry to local log
-	debug(r, "rcvd newentry for index", newEntry.index)
+	debug(r, "rcvd newentry for index", newEntry.index, "appending to log")
 	r.storage.append(entry)
 	r.lastLogIndex++
 	r.notifyLastLogIndexCh()

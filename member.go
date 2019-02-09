@@ -8,7 +8,6 @@ import (
 )
 
 type member struct {
-	id               int
 	addr             string
 	timeout          time.Duration
 	heartbeatTimeout time.Duration
@@ -100,17 +99,13 @@ func (m *member) retryAppendEntries(req *appendEntriesRequest, stopCh <-chan str
 
 const maxAppendEntries = 64
 
-func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, matchUpdatedCh chan<- *member, stopCh <-chan struct{}) {
+func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, lastIndex, commitIndex uint64, matchUpdatedCh chan<- *member, stopCh <-chan struct{}) {
 	// send initial empty AppendEntries RPCs (heartbeat) to each follower
 	debug("heartbeat ->")
 	m.retryAppendEntries(heartbeat, stopCh)
 
 	req := &appendEntriesRequest{}
 	*req = *heartbeat
-
-	// non-blocking
-	lastIndex := <-m.leaderLastIndexCh
-	commitIndex := <-m.leaderCommitIndexCh
 
 	// know which entries to replicate: fixes m.nextIndex and m.matchIndex
 	// after loop: m.nextIndex == m.matchIndex + 1
@@ -171,6 +166,7 @@ func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, ma
 			case <-stopCh:
 				return
 			case lastIndex = <-m.leaderLastIndexCh:
+				debug(m.addr, "got lastIndex update", lastIndex)
 				break loop // to replicate new entry
 			case commitIndex = <-m.leaderCommitIndexCh:
 				debug(m.addr, "got commitIndex update", commitIndex)
