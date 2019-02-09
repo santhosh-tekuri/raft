@@ -101,8 +101,14 @@ const maxAppendEntries = 64
 
 func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, lastIndex, commitIndex uint64, matchUpdatedCh chan<- *member, stopCh <-chan struct{}) {
 	// send initial empty AppendEntries RPCs (heartbeat) to each follower
-	debug("heartbeat ->")
+	//debug(heartbeat.leaderID, m.addr, "heartbeat ->")
 	m.retryAppendEntries(heartbeat, stopCh)
+
+	select {
+	case <-stopCh:
+		return
+	default:
+	}
 
 	req := &appendEntriesRequest{}
 	*req = *heartbeat
@@ -125,56 +131,68 @@ func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, la
 			break
 		} else {
 			m.nextIndex--
-			continue
+		}
+		select {
+		case <-stopCh:
+			return
+		default:
 		}
 	}
 
-	for {
-		req.leaderCommitIndex = commitIndex
+	matchIndex := m.getMatchIndex()
+	req.leaderCommitIndex = commitIndex
 
-		// if follower log is upto date, ask him to update its commitIndex
-		if matchIndex := m.getMatchIndex(); matchIndex >= lastIndex {
-			storage.fillEntries(req, matchIndex+1, matchIndex) // zero entries
-			debug(heartbeat.leaderID, "asking", m.addr, "to set commitIndex =", commitIndex)
-			if _, err := m.retryAppendEntries(req, stopCh); err != nil {
-				return
-			}
+	closedCh := func() <-chan time.Time {
+		ch := make(chan time.Time)
+		close(ch)
+		return ch
+	}()
+	timerCh := closedCh
+
+	for {
+		select {
+		case <-stopCh:
+			return
+		case lastIndex = <-m.leaderLastIndexCh:
+			debug(heartbeat.leaderID, m.addr, "got lastIndex update", lastIndex)
+			timerCh = closedCh
+		case req.leaderCommitIndex = <-m.leaderCommitIndexCh:
+			debug(heartbeat.leaderID, m.addr, "got commitIndex update", req.leaderCommitIndex)
+			timerCh = closedCh
+		default:
+			<-timerCh
 		}
 
-		// replicate entries [m.nextIndex, lastIndex] to follower
-		for m.getMatchIndex() < lastIndex {
+		// setup request
+		if matchIndex < lastIndex {
+			// replication of entries [m.nextIndex, lastIndex] is pending
 			maxIndex := min(lastIndex, m.nextIndex+uint64(maxAppendEntries)-1)
 			storage.fillEntries(req, m.nextIndex, maxIndex)
-			debug(heartbeat.leaderID, "sending", len(req.entries), "entries to", m.addr)
-			resp, err := m.retryAppendEntries(req, stopCh)
-			if err != nil {
-				return
-			}
-			if resp.success {
-				m.nextIndex = maxIndex + 1
-				m.setMatchIndex(maxIndex, matchUpdatedCh)
-			} else {
-				log.Println("[WARN] should not happend") // todo
-			}
+			debug(heartbeat.leaderID, m.addr, "sending", len(req.entries), "entries")
+		} else {
+			// send heartbeat
+			req.prevLogIndex, req.entries = lastIndex, nil // zero entries
+			//debug(heartbeat.leaderID, m.addr, "heartbeat ->")
 		}
 
-		// send heartbeat during idle periods to
-		// prevent election timeouts
-	loop:
-		for {
-			select {
-			case <-stopCh:
-				return
-			case lastIndex = <-m.leaderLastIndexCh:
-				debug(m.addr, "got lastIndex update", lastIndex)
-				break loop // to replicate new entry
-			case commitIndex = <-m.leaderCommitIndexCh:
-				debug(m.addr, "got commitIndex update", commitIndex)
-				break loop // to replicate new entry
-			case <-afterRandomTimeout(m.heartbeatTimeout / 10):
-				debug("heartbeat ->")
-				m.retryAppendEntries(heartbeat, stopCh)
-			}
+		resp, err := m.retryAppendEntries(req, stopCh)
+		if err != nil {
+			return
+		}
+		if !resp.success {
+			log.Println("[WARN] should not happend") // todo
+		} else if len(req.entries) > 0 {
+			last := req.entries[len(req.entries)-1]
+			m.nextIndex = last.index + 1
+			matchIndex = last.index
+			m.setMatchIndex(matchIndex, matchUpdatedCh)
+		}
+
+		if matchIndex < lastIndex {
+			// replication of entries [m.nextIndex, lastIndex] is pending
+			timerCh = closedCh
+		} else {
+			timerCh = afterRandomTimeout(m.heartbeatTimeout / 10)
 		}
 	}
 }

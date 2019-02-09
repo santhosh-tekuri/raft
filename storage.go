@@ -173,9 +173,13 @@ func (s *storage) fillEntries(req *appendEntriesRequest, minIndex, maxIndex uint
 		s.getEntry(minIndex-1, prevEntry)
 		req.prevLogIndex, req.prevLogTerm = prevEntry.index, prevEntry.term
 	}
-	req.entries = make([]*entry, maxIndex-minIndex+1)
-	for i := range req.entries {
-		req.entries[i] = &entry{}
-		s.getEntry(minIndex+uint64(i), req.entries[i])
+	if maxIndex-minIndex+1 == 0 {
+		req.entries = nil
+	} else {
+		req.entries = make([]*entry, maxIndex-minIndex+1)
+		for i := range req.entries {
+			req.entries[i] = &entry{}
+			s.getEntry(minIndex+uint64(i), req.entries[i])
+		}
 	}
 }

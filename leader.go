@@ -34,6 +34,7 @@ func (r *Raft) runLeader() {
 
 		stopCh := make(chan struct{})
 		defer close(stopCh)
+		r.wg.Add(1)
 		go m.replicate(r.storage, heartbeat, r.lastLogIndex, r.commitIndex, recalculateMatchCh, stopCh)
 	}
 
