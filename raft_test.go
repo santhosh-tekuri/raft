@@ -1,6 +1,9 @@
 package raft
 
 import (
+	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -9,8 +12,110 @@ import (
 )
 
 func TestRaft(t *testing.T) {
-	addrs := freeAddrs(3)
+	var err error
+	cluster := new(cluster)
+	if err := cluster.launch(3); err != nil {
+		t.Fatal(err)
+	}
 
+	var ldr *Raft
+	t.Run("election should succeed", func(t *testing.T) {
+		ldr, err = cluster.waitForLeader(10 * time.Second)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ldr.getState() != leader {
+			t.Fatal("leader lost leadership")
+		}
+	})
+
+	t.Run("nonLeader should reject client requests with leaderID", func(t *testing.T) {
+		// sleep so that followers recieve atleast one heatbeat from leader
+		time.Sleep(2 * time.Second)
+		for _, r := range cluster.rr {
+			if r != ldr {
+				_, err := r.waitApply("test", 10*time.Second)
+				nlErr, ok := err.(NotLeaderError)
+				if !ok {
+					t.Fatal("non-leader should reply NotLeaderError")
+				}
+				if nlErr.Leader != ldr.addr {
+					t.Fatalf("leaderId: got %s, want %s", nlErr.Leader, ldr.addr)
+				}
+			}
+		}
+	})
+
+	cmd := "how are you?"
+	t.Run("leader should apply client requests to fsm", func(t *testing.T) {
+		debug(ldr, "request apply cmd")
+		resp, err := ldr.waitApply(cmd, 10*time.Second)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp != strings.ToUpper(cmd) {
+			t.Fatalf("reply mismatch: got %q, want %q", resp, strings.ToUpper(cmd))
+		}
+	})
+
+	t.Run("followers fsm should sync with leader", func(t *testing.T) {
+		// sleep so that followers get cmd applied
+		time.Sleep(10 * time.Second)
+		for _, r := range cluster.rr {
+			if last := r.fsm.(*fsmMock).lastCommand(); last != cmd {
+				t.Errorf("%s lastCommand. got %q, want %q", r.getState(), last, cmd)
+			}
+		}
+	})
+}
+
+// ---------------------------------------------
+
+type fsmMock struct {
+	mu   sync.RWMutex
+	cmds []string
+}
+
+func (fsm *fsmMock) Apply(cmd []byte) interface{} {
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
+	fsm.cmds = append(fsm.cmds, string(cmd))
+	return strings.ToUpper(string(cmd))
+}
+
+func (fsm *fsmMock) lastCommand() string {
+	fsm.mu.RLock()
+	defer fsm.mu.RUnlock()
+	if len(fsm.cmds) == 0 {
+		return ""
+	}
+	return fsm.cmds[len(fsm.cmds)-1]
+}
+
+// ---------------------------------------------
+
+type cluster struct {
+	rr []*Raft
+}
+
+func (c *cluster) launch(n int) error {
+	addrs := freeAddrs(n)
+	c.rr = make([]*Raft, n)
+	for i := range c.rr {
+		members := make([]string, n)
+		copy(members, addrs)
+		members[0], members[i] = members[i], members[0]
+		storage := new(inmem.Storage)
+		c.rr[i] = New(members, &fsmMock{}, storage, storage)
+		if err := c.rr[i].Listen(); err != nil {
+			return fmt.Errorf("raft.listen failed: %v", err)
+		}
+		go c.rr[i].Serve()
+	}
+	return nil
+}
+
+func (c *cluster) waitForLeader(timeout time.Duration) (*Raft, error) {
 	leaderCh := make(chan *Raft, 1)
 	stateChanged = func(r *Raft) {
 		if r.state == leader {
@@ -22,64 +127,20 @@ func TestRaft(t *testing.T) {
 	}
 	defer func() { stateChanged = func(*Raft) {} }()
 
-	rr := make([]*Raft, len(addrs))
-	for i := range rr {
-		members := make([]string, len(rr))
-		copy(members, addrs)
-		members[0], members[i] = members[i], members[0]
-		storage := new(inmem.Storage)
-		rr[i] = New(members, &fsmMock{}, storage, storage)
-		if err := rr[i].Listen(); err != nil {
-			t.Fatalf("raft.listen failed: %v", err)
+	// check if leader already chosen
+	for _, r := range c.rr {
+		if r.getState() == leader {
+			return r, nil
 		}
-		go rr[i].Serve()
-		// todo: defer server shutdown
 	}
 
+	// wait until leader chosen
 	select {
 	case r := <-leaderCh:
-		if r.getState() != leader {
-			t.Fatal("leader lost leadership")
-		}
-		debug(r, "request apply cmd")
-		respCh := make(chan interface{}, 1)
-		r.Apply([]byte("how are you?"), respCh)
-		if resp := <-respCh; resp != "applied: how are you?" {
-			t.Fatalf("reply mismatch. got %v, want %s", resp, "applied: how are you?")
-		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("no leader even after 10 sec")
+		return r, nil
+	case <-time.After(timeout):
+		return nil, errors.New("waitForLeader: timedout")
 	}
-
-	time.Sleep(10 * time.Second)
-	for _, r := range rr {
-		if cmd := r.fsm.(*fsmMock).lastCommand(); string(cmd) != "how are you?" {
-			t.Errorf("%s lastCommand. got %q, want %q", r.getState(), string(cmd), "how are you?")
-		}
-	}
-}
-
-// ---------------------------------------------
-
-type fsmMock struct {
-	mu   sync.RWMutex
-	cmds [][]byte
-}
-
-func (fsm *fsmMock) Apply(cmd []byte) interface{} {
-	fsm.mu.Lock()
-	defer fsm.mu.Unlock()
-	fsm.cmds = append(fsm.cmds, cmd)
-	return "applied: " + string(cmd)
-}
-
-func (fsm *fsmMock) lastCommand() []byte {
-	fsm.mu.RLock()
-	defer fsm.mu.RUnlock()
-	if len(fsm.cmds) == 0 {
-		return nil
-	}
-	return fsm.cmds[len(fsm.cmds)-1]
 }
 
 // ---------------------------------------------
@@ -90,4 +151,18 @@ func (r *Raft) getState() state {
 		s = r.state
 	})
 	return s
+}
+
+func (r *Raft) waitApply(cmd string, timeout time.Duration) (string, error) {
+	respCh := make(chan interface{}, 1)
+	r.Apply([]byte(cmd), respCh)
+	select {
+	case resp := <-respCh:
+		if err, ok := resp.(error); ok {
+			return "", err
+		}
+		return resp.(string), nil
+	case <-time.After(timeout):
+		return "", fmt.Errorf("waitApply(%q): timedout", cmd)
+	}
 }
