@@ -101,7 +101,7 @@ const maxAppendEntries = 64
 
 func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, lastIndex, commitIndex uint64, matchUpdatedCh chan<- *member, stopCh <-chan struct{}) {
 	// send initial empty AppendEntries RPCs (heartbeat) to each follower
-	//debug(heartbeat.leaderID, m.addr, "heartbeat ->")
+	debug("heartbeat ->", m.addr)
 	m.retryAppendEntries(heartbeat, stopCh)
 
 	select {
@@ -172,7 +172,7 @@ func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, la
 		} else {
 			// send heartbeat
 			req.prevLogIndex, req.entries = lastIndex, nil // zero entries
-			//debug(heartbeat.leaderID, m.addr, "heartbeat ->")
+			debug("heartbeat ->", m.addr)
 		}
 
 		resp, err := m.retryAppendEntries(req, stopCh)
@@ -189,7 +189,7 @@ func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, la
 		}
 
 		if matchIndex < lastIndex {
-			// replication of entries [m.nextIndex, lastIndex] is pending
+			// replication of entries [m.nextIndex, lastIndex] is still pending: no more sleeping!!!
 			timerCh = closedCh
 		} else {
 			timerCh = afterRandomTimeout(m.heartbeatTimeout / 10)

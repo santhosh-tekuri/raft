@@ -24,6 +24,8 @@ func (r *Raft) runLeader() {
 		term:     r.term,
 		leaderID: r.addr,
 	}
+	stopCh := make(chan struct{})
+	defer close(stopCh)
 	for _, m := range r.members {
 		if m.addr == r.addr {
 			continue
@@ -32,8 +34,6 @@ func (r *Raft) runLeader() {
 		// follower's nextIndex initialized to leader last log index + 1
 		m.nextIndex = termStartIndex
 
-		stopCh := make(chan struct{})
-		defer close(stopCh)
 		r.wg.Add(1)
 		go m.replicate(r.storage, heartbeat, r.lastLogIndex, r.commitIndex, recalculateMatchCh, stopCh)
 	}
