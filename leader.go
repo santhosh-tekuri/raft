@@ -33,7 +33,7 @@ func (r *Raft) runLeader() {
 	newEntries := list.New()
 
 	// add a blank no-op entry into log at the start of its term
-	r.processNewEntry(newEntries, newEntry{
+	r.storeNewEntry(newEntries, newEntry{
 		entry: &entry{
 			typ: entryNoop,
 		},
@@ -64,7 +64,7 @@ func (r *Raft) runLeader() {
 			r.fsmApply(newEntries)
 
 		case newEntry := <-r.applyCh:
-			r.processNewEntry(newEntries, newEntry)
+			r.storeNewEntry(newEntries, newEntry)
 		case f := <-r.inspectCh:
 			f(r)
 		}
@@ -92,7 +92,7 @@ func (r *Raft) recalculateMatch(termStartIndex uint64) {
 	}
 }
 
-func (r *Raft) processNewEntry(newEntries *list.List, newEntry newEntry) {
+func (r *Raft) storeNewEntry(newEntries *list.List, newEntry newEntry) {
 	entry := newEntry.entry
 	newEntry.entry = nil // favor GC
 
