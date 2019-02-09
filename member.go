@@ -1,7 +1,6 @@
 package raft
 
 import (
-	"log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -176,12 +175,11 @@ func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, la
 		}
 
 		resp, err := m.retryAppendEntries(req, stopCh)
-		if err != nil {
+		if err != nil || !resp.success {
+			// resp.success will be false, if the follower have transitioned to candidate
 			return
 		}
-		if !resp.success {
-			log.Println("[WARN] should not happend") // todo
-		} else if len(req.entries) > 0 {
+		if len(req.entries) > 0 {
 			last := req.entries[len(req.entries)-1]
 			m.nextIndex = last.index + 1
 			matchIndex = last.index
