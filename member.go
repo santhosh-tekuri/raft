@@ -3,10 +3,12 @@ package raft
 import (
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 type member struct {
+	id               int
 	addr             string
 	timeout          time.Duration
 	heartbeatTimeout time.Duration
@@ -15,8 +17,9 @@ type member struct {
 	connPool   []*netConn
 	maxConns   int
 
-	nextIndex  uint64
-	matchIndex uint64
+	nextIndex    uint64
+	matchIndex   uint64
+	matchedIndex uint64 // owned exclusively by raft main goroutine
 
 	// leader notifies replicator when its lastLogIndex changes
 	leaderLastIndexCh chan uint64
@@ -94,7 +97,7 @@ func (m *member) retryAppendEntries(req *appendEntriesRequest, stopCh <-chan str
 
 const maxAppendEntries = 64
 
-func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, stopCh <-chan struct{}) {
+func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, matchUpdatedCh chan<- *member, stopCh <-chan struct{}) {
 	// send initial empty AppendEntries RPCs (heartbeat) to each follower
 	debug("heartbeat ->")
 	m.retryAppendEntries(heartbeat, stopCh)
@@ -120,7 +123,7 @@ func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, st
 			return
 		}
 		if resp.success {
-			m.matchIndex = req.prevLogIndex
+			m.setMatchIndex(req.prevLogIndex, matchUpdatedCh)
 			break
 		} else {
 			m.nextIndex--
@@ -132,17 +135,17 @@ func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, st
 		req.leaderCommitIndex = commitIndex
 
 		// replicate entries [m.nextIndex, lastIndex] to follower
-		for m.matchIndex < lastIndex {
+		for m.getMatchIndex() < lastIndex {
 			maxIndex := min(lastIndex, m.nextIndex+uint64(maxAppendEntries)-1)
 			storage.fillEntries(req, m.nextIndex, maxIndex)
-			debug("sending", len(req.entries), "entries to", m.addr)
+			debug(heartbeat.leaderID, "sending", len(req.entries), "entries to", m.addr)
 			resp, err := m.retryAppendEntries(req, stopCh)
 			if err != nil {
 				return
 			}
 			if resp.success {
 				m.nextIndex = maxIndex + 1
-				m.matchIndex = maxIndex
+				m.setMatchIndex(maxIndex, matchUpdatedCh)
 			} else {
 				log.Println("[WARN] should not happend") // todo
 			}
@@ -165,4 +168,13 @@ func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, st
 			}
 		}
 	}
+}
+
+func (m *member) getMatchIndex() uint64 {
+	return atomic.LoadUint64(&m.matchIndex)
+}
+
+func (m *member) setMatchIndex(v uint64, updatedCh chan<- *member) {
+	atomic.StoreUint64(&m.matchIndex, v)
+	updatedCh <- m
 }

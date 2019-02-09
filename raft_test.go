@@ -27,7 +27,7 @@ func TestRaft(t *testing.T) {
 		copy(members, addrs)
 		members[0], members[i] = members[i], members[0]
 		storage := new(inmem.Storage)
-		rr[i] = New(members, storage, storage)
+		rr[i] = New(members, &fsmMock{}, storage, storage)
 		if err := rr[i].Listen(); err != nil {
 			t.Fatalf("raft.listen failed: %v", err)
 		}
@@ -41,12 +41,27 @@ func TestRaft(t *testing.T) {
 			t.Fatal("leader lost leadership")
 		}
 		debug(r, "request apply cmd")
-		r.Apply([]byte("how are you?"), nil)
+		respCh := make(chan interface{}, 1)
+		r.Apply([]byte("how are you?"), respCh)
+		if resp := <-respCh; resp != "applied: how are you?" {
+			t.Fatalf("reply mismatch. got %v, want %s", resp, "applied: how are you?")
+		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("no leader even after 10 sec")
 	}
 
 	time.Sleep(10 * time.Second)
+}
+
+// ---------------------------------------------
+
+type fsmMock struct {
+	cmds [][]byte
+}
+
+func (fsm *fsmMock) Apply(cmd []byte) interface{} {
+	fsm.cmds = append(fsm.cmds, cmd)
+	return "applied: " + string(cmd)
 }
 
 // ---------------------------------------------

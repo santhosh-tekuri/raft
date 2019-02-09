@@ -32,6 +32,7 @@ type Raft struct {
 	members []*member
 	wg      sync.WaitGroup
 
+	fsm      FSM
 	storage  *storage
 	term     uint64
 	server   *server
@@ -52,7 +53,7 @@ type Raft struct {
 	inspectCh chan func(*Raft)
 }
 
-func New(addrs []string, stable Stable, log Log) *Raft {
+func New(addrs []string, fsm FSM, stable Stable, log Log) *Raft {
 	heartbeatTimeout := 5000 * time.Millisecond // todo
 
 	members := make([]*member, len(addrs))
@@ -68,6 +69,7 @@ func New(addrs []string, stable Stable, log Log) *Raft {
 
 	return &Raft{
 		addr:             addrs[0],
+		fsm:              fsm,
 		storage:          &storage{Stable: stable, log: log},
 		server:           new(server),
 		members:          members,
@@ -156,15 +158,20 @@ func (r *Raft) setVotedFor(v string) {
 }
 
 type newEntry struct {
-	*entry
+	entry  *entry
+	index  uint64 //todo: remove this after sanity checks
 	respCh chan<- interface{}
 }
 
-func (ne newEntry) sendReesponse(resp interface{}) {
+func (ne newEntry) sendResponse(resp interface{}) {
 	if ne.respCh != nil {
-		go func() {
-			ne.respCh <- resp
-		}()
+		select {
+		case ne.respCh <- resp:
+		default:
+			go func() {
+				ne.respCh <- resp
+			}()
+		}
 	}
 }
 

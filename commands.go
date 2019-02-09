@@ -21,7 +21,6 @@ type entryType uint8
 
 const (
 	entryCommand entryType = iota
-	entryInspect
 	entryNoop
 )
 
