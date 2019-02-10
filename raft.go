@@ -10,21 +10,13 @@ import (
 type state int
 
 const (
-	follower state = iota
-	candidate
-	leader
+	follower  state = 'F'
+	candidate state = 'C'
+	leader    state = 'L'
 )
 
 func (s state) String() string {
-	switch s {
-	case follower:
-		return "follower"
-	case candidate:
-		return "candidate"
-	case leader:
-		return "leader"
-	}
-	return "unknown"
+	return string(s)
 }
 
 type Raft struct {
@@ -133,7 +125,7 @@ func (r *Raft) loop() {
 }
 
 func (r *Raft) String() string {
-	return fmt.Sprintf("%s %d %9s |", r.addr, r.term, r.state)
+	return fmt.Sprintf("%s %d %s |", r.addr, r.term, r.state)
 }
 
 func (r *Raft) quorumSize() int {
