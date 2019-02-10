@@ -2,7 +2,7 @@ package raft
 
 func (r *Raft) runFollower() {
 	r.electionTimer = randomTimer(r.heartbeatTimeout)
-	for {
+	for r.state == follower {
 		select {
 		case rpc := <-r.server.rpcCh:
 			r.processRPC(rpc)
@@ -18,10 +18,10 @@ func (r *Raft) runFollower() {
 			debug(r, "electionTimeout follower -> candidate")
 			r.state = candidate
 			stateChanged(r)
-			return
 
 		case newEntry := <-r.applyCh:
 			newEntry.sendResponse(NotLeaderError{r.leaderID})
+
 		case f := <-r.inspectCh:
 			f(r)
 		}

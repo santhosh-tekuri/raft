@@ -76,6 +76,7 @@ func (r *Raft) runLeader() {
 
 		case newEntry := <-r.applyCh:
 			r.storeNewEntry(newEntries, newEntry)
+
 		case f := <-r.inspectCh:
 			f(r)
 		}

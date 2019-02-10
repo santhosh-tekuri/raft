@@ -22,10 +22,10 @@ func (r *Raft) runCandidate() {
 
 			// if votes received from majority of servers: become leader
 			if vote.voteGranted {
-				votesNeeded--
 				if vote.voterID != r.addr {
 					debug(r, "gotVoteFrom", vote.voterID)
 				}
+				votesNeeded--
 				if votesNeeded <= 0 {
 					r.electionTimer.Stop()
 					debug(r, "candidate -> leader")
@@ -41,6 +41,7 @@ func (r *Raft) runCandidate() {
 
 		case newEntry := <-r.applyCh:
 			newEntry.sendResponse(NotLeaderError{r.leaderID})
+
 		case f := <-r.inspectCh:
 			f(r)
 		}
