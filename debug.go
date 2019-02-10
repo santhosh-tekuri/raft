@@ -32,3 +32,9 @@ func debug(args ...interface{}) {
 		colorU.Print(msg)
 	}
 }
+
+func assert(b bool, format string, args ...interface{}) {
+	if !b {
+		panic(fmt.Errorf(format, args))
+	}
+}

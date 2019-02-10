@@ -81,7 +81,9 @@ func (m *member) appendEntries(req *appendEntriesRequest) (*appendEntriesRespons
 	return resp, err
 }
 
-func (m *member) retryAppendEntries(req *appendEntriesRequest, stopCh <-chan struct{}) (*appendEntriesResponse, error) {
+// retries request until success or got stop signal
+// last return value is true in case of stop signal
+func (m *member) retryAppendEntries(req *appendEntriesRequest, stopCh <-chan struct{}) (*appendEntriesResponse, bool) {
 	var failures uint64
 	for {
 		resp, err := m.appendEntries(req)
@@ -91,10 +93,10 @@ func (m *member) retryAppendEntries(req *appendEntriesRequest, stopCh <-chan str
 			case <-time.After(backoff(failures)):
 				continue
 			case <-stopCh:
-				return resp, err
+				return resp, true
 			}
 		}
-		return resp, nil
+		return resp, false
 	}
 }
 
@@ -109,11 +111,10 @@ func (m *member) replicate(storage *storage, req *appendEntriesRequest, matchUpd
 	// after loop: m.matchIndex + 1 == m.nextIndex
 	for m.matchIndex+1 != m.nextIndex {
 		storage.fillEntries(req, m.nextIndex, m.nextIndex-1) // zero entries
-		resp, err := m.retryAppendEntries(req, stopCh)
-		if err != nil {
+		resp, stop := m.retryAppendEntries(req, stopCh)
+		if stop {
 			return
-		}
-		if resp.success {
+		} else if resp.success {
 			matchIndex = req.prevLogIndex
 			m.setMatchIndex(matchIndex, matchUpdatedCh)
 			break
@@ -158,11 +159,15 @@ func (m *member) replicate(storage *storage, req *appendEntriesRequest, matchUpd
 			debug(ldr, m.addr, "heartbeat ->")
 		}
 
-		resp, err := m.retryAppendEntries(req, stopCh)
-		if err != nil || !resp.success {
-			// resp.success will be false, if the follower have transitioned to candidate and started election
+		resp, stop := m.retryAppendEntries(req, stopCh)
+		if stop {
+			return
+		} else if !resp.success {
+			// follower have transitioned to candidate and started election
+			assert(resp.term > req.term, "follower must have started election")
 			return
 		}
+
 		if len(req.entries) > 0 {
 			last := req.entries[len(req.entries)-1]
 			m.nextIndex = last.index + 1

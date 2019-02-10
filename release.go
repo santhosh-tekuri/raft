@@ -2,4 +2,5 @@
 
 package raft
 
-func debug(args ...interface{}) {}
+func debug(args ...interface{})                         {}
+func assert(b bool, format string, args ...interface{}) {}
