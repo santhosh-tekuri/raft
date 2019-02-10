@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -98,19 +99,10 @@ func (m *member) retryAppendEntries(req *appendEntriesRequest, stopCh <-chan str
 
 const maxAppendEntries = 64
 
-func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, lastIndex, commitIndex uint64, matchUpdatedCh chan<- *member, stopCh <-chan struct{}) {
-	// send initial empty AppendEntries RPCs (heartbeat) to each follower
-	debug("heartbeat ->", m.addr)
-	m.retryAppendEntries(heartbeat, stopCh)
+func (m *member) replicate(storage *storage, req *appendEntriesRequest, matchUpdatedCh chan<- *member, stopCh <-chan struct{}) {
+	ldr := fmt.Sprintf("%s %d %s |", req.leaderID, req.term, leader)
 
-	select {
-	case <-stopCh:
-		return
-	default:
-	}
-
-	req := &appendEntriesRequest{}
-	*req = *heartbeat
+	lastIndex, matchIndex := req.prevLogIndex, m.matchIndex
 
 	// know which entries to replicate: fixes m.nextIndex and m.matchIndex
 	// after loop: m.nextIndex == m.matchIndex + 1
@@ -119,14 +111,15 @@ func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, la
 	//   we are not sending req.leaderCommitIndex, because
 	//   we do not want follower to move its commit index, while we are
 	//   trying to figure out which entries to replicate
-	for lastIndex >= m.nextIndex {
+	for m.matchIndex+1 != m.nextIndex {
 		storage.fillEntries(req, m.nextIndex, m.nextIndex-1) // zero entries
 		resp, err := m.retryAppendEntries(req, stopCh)
 		if err != nil {
 			return
 		}
 		if resp.success {
-			m.setMatchIndex(req.prevLogIndex, matchUpdatedCh)
+			matchIndex = req.prevLogIndex
+			m.setMatchIndex(matchIndex, matchUpdatedCh)
 			break
 		} else {
 			m.nextIndex--
@@ -137,9 +130,6 @@ func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, la
 		default:
 		}
 	}
-
-	matchIndex := m.getMatchIndex()
-	req.leaderCommitIndex = commitIndex
 
 	closedCh := func() <-chan time.Time {
 		ch := make(chan time.Time)
@@ -153,10 +143,10 @@ func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, la
 		case <-stopCh:
 			return
 		case lastIndex = <-m.leaderLastIndexCh:
-			debug(heartbeat.leaderID, m.addr, "got lastIndex update", lastIndex)
+			debug(ldr, m.addr, "got lastIndex update", lastIndex)
 			timerCh = closedCh
 		case req.leaderCommitIndex = <-m.leaderCommitIndexCh:
-			debug(heartbeat.leaderID, m.addr, "got commitIndex update", req.leaderCommitIndex)
+			debug(ldr, m.addr, "got commitIndex update", req.leaderCommitIndex)
 			timerCh = closedCh
 		default:
 			<-timerCh
@@ -167,16 +157,16 @@ func (m *member) replicate(storage *storage, heartbeat *appendEntriesRequest, la
 			// replication of entries [m.nextIndex, lastIndex] is pending
 			maxIndex := min(lastIndex, m.nextIndex+uint64(maxAppendEntries)-1)
 			storage.fillEntries(req, m.nextIndex, maxIndex)
-			debug(heartbeat.leaderID, m.addr, "sending", len(req.entries), "entries")
+			debug(ldr, m.addr, "sending", len(req.entries), "entries")
 		} else {
 			// send heartbeat
-			req.prevLogIndex, req.entries = lastIndex, nil // zero entries
-			debug("heartbeat ->", m.addr)
+			req.prevLogIndex, req.prevLogTerm, req.entries = lastIndex, req.term, nil // zero entries
+			debug(ldr, "heartbeat ->", m.addr)
 		}
 
 		resp, err := m.retryAppendEntries(req, stopCh)
 		if err != nil || !resp.success {
-			// resp.success will be false, if the follower have transitioned to candidate
+			// resp.success will be false, if the follower have transitioned to candidate and started election
 			return
 		}
 		if len(req.entries) > 0 {

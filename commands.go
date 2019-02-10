@@ -219,14 +219,6 @@ func (req *appendEntriesRequest) encode(w io.Writer) error {
 	return nil
 }
 
-func (req *appendEntriesRequest) lastLogIndex() uint64 {
-	n := len(req.entries)
-	if n == 0 {
-		return req.prevLogIndex
-	}
-	return req.entries[n-1].index
-}
-
 type appendEntriesResponse struct {
 	term    uint64
 	success bool

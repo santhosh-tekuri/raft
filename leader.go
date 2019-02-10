@@ -20,10 +20,6 @@ func (r *Raft) runLeader() {
 	recalculateMatchCh := make(chan *member, 2*len(r.members)) // room given for any new members
 
 	// start replication routine for each follower
-	heartbeat := &appendEntriesRequest{
-		term:     r.term,
-		leaderID: r.addr,
-	}
 	stopCh := make(chan struct{})
 	defer close(stopCh)
 	for _, m := range r.members {
@@ -32,10 +28,21 @@ func (r *Raft) runLeader() {
 		}
 
 		// follower's nextIndex initialized to leader last log index + 1
-		m.nextIndex = termStartIndex
+		m.nextIndex = r.lastLogIndex + 1
+
+		// send initial empty AppendEntries RPCs (heartbeat) to each follower
+		req := &appendEntriesRequest{
+			term:              r.term,
+			leaderID:          r.addr,
+			leaderCommitIndex: r.commitIndex,
+			prevLogIndex:      r.lastLogIndex,
+			prevLogTerm:       r.lastLogTerm,
+		}
+		debug(r, "initial heartbeat ->", m.addr)
+		m.retryAppendEntries(req, stopCh)
 
 		r.wg.Add(1)
-		go m.replicate(r.storage, heartbeat, r.lastLogIndex, r.commitIndex, recalculateMatchCh, stopCh)
+		go m.replicate(r.storage, req, recalculateMatchCh, stopCh)
 	}
 
 	for r.state == leader {
@@ -96,7 +103,11 @@ func (r *Raft) storeNewEntry(newEntries *list.List, newEntry newEntry) {
 	entry.term = r.term
 
 	// append entry to local log
-	debug(r, "rcvd newentry for index", newEntry.index, "appending to log")
+	if entry.typ == entryNoop {
+		debug(r, "appending noop entry at", newEntry.index)
+	} else {
+		debug(r, "rcvd newentry for index", newEntry.index, "appending to log")
+	}
 	r.storage.append(entry)
 	r.lastLogIndex++
 	r.notifyLastLogIndexCh()
