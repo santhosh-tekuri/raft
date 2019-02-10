@@ -24,7 +24,9 @@ type Raft struct {
 	members []*member
 	wg      sync.WaitGroup
 
-	fsm      FSM
+	fsmApplyCh chan newEntry
+	fsm        FSM
+
 	storage  *storage
 	term     uint64
 	server   *server
@@ -60,6 +62,7 @@ func New(addrs []string, fsm FSM, stable Stable, log Log) *Raft {
 
 	return &Raft{
 		addr:             addrs[0],
+		fsmApplyCh:       make(chan newEntry, 128), // todo configurable capacity
 		fsm:              fsm,
 		storage:          &storage{Stable: stable, log: log},
 		server:           new(server),
@@ -105,8 +108,9 @@ func (r *Raft) Listen() error {
 
 func (r *Raft) Serve() error {
 	defer r.wg.Done()
-	r.wg.Add(2)
+	r.wg.Add(3)
 	go r.loop()
+	go r.fsmLoop()
 	return r.server.serve()
 }
 
@@ -149,8 +153,7 @@ func (r *Raft) setVotedFor(v string) {
 }
 
 type newEntry struct {
-	entry  *entry
-	index  uint64 //todo: remove this after sanity checks
+	*entry
 	respCh chan<- interface{}
 }
 

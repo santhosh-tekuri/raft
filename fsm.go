@@ -2,11 +2,20 @@ package raft
 
 import (
 	"container/list"
-	"fmt"
 )
 
 type FSM interface {
 	Apply(cmd []byte) interface{}
+}
+
+func (r *Raft) fsmLoop() {
+	defer r.wg.Done()
+	for newEntry := range r.fsmApplyCh {
+		resp := r.fsm.Apply(newEntry.entry.data)
+		if newEntry.respCh != nil {
+			newEntry.respCh <- resp
+		}
+	}
 }
 
 // if commitIndex > lastApplied: increment lastApplied, apply
@@ -16,28 +25,22 @@ type FSM interface {
 // 		- newEntries is not nil
 //      - reply end user with response
 func (r *Raft) fsmApply(newEntries *list.List) {
-	for r.commitIndex > r.lastApplied {
-		entry := &entry{}
-		r.storage.getEntry(r.lastApplied+1, entry)
+	for ; r.commitIndex > r.lastApplied; r.lastApplied++ {
+		var ne newEntry
 
-		// apply to fsm
-		var resp interface{}
-		debug(r, "fsm.apply", entry.index)
-		if entry.typ != entryNoop {
-			resp = r.fsm.Apply(entry.data)
-		}
-		r.lastApplied++
-
-		if newEntries != nil {
-			// reply end user
+		if newEntries == nil {
+			ne.entry = &entry{}
+			r.storage.getEntry(r.lastApplied+1, ne.entry)
+		} else {
 			elem := newEntries.Front()
-			newEntry := elem.Value.(newEntry)
-			if newEntry.index == entry.index {
-				newEntry.sendResponse(resp)
-				newEntries.Remove(elem)
-			} else {
-				panic(fmt.Sprintf("[BUG] got entry %d, want %d", newEntry.index, entry.index))
-			}
+			ne = elem.Value.(newEntry)
+			assert(ne.index == r.lastApplied+1, "BUG")
+			newEntries.Remove(elem)
+		}
+
+		debug(r, "fsm.apply", ne.index)
+		if ne.entry.typ != entryNoop {
+			r.fsmApplyCh <- ne
 		}
 	}
 }

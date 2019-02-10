@@ -96,19 +96,15 @@ func (r *Raft) recalculateMatch(termStartIndex uint64) {
 }
 
 func (r *Raft) storeNewEntry(newEntries *list.List, newEntry newEntry) {
-	entry := newEntry.entry
-	newEntry.entry = nil // favor GC
-
-	newEntry.index, entry.index = r.lastLogIndex+1, r.lastLogIndex+1
-	entry.term = r.term
+	newEntry.index, newEntry.term = r.lastLogIndex+1, r.term
 
 	// append entry to local log
-	if entry.typ == entryNoop {
+	if newEntry.typ == entryNoop {
 		debug(r, "log.append noop", newEntry.index)
 	} else {
 		debug(r, "log.append cmd", newEntry.index)
 	}
-	r.storage.append(entry)
+	r.storage.append(newEntry.entry)
 	r.lastLogIndex++
 	r.notifyReplicators()
 
