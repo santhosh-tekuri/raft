@@ -19,9 +19,14 @@ func (r *Raft) runLeader() {
 
 	recalculateMatchCh := make(chan *member, 2*len(r.members)) // room given for any new members
 
-	// start replication routine for each follower
+	// to send stop signal to replicators
 	stopCh := make(chan struct{})
 	defer close(stopCh)
+
+	// to recieve stale term notification from replicators
+	stepDownCh := make(chan command, len(r.members))
+
+	// start replication routine for each follower
 	for _, m := range r.members {
 		if m.addr == r.addr {
 			continue
@@ -39,14 +44,17 @@ func (r *Raft) runLeader() {
 			prevLogTerm:       r.lastLogTerm,
 		}
 		debug(r, "heartbeat ->", m.addr)
-		m.retryAppendEntries(req, stopCh)
+		m.retryAppendEntries(req, stopCh, stepDownCh)
 
 		r.wg.Add(1)
-		go m.replicate(r.storage, req, recalculateMatchCh, stopCh)
+		go m.replicate(r.storage, req, recalculateMatchCh, stopCh, stepDownCh)
 	}
 
 	for r.state == leader {
 		select {
+		case cmd := <-stepDownCh:
+			r.checkTerm(cmd)
+
 		case rpc := <-r.server.rpcCh:
 			r.processRPC(rpc)
 

@@ -144,6 +144,7 @@ func (r *Raft) appendEntries(req *appendEntriesRequest) *appendEntriesResponse {
 // set currentTerm = T, convert to follower
 func (r *Raft) checkTerm(cmd command) {
 	if cmd.getTerm() > r.term {
+		debug(r, "staleTerm")
 		r.setTerm(cmd.getTerm())
 		if r.state != follower {
 			debug(r, r.state, "-> follower")
