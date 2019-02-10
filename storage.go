@@ -164,22 +164,23 @@ func (s *storage) deleteGTE(index uint64) {
 	s.mu.Unlock()
 }
 
-// fills entries in range [minIndex, maxIndex] inclusive into given request
-func (s *storage) fillEntries(req *appendEntriesRequest, minIndex, maxIndex uint64) {
-	if minIndex == 1 {
+// fills entries in range [nextIndex, lastIndex] inclusive into given request
+func (s *storage) fillEntries(req *appendEntriesRequest, nextIndex, lastIndex uint64) {
+	if nextIndex == 1 {
 		req.prevLogIndex, req.prevLogTerm = 0, 0
 	} else {
 		prevEntry := &entry{}
-		s.getEntry(minIndex-1, prevEntry)
+		s.getEntry(nextIndex-1, prevEntry)
 		req.prevLogIndex, req.prevLogTerm = prevEntry.index, prevEntry.term
 	}
-	if maxIndex-minIndex+1 == 0 {
+
+	if lastIndex-nextIndex+1 == 0 {
 		req.entries = nil
 	} else {
-		req.entries = make([]*entry, maxIndex-minIndex+1)
+		req.entries = make([]*entry, lastIndex-nextIndex+1)
 		for i := range req.entries {
 			req.entries[i] = &entry{}
-			s.getEntry(minIndex+uint64(i), req.entries[i])
+			s.getEntry(nextIndex+uint64(i), req.entries[i])
 		}
 	}
 }

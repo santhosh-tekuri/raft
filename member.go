@@ -98,7 +98,7 @@ func (m *member) retryAppendEntries(req *appendEntriesRequest, stopCh <-chan str
 	}
 }
 
-const maxAppendEntries = 64
+const maxAppendEntries = 64 // todo: should be configurable
 
 func (m *member) replicate(storage *storage, req *appendEntriesRequest, matchUpdatedCh chan<- *member, stopCh <-chan struct{}) {
 	ldr := fmt.Sprintf("%s %d %s |", req.leaderID, req.term, leader)
@@ -106,12 +106,7 @@ func (m *member) replicate(storage *storage, req *appendEntriesRequest, matchUpd
 	lastIndex, matchIndex := req.prevLogIndex, m.matchIndex
 
 	// know which entries to replicate: fixes m.nextIndex and m.matchIndex
-	// after loop: m.nextIndex == m.matchIndex + 1
-	//
-	// NOTE:
-	//   we are not sending req.leaderCommitIndex, because
-	//   we do not want follower to move its commit index, while we are
-	//   trying to figure out which entries to replicate
+	// after loop: m.matchIndex + 1 == m.nextIndex
 	for m.matchIndex+1 != m.nextIndex {
 		storage.fillEntries(req, m.nextIndex, m.nextIndex-1) // zero entries
 		resp, err := m.retryAppendEntries(req, stopCh)
