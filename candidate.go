@@ -24,7 +24,7 @@ func (r *Raft) runCandidate() {
 			if vote.voteGranted {
 				votesNeeded--
 				if vote.voterID != r.addr {
-					debug(r, vote.voterID, "voted for me")
+					debug(r, "gotVoteFrom", vote.voterID)
 				}
 				if votesNeeded <= 0 {
 					r.electionTimer.Stop()
@@ -70,7 +70,7 @@ func (r *Raft) startElection() <-chan voteResult {
 
 	// reset election timer
 	r.electionTimer = time.NewTimer(randomTimeout(r.heartbeatTimeout))
-	debug(r, "starting election")
+	debug(r, "startElection")
 
 	// send RequestVote RPCs to all other servers
 	req := &requestVoteRequest{

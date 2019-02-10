@@ -38,7 +38,7 @@ func (r *Raft) runLeader() {
 			prevLogIndex:      r.lastLogIndex,
 			prevLogTerm:       r.lastLogTerm,
 		}
-		debug(r, "initial heartbeat ->", m.addr)
+		debug(r, "heartbeat ->", m.addr)
 		m.retryAppendEntries(req, stopCh)
 
 		r.wg.Add(1)
@@ -104,9 +104,9 @@ func (r *Raft) storeNewEntry(newEntries *list.List, newEntry newEntry) {
 
 	// append entry to local log
 	if entry.typ == entryNoop {
-		debug(r, "appending noop entry at", newEntry.index)
+		debug(r, "log.append noop", newEntry.index)
 	} else {
-		debug(r, "rcvd newentry for index", newEntry.index, "appending to log")
+		debug(r, "log.append cmd", newEntry.index)
 	}
 	r.storage.append(entry)
 	r.lastLogIndex++

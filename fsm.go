@@ -22,7 +22,7 @@ func (r *Raft) fsmApply(newEntries *list.List) {
 
 		// apply to fsm
 		var resp interface{}
-		debug(r, "applying cmd", entry.index)
+		debug(r, "fsm.apply", entry.index)
 		if entry.typ != entryNoop {
 			resp = r.fsm.Apply(entry.data)
 		}

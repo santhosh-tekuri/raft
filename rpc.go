@@ -47,7 +47,7 @@ func (r *Raft) requestVote(req *requestVoteRequest) *requestVoteResponse {
 		return resp
 	}
 
-	debug(r, "granting vote to", req.candidateID)
+	debug(r, "grantVoteTo", req.candidateID)
 	r.setVotedFor(req.candidateID)
 	resp.voteGranted = true
 	r.lastContact = time.Now()
@@ -113,7 +113,7 @@ func (r *Raft) appendEntries(req *appendEntriesRequest) *appendEntriesResponse {
 		}
 
 		// append any new entries not already in the log
-		debug(r, "appending", len(newEntries), "entries")
+		debug(r, "log.appendN", len(newEntries))
 		for _, e := range newEntries {
 			r.storage.append(e)
 		}

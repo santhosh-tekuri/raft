@@ -143,10 +143,10 @@ func (m *member) replicate(storage *storage, req *appendEntriesRequest, matchUpd
 		case <-stopCh:
 			return
 		case lastIndex = <-m.leaderLastIndexCh:
-			debug(ldr, m.addr, "got lastIndex update", lastIndex)
+			debug(ldr, m.addr, lastIndex, "<-leaderLastIndex")
 			timerCh = closedCh
 		case req.leaderCommitIndex = <-m.leaderCommitIndexCh:
-			debug(ldr, m.addr, "got commitIndex update", req.leaderCommitIndex)
+			debug(ldr, m.addr, req.leaderCommitIndex, "<-leaderCommitIndex")
 			timerCh = closedCh
 		default:
 			<-timerCh
@@ -157,11 +157,11 @@ func (m *member) replicate(storage *storage, req *appendEntriesRequest, matchUpd
 			// replication of entries [m.nextIndex, lastIndex] is pending
 			maxIndex := min(lastIndex, m.nextIndex+uint64(maxAppendEntries)-1)
 			storage.fillEntries(req, m.nextIndex, maxIndex)
-			debug(ldr, m.addr, "sending", len(req.entries), "entries")
+			debug(ldr, m.addr, "appendEntriesRequest->", len(req.entries))
 		} else {
 			// send heartbeat
 			req.prevLogIndex, req.prevLogTerm, req.entries = lastIndex, req.term, nil // zero entries
-			debug(ldr, "heartbeat ->", m.addr)
+			debug(ldr, m.addr, "heartbeat ->")
 		}
 
 		resp, err := m.retryAppendEntries(req, stopCh)

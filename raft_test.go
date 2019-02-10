@@ -48,7 +48,7 @@ func TestRaft(t *testing.T) {
 
 	cmd := "how are you?"
 	t.Run("leader should apply client requests to fsm", func(t *testing.T) {
-		debug(ldr, "request apply cmd")
+		debug(ldr, "raft.apply")
 		resp, err := ldr.waitApply(cmd, 10*time.Second)
 		if err != nil {
 			t.Fatal(err)
