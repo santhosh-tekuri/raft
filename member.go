@@ -7,6 +7,10 @@ import (
 	"time"
 )
 
+type leaderUpdate struct {
+	lastIndex, commitIndex uint64
+}
+
 type member struct {
 	addr             string
 	timeout          time.Duration
@@ -23,11 +27,8 @@ type member struct {
 	// used to recalculateMatch
 	matchedIndex uint64
 
-	// leader notifies replicator when its lastLogIndex changes
-	leaderLastIndexCh chan uint64
-
-	// leader notifies replicator when its commitIndex changes
-	leaderCommitIndexCh chan uint64
+	// leader notifies replicator with update
+	leaderUpdateCh chan leaderUpdate
 }
 
 func (m *member) getConn() (*netConn, error) {
@@ -142,11 +143,9 @@ func (m *member) replicate(storage *storage, req *appendEntriesRequest, matchUpd
 		select {
 		case <-stopCh:
 			return
-		case lastIndex = <-m.leaderLastIndexCh:
-			debug(ldr, m.addr, lastIndex, "<-leaderLastIndex")
-			timerCh = closedCh
-		case req.leaderCommitIndex = <-m.leaderCommitIndexCh:
-			debug(ldr, m.addr, req.leaderCommitIndex, "<-leaderCommitIndex")
+		case update := <-m.leaderUpdateCh:
+			lastIndex, req.leaderCommitIndex = update.lastIndex, update.commitIndex
+			debug(ldr, m.addr, "{last:", lastIndex, "commit:", req.leaderCommitIndex, "} <-leaderUpdateCh")
 			timerCh = closedCh
 		default:
 			<-timerCh

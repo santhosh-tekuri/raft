@@ -91,7 +91,7 @@ func (r *Raft) recalculateMatch(termStartIndex uint64) {
 	majorityMatchIndex := matched[r.quorumSize()-1]
 	if majorityMatchIndex > r.commitIndex && majorityMatchIndex >= termStartIndex {
 		r.commitIndex = majorityMatchIndex
-		r.notifyCommitIndexCh()
+		r.notifyReplicators()
 	}
 }
 
@@ -110,32 +110,22 @@ func (r *Raft) storeNewEntry(newEntries *list.List, newEntry newEntry) {
 	}
 	r.storage.append(entry)
 	r.lastLogIndex++
-	r.notifyLastLogIndexCh()
+	r.notifyReplicators()
 
 	newEntries.PushBack(newEntry)
 }
 
-// notify replicators about change to lastLogIndex
-func (r *Raft) notifyLastLogIndexCh() {
-	for _, m := range r.members {
-		if m.addr != r.addr {
-			select {
-			case m.leaderLastIndexCh <- r.lastLogIndex:
-			case <-m.leaderLastIndexCh:
-				m.leaderLastIndexCh <- r.lastLogIndex
-			}
-		}
+func (r *Raft) notifyReplicators() {
+	leaderUpdate := leaderUpdate{
+		lastIndex:   r.lastLogIndex,
+		commitIndex: r.commitIndex,
 	}
-}
-
-// notify replicators about change to commitIndex
-func (r *Raft) notifyCommitIndexCh() {
 	for _, m := range r.members {
 		if m.addr != r.addr {
 			select {
-			case m.leaderCommitIndexCh <- r.commitIndex:
-			case <-m.leaderCommitIndexCh:
-				m.leaderCommitIndexCh <- r.commitIndex
+			case m.leaderUpdateCh <- leaderUpdate:
+			case <-m.leaderUpdateCh:
+				m.leaderUpdateCh <- leaderUpdate
 			}
 		}
 	}
