@@ -168,12 +168,9 @@ func (m *member) replicate(storage *storage, req *appendEntriesRequest, matchUpd
 			return
 		}
 
-		if len(req.entries) > 0 {
-			last := req.entries[len(req.entries)-1]
-			m.nextIndex = last.index + 1
-			matchIndex = last.index
-			m.setMatchIndex(matchIndex, matchUpdatedCh)
-		}
+		m.nextIndex = resp.lastLogIndex + 1
+		matchIndex = resp.lastLogIndex
+		m.setMatchIndex(matchIndex, matchUpdatedCh)
 
 		if matchIndex < lastIndex {
 			// replication of entries [m.nextIndex, lastIndex] is still pending: no more sleeping!!!
