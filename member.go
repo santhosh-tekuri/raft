@@ -119,7 +119,7 @@ func (m *member) replicate(storage *storage, req *appendEntriesRequest, matchUpd
 			m.setMatchIndex(matchIndex, matchUpdatedCh)
 			break
 		} else {
-			m.nextIndex--
+			m.nextIndex = max(min(m.nextIndex-1, resp.lastLogIndex+1), 1)
 		}
 		select {
 		case <-stopCh:

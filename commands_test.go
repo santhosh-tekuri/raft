@@ -24,7 +24,7 @@ func TestCommands(t *testing.T) {
 				&entry{index: 4, term: 5, typ: 3, data: []byte("wakeup")},
 			}, leaderCommitIndex: 7,
 		},
-		&appendEntriesResponse{term: 5, success: true},
+		&appendEntriesResponse{term: 5, success: true, lastLogIndex: 9},
 	}
 	for _, test := range tests {
 		name := fmt.Sprintf("command(%T)", test)

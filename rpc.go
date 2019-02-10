@@ -57,8 +57,9 @@ func (r *Raft) requestVote(req *requestVoteRequest) *requestVoteResponse {
 
 func (r *Raft) appendEntries(req *appendEntriesRequest) *appendEntriesResponse {
 	resp := &appendEntriesResponse{
-		term:    r.term,
-		success: false,
+		term:         r.term,
+		success:      false,
+		lastLogIndex: r.lastLogIndex,
 	}
 
 	// reply false if term < currentTerm
@@ -121,6 +122,8 @@ func (r *Raft) appendEntries(req *appendEntriesRequest) *appendEntriesResponse {
 			last := newEntries[n-1]
 			r.lastLogIndex, r.lastLogTerm = last.index, last.term
 		}
+
+		resp.lastLogIndex = r.lastLogIndex
 	}
 
 	// If leaderCommit > commitIndex, set commitIndex =

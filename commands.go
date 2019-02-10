@@ -220,9 +220,10 @@ func (req *appendEntriesRequest) encode(w io.Writer) error {
 }
 
 type appendEntriesResponse struct {
-	term    uint64
-	success bool
-	// todo: what abt additional fields NoRetryBackoff, LastLog
+	term         uint64
+	success      bool
+	lastLogIndex uint64
+	// todo: what abt additional field NoRetryBackoff
 }
 
 func (resp *appendEntriesResponse) getTerm() uint64 {
@@ -238,6 +239,9 @@ func (resp *appendEntriesResponse) decode(r io.Reader) error {
 	if resp.success, err = readBool(r); err != nil {
 		return err
 	}
+	if resp.lastLogIndex, err = readUint64(r); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -246,6 +250,9 @@ func (resp *appendEntriesResponse) encode(w io.Writer) error {
 		return err
 	}
 	if err := writeBool(w, resp.success); err != nil {
+		return err
+	}
+	if err := writeUint64(w, resp.lastLogIndex); err != nil {
 		return err
 	}
 	return nil
