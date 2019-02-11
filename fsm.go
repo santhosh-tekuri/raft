@@ -16,6 +16,7 @@ func (r *Raft) fsmLoop() {
 			newEntry.respCh <- resp
 		}
 	}
+	debug(r, "fsmLoop shutdown")
 }
 
 // if commitIndex > lastApplied: increment lastApplied, apply

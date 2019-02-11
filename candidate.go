@@ -7,6 +7,9 @@ func (r *Raft) runCandidate() {
 	votesNeeded := r.quorumSize()
 	for r.state == candidate {
 		select {
+		case <-r.shutdownCh:
+			return
+
 		case rpc := <-r.server.rpcCh:
 			// if AppendEntries RPC received from new leader: convert to follower
 			if _, ok := rpc.req.(*appendEntriesRequest); ok {

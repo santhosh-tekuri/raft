@@ -47,11 +47,18 @@ func (r *Raft) runLeader() {
 		m.retryAppendEntries(req, stopCh, stepDownCh)
 
 		r.wg.Add(1)
-		go m.replicate(r.storage, req, recalculateMatchCh, stopCh, stepDownCh)
+		go func(m *member) {
+			defer r.wg.Done()
+			m.replicate(r.storage, req, recalculateMatchCh, stopCh, stepDownCh)
+			debug(r, m.addr, "replicator closed")
+		}(m)
 	}
 
 	for r.state == leader {
 		select {
+		case <-r.shutdownCh:
+			return
+
 		case cmd := <-stepDownCh:
 			r.checkTerm(cmd)
 

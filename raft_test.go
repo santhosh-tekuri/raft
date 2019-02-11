@@ -19,6 +19,7 @@ func TestRaft(t *testing.T) {
 	if err := cluster.launch(3); err != nil {
 		t.Fatal(err)
 	}
+	defer cluster.shutdown()
 
 	var ldr *Raft
 	t.Run("election should succeed", func(t *testing.T) {
@@ -161,6 +162,12 @@ func (c *cluster) waitForLeader(timeout time.Duration) (*Raft, error) {
 		return r, nil
 	case <-time.After(timeout):
 		return nil, errors.New("waitForLeader: timedout")
+	}
+}
+
+func (c *cluster) shutdown() {
+	for _, r := range c.rr {
+		r.Shutdown()
 	}
 }
 

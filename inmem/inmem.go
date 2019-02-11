@@ -75,7 +75,7 @@ func (s *Storage) Append(entry []byte) error {
 func (s *Storage) DeleteFirst(n uint64) error {
 	s.muLog.Lock()
 	defer s.muLog.Unlock()
-	if n >= uint64(len(s.list)) {
+	if n > uint64(len(s.list)) {
 		return ErrOutofRange
 	}
 	s.list = s.list[n:]
@@ -85,9 +85,9 @@ func (s *Storage) DeleteFirst(n uint64) error {
 func (s *Storage) DeleteLast(n uint64) error {
 	s.muLog.Lock()
 	defer s.muLog.Unlock()
-	if n >= uint64(len(s.list)) {
+	if n > uint64(len(s.list)) {
 		return ErrOutofRange
 	}
-	s.list = s.list[:len(s.list)-1-int(n)]
+	s.list = s.list[:len(s.list)-int(n)]
 	return nil
 }

@@ -44,8 +44,9 @@ type Raft struct {
 	commitIndex  uint64
 	lastApplied  uint64
 
-	applyCh   chan newEntry
-	inspectCh chan func(*Raft)
+	applyCh    chan newEntry
+	inspectCh  chan func(*Raft)
+	shutdownCh chan struct{}
 }
 
 func New(addrs []string, fsm FSM, stable Stable, log Log) *Raft {
@@ -74,6 +75,7 @@ func New(addrs []string, fsm FSM, stable Stable, log Log) *Raft {
 		heartbeatTimeout: heartbeatTimeout,
 		applyCh:          make(chan newEntry, 100), // todo configurable capacity
 		inspectCh:        make(chan func(*Raft)),
+		shutdownCh:       make(chan struct{}),
 	}
 }
 
@@ -110,15 +112,32 @@ func (r *Raft) Listen() error {
 }
 
 func (r *Raft) Serve() error {
-	defer r.wg.Done()
-	r.wg.Add(3)
+	r.wg.Add(2)
 	go r.loop()
 	go r.fsmLoop()
 	return r.server.serve()
 }
 
+func (r *Raft) Shutdown() {
+	debug(r, "-> shutdown()")
+	close(r.shutdownCh)
+	r.wg.Wait()
+	debug(r, "shutdown() ->")
+}
+
 func (r *Raft) loop() {
+	defer r.wg.Done()
 	for {
+		select {
+		case <-r.shutdownCh:
+			debug(r, "loop shutdown")
+			r.server.shutdown()
+			debug(r, "server shutdown")
+			close(r.fsmApplyCh)
+			return
+		default:
+		}
+
 		switch r.state {
 		case follower:
 			r.runFollower()

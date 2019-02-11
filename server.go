@@ -65,18 +65,17 @@ func (s *server) handleClient(conn net.Conn) {
 	r := bufio.NewReader(conn)
 	w := bufio.NewWriter(conn)
 	for {
+		select {
+		case <-s.shutdownCh:
+			return
+		default:
+		}
 		err := s.handleRPC(conn, r, w)
 		if err != nil {
 			if err != io.EOF {
 				log.Printf("error in handleRPC: %v", err)
 			}
 			return
-		}
-		select {
-		case <-s.shutdownCh:
-			return
-		default:
-			continue
 		}
 	}
 }

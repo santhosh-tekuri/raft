@@ -4,6 +4,9 @@ func (r *Raft) runFollower() {
 	r.electionTimer = randomTimer(r.heartbeatTimeout)
 	for r.state == follower {
 		select {
+		case <-r.shutdownCh:
+			return
+
 		case rpc := <-r.server.rpcCh:
 			r.processRPC(rpc)
 
