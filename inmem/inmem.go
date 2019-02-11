@@ -7,7 +7,7 @@ import (
 
 var (
 	ErrNotFound   = errors.New("not found")
-	ErrOutofRange = errors.New("outof range")
+	ErrOutofRange = errors.New("out of range")
 )
 
 type Storage struct {

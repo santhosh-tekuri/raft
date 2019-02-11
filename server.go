@@ -21,8 +21,9 @@ type rpc struct {
 }
 
 type server struct {
-	listener net.Listener
-	rpcCh    chan rpc
+	transport transport
+	listener  net.Listener
+	rpcCh     chan rpc
 
 	// to handle safe shutdown
 	shutdownCh chan struct{}
@@ -30,7 +31,7 @@ type server struct {
 }
 
 func (s *server) listen(address string) error {
-	listener, err := net.Listen("tcp", address)
+	listener, err := s.transport.Listen(address)
 	if err != nil {
 		return err
 	}

@@ -13,7 +13,7 @@ var colorL = color.New(color.FgWhite)
 var colorC = color.New(color.FgRed)
 var colorF = color.New(color.FgCyan)
 var colorR = color.New(color.FgYellow)
-var colorU = color.New(color.FgBlue)
+var colorU = color.New(color.FgHiWhite)
 
 func debug(args ...interface{}) {
 	switch msg := fmt.Sprintln(args...); {

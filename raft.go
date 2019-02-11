@@ -20,9 +20,10 @@ func (s state) String() string {
 }
 
 type Raft struct {
-	addr    string
-	members []*member
-	wg      sync.WaitGroup
+	transport transport
+	addr      string
+	members   []*member
+	wg        sync.WaitGroup
 
 	fsmApplyCh chan newEntry
 	fsm        FSM
@@ -53,6 +54,7 @@ func New(addrs []string, fsm FSM, stable Stable, log Log) *Raft {
 	members := make([]*member, len(addrs))
 	for i, addr := range addrs {
 		members[i] = &member{
+			transport:        tcpTransport{},
 			addr:             addr,
 			timeout:          10 * time.Second, // todo
 			heartbeatTimeout: heartbeatTimeout,
@@ -61,11 +63,12 @@ func New(addrs []string, fsm FSM, stable Stable, log Log) *Raft {
 	}
 
 	return &Raft{
+		transport:        tcpTransport{},
 		addr:             addrs[0],
 		fsmApplyCh:       make(chan newEntry, 128), // todo configurable capacity
 		fsm:              fsm,
 		storage:          &storage{Stable: stable, log: log},
-		server:           new(server),
+		server:           &server{transport: tcpTransport{}},
 		members:          members,
 		state:            follower,
 		heartbeatTimeout: heartbeatTimeout,

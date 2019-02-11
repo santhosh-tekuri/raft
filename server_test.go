@@ -1,34 +1,14 @@
 package raft
 
 import (
-	"fmt"
-	"net"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/santhosh-tekuri/fnet"
 )
 
-func freeAddrs(n int) []string {
-	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
-	if err != nil {
-		panic(err)
-	}
-
-	var free []string
-	for i := 0; i < n; i++ {
-		l, err := net.ListenTCP("tcp", addr)
-		if err != nil {
-			panic(err)
-		}
-		defer l.Close()
-		free = append(free, fmt.Sprintf("localhost:%d", l.Addr().(*net.TCPAddr).Port))
-	}
-	return free
-}
-
 func TestServer(t *testing.T) {
-	addr := freeAddrs(1)[0]
-
 	tests := []struct {
 		name      string
 		typ       rpcType
@@ -54,9 +34,13 @@ func TestServer(t *testing.T) {
 		},
 	}
 
+	network := fnet.New()
+	earth, _ := network.AddTransport("earth")
+	addr := "earth:8888"
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s := new(server)
+			s := &server{transport: earth}
 			if err := s.listen(addr); err != nil {
 				t.Fatalf("server.listen failed: %v", err)
 			}
@@ -72,7 +56,7 @@ func TestServer(t *testing.T) {
 				}
 			}()
 
-			c, err := dial(addr, 10*time.Second)
+			c, err := dial(earth, addr, 10*time.Second)
 			if err != nil {
 				t.Fatalf("dial failed: %v", err)
 			}

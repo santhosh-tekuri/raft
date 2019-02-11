@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/santhosh-tekuri/fnet"
+
 	"github.com/santhosh-tekuri/raft/inmem"
 )
 
@@ -95,22 +97,41 @@ func (fsm *fsmMock) lastCommand() string {
 // ---------------------------------------------
 
 type cluster struct {
-	rr []*Raft
+	rr      []*Raft
+	network *fnet.Network
 }
 
 func (c *cluster) launch(n int) error {
-	addrs := freeAddrs(n)
+	c.network = fnet.New()
+	addrs := make([]string, n)
+	for i := range addrs {
+		host := string('A' + i)
+		c.network.AddTransport(host)
+		addrs[i] = host + ":8888"
+	}
+
 	c.rr = make([]*Raft, n)
 	for i := range c.rr {
 		members := make([]string, n)
 		copy(members, addrs)
 		members[0], members[i] = members[i], members[0]
 		storage := new(inmem.Storage)
-		c.rr[i] = New(members, &fsmMock{}, storage, storage)
-		if err := c.rr[i].Listen(); err != nil {
+		r := New(members, &fsmMock{}, storage, storage)
+		c.rr[i] = r
+
+		// switch to fnet transport
+		host := c.network.Transport(string('A' + i))
+		r.transport = host
+		r.server.transport = host
+		for _, m := range r.members {
+			m.transport = host
+		}
+
+		if err := r.Listen(); err != nil {
 			return fmt.Errorf("raft.listen failed: %v", err)
 		}
-		go c.rr[i].Serve()
+		go r.Serve()
+
 	}
 	return nil
 }
