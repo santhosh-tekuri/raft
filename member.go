@@ -92,6 +92,7 @@ func (m *member) retryAppendEntries(req *appendEntriesRequest, stopCh <-chan str
 			failures++
 			select {
 			case <-time.After(backoff(failures)):
+				debug(m.addr, "retry appendentries")
 				continue
 			case <-stopCh:
 				return resp, true

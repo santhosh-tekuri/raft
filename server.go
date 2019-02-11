@@ -122,10 +122,15 @@ func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) erro
 		return err
 	}
 	s.rpcCh <- rpc
-	resp := <-respCh
-	if err := resp.encode(w); err != nil {
-		return err
+	select {
+	case resp := <-respCh:
+		if err := resp.encode(w); err != nil {
+			return err
+		}
+	case <-s.shutdownCh:
+		return errors.New("shuddown signal recieved")
 	}
+
 	return w.Flush()
 }
 
