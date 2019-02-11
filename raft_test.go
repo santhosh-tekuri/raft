@@ -22,15 +22,13 @@ func TestRaft(t *testing.T) {
 	defer cluster.shutdown()
 
 	var ldr *Raft
-	t.Run("election should succeed", func(t *testing.T) {
-		ldr, err = cluster.waitForLeader(10 * time.Second)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if ldr.getState() != leader {
-			t.Fatal("leader lost leadership")
-		}
-	})
+	ldr, err = cluster.waitForLeader(10 * time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ldr.getState() != leader {
+		t.Fatal("leader lost leadership")
+	}
 
 	t.Run("nonLeader should reject client requests with leaderID", func(t *testing.T) {
 		// sleep so that followers recieve atleast one heatbeat from leader
@@ -139,15 +137,15 @@ func (c *cluster) launch(n int) error {
 
 func (c *cluster) waitForLeader(timeout time.Duration) (*Raft, error) {
 	leaderCh := make(chan *Raft, 1)
-	stateChanged = func(r *Raft) {
+	onStateChange(func(r *Raft) {
 		if r.state == leader {
 			select {
 			case leaderCh <- r:
 			default:
 			}
 		}
-	}
-	defer func() { stateChanged = func(*Raft) {} }()
+	})
+	defer onStateChange(nil)
 
 	// check if leader already chosen
 	for _, r := range c.rr {
@@ -193,4 +191,24 @@ func (r *Raft) waitApply(cmd string, timeout time.Duration) (string, error) {
 	case <-time.After(timeout):
 		return "", fmt.Errorf("waitApply(%q): timedout", cmd)
 	}
+}
+
+var mu sync.RWMutex
+var stateChangedfn func(*Raft)
+
+func init() {
+	stateChanged = func(r *Raft) {
+		mu.RLock()
+		f := stateChangedfn
+		mu.RUnlock()
+		if f != nil {
+			f(r)
+		}
+	}
+}
+
+func onStateChange(f func(*Raft)) {
+	mu.Lock()
+	stateChangedfn = f
+	mu.Unlock()
 }
