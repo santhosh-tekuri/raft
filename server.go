@@ -40,10 +40,12 @@ func (s *server) listen(address string) error {
 		rpcCh:      make(chan rpc),
 		shutdownCh: make(chan struct{}),
 	}
+	s.wg.Add(1) // The first increment must be synchronized with Wait
 	return nil
 }
 
 func (s *server) serve() error {
+	defer s.wg.Done()
 	for {
 		conn, err := s.listener.Accept()
 		if err != nil {

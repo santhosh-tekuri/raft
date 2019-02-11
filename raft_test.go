@@ -31,8 +31,6 @@ func TestRaft(t *testing.T) {
 	}
 
 	t.Run("nonLeader should reject client requests with leaderID", func(t *testing.T) {
-		// sleep so that followers recieve atleast one heatbeat from leader
-		time.Sleep(2 * time.Second)
 		for _, r := range cluster.rr {
 			if r != ldr {
 				_, err := r.waitApply("test", 10*time.Second)
@@ -61,7 +59,7 @@ func TestRaft(t *testing.T) {
 
 	t.Run("followers fsm should sync with leader", func(t *testing.T) {
 		// sleep so that followers get cmd applied
-		time.Sleep(10 * time.Second)
+		time.Sleep(50 * time.Millisecond)
 		for _, r := range cluster.rr {
 			if last := r.fsm.(*fsmMock).lastCommand(); last != cmd {
 				t.Errorf("%s lastCommand. got %q, want %q", r.getState(), last, cmd)

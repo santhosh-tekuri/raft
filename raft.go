@@ -50,7 +50,7 @@ type Raft struct {
 }
 
 func New(addrs []string, fsm FSM, stable Stable, log Log) *Raft {
-	heartbeatTimeout := 5000 * time.Millisecond // todo
+	heartbeatTimeout := 50 * time.Millisecond // todo
 
 	members := make([]*member, len(addrs))
 	for i, addr := range addrs {
