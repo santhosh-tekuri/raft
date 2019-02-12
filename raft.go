@@ -199,7 +199,8 @@ func (e NotLeaderError) Error() string {
 	return "node is not the leader"
 }
 
-// note: if respCh is not recvd, then shutdown will block
+// NOTE: Raft will block writing to this channel, so it should either be
+// buffered or aggressively consumed
 func (r *Raft) Apply(cmd []byte, respCh chan<- interface{}) {
 	r.applyCh <- newEntry{
 		entry: &entry{

@@ -117,7 +117,7 @@ func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) erro
 	default:
 		return fmt.Errorf("unknown rpcType: %d", typ)
 	}
-
+	// todo: set read deadline
 	if err := rpc.req.decode(r); err != nil {
 		return err
 	}
@@ -130,6 +130,7 @@ func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) erro
 	case <-s.shutdownCh:
 		return errors.New("shuddown signal recieved")
 	case resp := <-respCh:
+		// todo: set write deadline
 		if err := resp.encode(w); err != nil {
 			return err
 		}

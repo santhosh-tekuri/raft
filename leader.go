@@ -78,11 +78,15 @@ func (r *Raft) runLeader() {
 				}
 			}
 
-			r.recalculateMatch(termStartIndex)
-			r.fsmApply(newEntries)
+			r.commitAndAppyOnMajority(termStartIndex, newEntries)
 
 		case newEntry := <-r.applyCh:
 			r.storeNewEntry(newEntries, newEntry)
+
+			// todo: move this into storeNewEntry method
+			if len(r.members) == 1 {
+				r.commitAndAppyOnMajority(termStartIndex, newEntries)
+			}
 
 		case f := <-r.inspectCh:
 			f(r)
@@ -93,20 +97,24 @@ func (r *Raft) runLeader() {
 // If there exists an N such that N > commitIndex, a majority
 // of matchIndex[i] ≥ N, and log[N].term == currentTerm:
 // set commitIndex = N
-func (r *Raft) recalculateMatch(termStartIndex uint64) {
-	matched := make(decrUint64Slice, len(r.members))
-	for i, m := range r.members {
-		if m.addr == r.addr {
-			matched[i] = r.lastLogIndex
-		} else {
-			matched[i] = m.matchedIndex
+func (r *Raft) commitAndAppyOnMajority(termStartIndex uint64, newEntries *list.List) {
+	majorityMatchIndex := r.lastLogIndex
+	if len(r.members) > 1 {
+		matched := make(decrUint64Slice, len(r.members))
+		for i, m := range r.members {
+			if m.addr == r.addr {
+				matched[i] = r.lastLogIndex
+			} else {
+				matched[i] = m.matchedIndex
+			}
 		}
+		// sort in decrease order
+		sort.Sort(matched)
+		majorityMatchIndex = matched[r.quorumSize()-1]
 	}
-	// sort in decrease order
-	sort.Sort(matched)
-	majorityMatchIndex := matched[r.quorumSize()-1]
 	if majorityMatchIndex > r.commitIndex && majorityMatchIndex >= termStartIndex {
 		r.commitIndex = majorityMatchIndex
+		r.fsmApply(newEntries)
 		r.notifyReplicators()
 	}
 }

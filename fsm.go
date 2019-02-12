@@ -11,7 +11,9 @@ type FSM interface {
 func (r *Raft) fsmLoop() {
 	defer r.wg.Done()
 	for newEntry := range r.fsmApplyCh {
+		debug(r.addr, "fsm.apply", newEntry.index)
 		resp := r.fsm.Apply(newEntry.entry.data)
+		fsmApplied(r, newEntry.index) // generate event
 		if newEntry.respCh != nil {
 			newEntry.respCh <- resp // user channel, so waiting even on shutdown
 		}
@@ -39,7 +41,7 @@ func (r *Raft) fsmApply(newEntries *list.List) {
 			newEntries.Remove(elem)
 		}
 
-		debug(r, "fsm.apply", ne.index)
+		debug(r, "lastApplied", ne.index)
 		if ne.entry.typ != entryNoop {
 			select {
 			case <-r.shutdownCh:
