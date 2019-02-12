@@ -20,6 +20,7 @@ func (r *Raft) processRPC(rpc rpc) {
 }
 
 func (r *Raft) requestVote(req *requestVoteRequest) *requestVoteResponse {
+	debug(r, "-> requestVoteFor", req.candidateID)
 	resp := &requestVoteResponse{
 		term:        r.term,
 		voteGranted: false,
@@ -27,6 +28,7 @@ func (r *Raft) requestVote(req *requestVoteRequest) *requestVoteResponse {
 
 	// reply false if term < currentTerm
 	if req.term < r.term {
+		debug(r, "rejectVoteTo", req.candidateID, "stale-term")
 		return resp
 	}
 
@@ -35,6 +37,9 @@ func (r *Raft) requestVote(req *requestVoteRequest) *requestVoteResponse {
 		// reply true if votedFor is candidateId
 		if r.votedFor == req.candidateID {
 			resp.voteGranted = true
+			debug(r, "grantVoteTo", req.candidateID)
+		} else {
+			debug(r, "rejectVoteTo", req.candidateID, "alreadyVotedTo", r.votedFor)
 		}
 		return resp
 	}
@@ -44,6 +49,7 @@ func (r *Raft) requestVote(req *requestVoteRequest) *requestVoteResponse {
 	switch {
 	case r.lastLogTerm > req.lastLogTerm:
 	case r.lastLogTerm == req.lastLogTerm && r.lastLogIndex > req.lastLogIndex:
+		debug(r, "rejectVoteTo", req.candidateID, "logNotUptoDate")
 		return resp
 	}
 
