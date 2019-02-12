@@ -11,15 +11,7 @@ func (r *Raft) runCandidate() {
 			return
 
 		case rpc := <-r.server.rpcCh:
-			// if AppendEntries RPC received from new leader: convert to follower
-			if req, ok := rpc.req.(*appendEntriesRequest); ok && req.term >= r.term {
-				debug(r, "candidate -> follower")
-				r.state = follower
-				r.setTerm(req.term) // clears votedFor also
-				stateChanged(r)
-			}
-
-			r.processRPC(rpc)
+			r.replyRPC(rpc)
 
 		case vote := <-results:
 			if r.checkTerm(vote); r.state != candidate {

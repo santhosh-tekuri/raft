@@ -72,7 +72,7 @@ func (r *Raft) runLeader() {
 			r.checkTerm(cmd)
 
 		case rpc := <-r.server.rpcCh:
-			r.processRPC(rpc)
+			r.replyRPC(rpc)
 
 		case m := <-recalculateMatchCh:
 		loop:

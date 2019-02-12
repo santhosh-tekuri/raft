@@ -8,7 +8,7 @@ func (r *Raft) runFollower() {
 			return
 
 		case rpc := <-r.server.rpcCh:
-			r.processRPC(rpc)
+			r.replyRPC(rpc)
 
 			// restart timer
 			r.electionTimer = randomTimer(r.heartbeatTimeout)
