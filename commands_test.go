@@ -16,7 +16,7 @@ func TestCommands(t *testing.T) {
 	tests := []command{
 		&entry{index: 3, term: 5, typ: 2, data: []byte("sleep")},
 		&requestVoteRequest{term: 5, candidateID: "localhost:1234", lastLogIndex: 3, lastLogTerm: 5},
-		&requestVoteResponse{term: 5, voteGranted: true},
+		&requestVoteResponse{term: 5, granted: true},
 		&appendEntriesRequest{
 			term: 5, leaderID: "localhost:5678", prevLogIndex: 3, prevLogTerm: 5,
 			entries: []*entry{

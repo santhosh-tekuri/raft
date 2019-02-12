@@ -18,7 +18,7 @@ func (r *Raft) runCandidate() {
 			}
 
 			// if votes received from majority of servers: become leader
-			if vote.voteGranted {
+			if vote.granted {
 				if vote.voterID != r.addr {
 					debug(r, "gotVoteFrom", vote.voterID)
 				}
@@ -59,8 +59,8 @@ func (r *Raft) startElection() <-chan voteResult {
 	r.setVotedFor(r.addr)
 	results <- voteResult{
 		requestVoteResponse: &requestVoteResponse{
-			term:        r.term,
-			voteGranted: true,
+			term:    r.term,
+			granted: true,
 		},
 		voterID: r.addr,
 	}
@@ -82,8 +82,8 @@ func (r *Raft) startElection() <-chan voteResult {
 		go func(m *member) {
 			result := voteResult{
 				requestVoteResponse: &requestVoteResponse{
-					term:        req.term,
-					voteGranted: false,
+					term:    req.term,
+					granted: false,
 				},
 				voterID: m.addr,
 			}

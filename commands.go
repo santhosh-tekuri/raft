@@ -113,8 +113,8 @@ func (req *requestVoteRequest) encode(w io.Writer) error {
 }
 
 type requestVoteResponse struct {
-	term        uint64 // currentTerm, for candidate to update itself
-	voteGranted bool   // true means candidate received vote
+	term    uint64 // currentTerm, for candidate to update itself
+	granted bool   // true means candidate received vote
 }
 
 func (resp *requestVoteResponse) getTerm() uint64 {
@@ -127,7 +127,7 @@ func (resp *requestVoteResponse) decode(r io.Reader) error {
 	if resp.term, err = readUint64(r); err != nil {
 		return err
 	}
-	if resp.voteGranted, err = readBool(r); err != nil {
+	if resp.granted, err = readBool(r); err != nil {
 		return err
 	}
 	return nil
@@ -137,7 +137,7 @@ func (resp *requestVoteResponse) encode(w io.Writer) error {
 	if err := writeUint64(w, resp.term); err != nil {
 		return err
 	}
-	if err := writeBool(w, resp.voteGranted); err != nil {
+	if err := writeBool(w, resp.granted); err != nil {
 		return err
 	}
 	return nil

@@ -7,7 +7,7 @@ func (r *Raft) replyRPC(rpc rpc) bool {
 	switch req := rpc.req.(type) {
 	case *requestVoteRequest:
 		reply := r.requestVote(req)
-		resp, valid = reply, reply.voteGranted
+		resp, valid = reply, reply.granted
 	case *appendEntriesRequest:
 		reply := r.appendEntries(req)
 		resp, valid = reply, reply.success
@@ -21,8 +21,8 @@ func (r *Raft) replyRPC(rpc rpc) bool {
 func (r *Raft) requestVote(req *requestVoteRequest) *requestVoteResponse {
 	debug(r, "-> requestVoteFor", req.term, req.candidateID)
 	resp := &requestVoteResponse{
-		term:        r.term,
-		voteGranted: false,
+		term:    r.term,
+		granted: false,
 	}
 
 	switch {
@@ -38,7 +38,7 @@ func (r *Raft) requestVote(req *requestVoteRequest) *requestVoteResponse {
 
 	if r.votedFor != "" { // we already voted in this election before
 		if r.votedFor == req.candidateID { // same candidate we votedFor
-			resp.voteGranted = true
+			resp.granted = true
 			debug(r, "grantVoteTo", req.candidateID)
 		} else {
 			debug(r, "rejectVoteTo", req.candidateID, "alreadyVotedTo", r.votedFor)
@@ -53,7 +53,7 @@ func (r *Raft) requestVote(req *requestVoteRequest) *requestVoteResponse {
 	}
 
 	debug(r, "grantVoteTo", req.candidateID)
-	resp.voteGranted = true
+	resp.granted = true
 	r.setVotedFor(req.candidateID)
 
 	return resp

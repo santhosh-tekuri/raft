@@ -87,8 +87,8 @@ func TestRaft_Voting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("requestVote failed: %v", err)
 	}
-	if !resp.voteGranted {
-		t.Fatalf("voteGranted: got %t, want true", resp.voteGranted)
+	if !resp.granted {
+		t.Fatalf("voteGranted: got %t, want true", resp.granted)
 	}
 
 	// a follower that thinks there's a leader shouldn't vote for a different candidate
@@ -97,8 +97,8 @@ func TestRaft_Voting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("requestVote failed: %v", err)
 	}
-	if resp.voteGranted {
-		t.Fatalf("voteGranted: got %t, want false", resp.voteGranted)
+	if resp.granted {
+		t.Fatalf("voteGranted: got %t, want false", resp.granted)
 	}
 }
 

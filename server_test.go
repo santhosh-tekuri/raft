@@ -18,7 +18,7 @@ func TestServer(t *testing.T) {
 			name: "requestVote",
 			typ:  rpcRequestVote,
 			req:  &requestVoteRequest{term: 5, candidateID: "localhost:1234", lastLogIndex: 3, lastLogTerm: 5},
-			resp: &requestVoteResponse{term: 5, voteGranted: true},
+			resp: &requestVoteResponse{term: 5, granted: true},
 		},
 		{
 			name: "appendEntries",
