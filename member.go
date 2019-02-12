@@ -91,17 +91,16 @@ func (m *member) retryAppendEntries(req *appendEntriesRequest, stopCh <-chan str
 		if err != nil {
 			failures++
 			select {
+			case <-stopCh:
+				return resp, true
 			case <-time.After(backoff(failures)):
 				debug(m.addr, "retry appendentries")
 				continue
-			case <-stopCh:
-				return resp, true
 			}
 		}
 		if resp.term > req.term {
 			select {
 			case <-stopCh:
-				return resp, true
 			case stepDownCh <- resp:
 			}
 			return resp, true
@@ -153,8 +152,7 @@ func (m *member) replicate(storage *storage, req *appendEntriesRequest, matchUpd
 			lastIndex, req.leaderCommitIndex = update.lastIndex, update.commitIndex
 			debug(ldr, m.addr, "{last:", lastIndex, "commit:", req.leaderCommitIndex, "} <-leaderUpdateCh")
 			timerCh = closedCh
-		default:
-			<-timerCh
+		case <-timerCh:
 		}
 
 		// setup request
