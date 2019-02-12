@@ -35,7 +35,7 @@ func TestServer(t *testing.T) {
 	}
 
 	network := fnet.New()
-	earth, _ := network.AddTransport("earth")
+	earth, _ := network.AddHost("earth")
 	addr := "earth:8888"
 
 	for _, test := range tests {

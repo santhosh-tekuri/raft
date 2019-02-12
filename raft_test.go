@@ -103,7 +103,7 @@ func (c *cluster) launch(n int) error {
 	addrs := make([]string, n)
 	for i := range addrs {
 		host := string('A' + i)
-		c.network.AddTransport(host)
+		c.network.AddHost(host)
 		addrs[i] = host + ":8888"
 	}
 
@@ -117,7 +117,7 @@ func (c *cluster) launch(n int) error {
 		c.rr[i] = r
 
 		// switch to fnet transport
-		host := c.network.Transport(string('A' + i))
+		host := c.network.Host(string('A' + i))
 		r.transport = host
 		r.server.transport = host
 		for _, m := range r.members {
