@@ -19,7 +19,7 @@ func debug(args ...interface{}) {
 	switch msg := fmt.Sprintln(args...); {
 	case strings.Index(msg, " L | ") != -1:
 		i := strings.Index(msg, " L | ")
-		if strings.HasPrefix(msg[i+5:], "localhost:") {
+		if strings.HasPrefix(msg[i+6:], ":8888") {
 			colorR.Print(msg)
 		} else {
 			colorL.Print(msg)
