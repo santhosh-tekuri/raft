@@ -37,8 +37,6 @@ type Raft struct {
 
 	votedFor         string
 	heartbeatTimeout time.Duration
-	electionTimer    *time.Timer
-	lastContact      time.Time // last time we had contact from the leader node
 
 	lastLogIndex         uint64
 	lastLogTerm          uint64

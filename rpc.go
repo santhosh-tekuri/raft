@@ -1,16 +1,21 @@
 package raft
 
-func (r *Raft) replyRPC(rpc rpc) {
+// return if it is validate request
+func (r *Raft) replyRPC(rpc rpc) bool {
 	var resp command
+	var valid bool
 	switch req := rpc.req.(type) {
 	case *requestVoteRequest:
-		resp = r.requestVote(req)
+		reply := r.requestVote(req)
+		resp, valid = reply, reply.voteGranted
 	case *appendEntriesRequest:
-		resp = r.appendEntries(req)
+		reply := r.appendEntries(req)
+		resp, valid = reply, reply.success
 	default:
 		// todo
 	}
 	rpc.respCh <- resp
+	return valid
 }
 
 func (r *Raft) requestVote(req *requestVoteRequest) *requestVoteResponse {
@@ -50,7 +55,6 @@ func (r *Raft) requestVote(req *requestVoteRequest) *requestVoteResponse {
 	debug(r, "grantVoteTo", req.candidateID)
 	resp.voteGranted = true
 	r.setVotedFor(req.candidateID)
-	r.electionTimer.Stop()
 
 	return resp
 }
@@ -100,8 +104,6 @@ func (r *Raft) appendEntries(req *appendEntriesRequest) *appendEntriesResponse {
 	}
 
 	// we came here, it means we got valid request
-
-	r.electionTimer.Stop()
 	if len(req.entries) > 0 { // todo: should we check this. what if leader wants us to truncate
 		var newEntries []*entry
 

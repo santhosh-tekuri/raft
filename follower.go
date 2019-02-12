@@ -1,24 +1,24 @@
 package raft
 
 func (r *Raft) runFollower() {
-	r.electionTimer = randomTimer(r.heartbeatTimeout)
+	timeoutCh := afterRandomTimeout(r.heartbeatTimeout)
 	for r.state == follower {
 		select {
 		case <-r.shutdownCh:
 			return
 
 		case rpc := <-r.server.rpcCh:
-			r.replyRPC(rpc)
+			if valid := r.replyRPC(rpc); valid {
+				// a server remains in follower state as long as it receives valid
+				// RPCs from a leader or candidate
+				timeoutCh = afterRandomTimeout(r.heartbeatTimeout)
+			}
 
-			// restart timer
-			r.electionTimer = randomTimer(r.heartbeatTimeout)
-
-			// If election timeout elapses without receiving AppendEntries
+			// If timeout elapses without receiving AppendEntries
 			// RPC from current leader or granting vote to candidate:
 			// convert to candidate
-		case <-r.electionTimer.C:
-			// heartbeat failed. transition to candidate
-			debug(r, "electionTimeout follower -> candidate")
+		case <-timeoutCh:
+			debug(r, "heartbeatTimeout follower -> candidate")
 			r.state = candidate
 			stateChanged(r)
 

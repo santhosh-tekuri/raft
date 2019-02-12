@@ -1,8 +1,7 @@
 package raft
 
-import "time"
-
 func (r *Raft) runCandidate() {
+	timeoutCh := afterRandomTimeout(r.heartbeatTimeout)
 	results := r.startElection()
 	votesNeeded := r.quorumSize()
 	for r.state == candidate {
@@ -25,7 +24,6 @@ func (r *Raft) runCandidate() {
 				}
 				votesNeeded--
 				if votesNeeded <= 0 {
-					r.electionTimer.Stop()
 					debug(r, "candidate -> leader")
 					r.state = leader
 					stateChanged(r)
@@ -33,7 +31,7 @@ func (r *Raft) runCandidate() {
 					return
 				}
 			}
-		case <-r.electionTimer.C:
+		case <-timeoutCh:
 			// election timeout elapsed: start new election
 			return
 
@@ -68,7 +66,6 @@ func (r *Raft) startElection() <-chan voteResult {
 	}
 
 	// reset election timer
-	r.electionTimer = time.NewTimer(randomTimeout(r.heartbeatTimeout))
 	debug(r, "startElection")
 
 	// send RequestVote RPCs to all other servers
