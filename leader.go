@@ -1,17 +1,15 @@
 package raft
 
 import (
-	"container/list"
 	"sort"
 )
 
 func (r *Raft) runLeader() {
-	termStartIndex := r.lastLogIndex + 1
-
-	newEntries := list.New()
+	r.leaderTermStartIndex = r.lastLogIndex + 1
+	assert(r.newEntries.Len() == 0, "newEntries must be empty on leader start")
 
 	// add a blank no-op entry into log at the start of its term
-	r.storeNewEntry(newEntries, newEntry{
+	r.storeNewEntry(newEntry{
 		entry: &entry{
 			typ: entryNoop,
 		},
@@ -21,7 +19,18 @@ func (r *Raft) runLeader() {
 
 	// to send stop signal to replicators
 	stopCh := make(chan struct{})
-	defer close(stopCh)
+	defer func() {
+		close(stopCh)
+
+		if r.leaderID == r.addr {
+			r.leaderID = ""
+		}
+
+		// respond to any pending user entries
+		for e := r.newEntries.Front(); e != nil; e = e.Next() {
+			e.Value.(newEntry).sendResponse(NotLeaderError{r.leaderID})
+		}
+	}()
 
 	// to recieve stale term notification from replicators
 	stepDownCh := make(chan command, len(r.members))
@@ -66,27 +75,22 @@ func (r *Raft) runLeader() {
 			r.processRPC(rpc)
 
 		case m := <-recalculateMatchCh:
-			// get latest matchIndex from all notified members
-			m.matchedIndex = m.getMatchIndex()
 		loop:
+			// get latest matchIndex from all notified members
 			for {
+				m.matchedIndex = m.getMatchIndex()
 				select {
-				case m := <-recalculateMatchCh:
-					m.matchedIndex = m.getMatchIndex()
+				case m = <-recalculateMatchCh:
+					break
 				default:
 					break loop
 				}
 			}
 
-			r.commitAndAppyOnMajority(termStartIndex, newEntries)
+			r.commitAndAppyOnMajority()
 
 		case newEntry := <-r.applyCh:
-			r.storeNewEntry(newEntries, newEntry)
-
-			// todo: move this into storeNewEntry method
-			if len(r.members) == 1 {
-				r.commitAndAppyOnMajority(termStartIndex, newEntries)
-			}
+			r.storeNewEntry(newEntry)
 
 		case f := <-r.inspectCh:
 			f(r)
@@ -97,7 +101,7 @@ func (r *Raft) runLeader() {
 // If there exists an N such that N > commitIndex, a majority
 // of matchIndex[i] ≥ N, and log[N].term == currentTerm:
 // set commitIndex = N
-func (r *Raft) commitAndAppyOnMajority(termStartIndex uint64, newEntries *list.List) {
+func (r *Raft) commitAndAppyOnMajority() {
 	majorityMatchIndex := r.lastLogIndex
 	if len(r.members) > 1 {
 		matched := make(decrUint64Slice, len(r.members))
@@ -112,14 +116,15 @@ func (r *Raft) commitAndAppyOnMajority(termStartIndex uint64, newEntries *list.L
 		sort.Sort(matched)
 		majorityMatchIndex = matched[r.quorumSize()-1]
 	}
-	if majorityMatchIndex > r.commitIndex && majorityMatchIndex >= termStartIndex {
+
+	if majorityMatchIndex > r.commitIndex && majorityMatchIndex >= r.leaderTermStartIndex {
 		r.commitIndex = majorityMatchIndex
-		r.fsmApply(newEntries)
-		r.notifyReplicators()
+		r.fsmApply(r.newEntries)
+		r.notifyReplicators() // we updated commit index
 	}
 }
 
-func (r *Raft) storeNewEntry(newEntries *list.List, newEntry newEntry) {
+func (r *Raft) storeNewEntry(newEntry newEntry) {
 	newEntry.index, newEntry.term = r.lastLogIndex+1, r.term
 
 	// append entry to local log
@@ -130,9 +135,14 @@ func (r *Raft) storeNewEntry(newEntries *list.List, newEntry newEntry) {
 	}
 	r.storage.append(newEntry.entry)
 	r.lastLogIndex++
-	r.notifyReplicators()
+	r.newEntries.PushBack(newEntry)
 
-	newEntries.PushBack(newEntry)
+	// we updated lastLogIndex, so notify replicators
+	if len(r.members) == 1 {
+		r.commitAndAppyOnMajority()
+	} else {
+		r.notifyReplicators()
+	}
 }
 
 func (r *Raft) notifyReplicators() {

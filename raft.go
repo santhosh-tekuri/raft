@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"container/list"
 	"fmt"
 	"math/rand"
 	"sync"
@@ -39,12 +40,15 @@ type Raft struct {
 	electionTimer    *time.Timer
 	lastContact      time.Time // last time we had contact from the leader node
 
-	lastLogIndex uint64
-	lastLogTerm  uint64
-	commitIndex  uint64
-	lastApplied  uint64
+	lastLogIndex         uint64
+	lastLogTerm          uint64
+	commitIndex          uint64
+	lastApplied          uint64
+	leaderTermStartIndex uint64
 
 	applyCh    chan newEntry
+	newEntries *list.List
+
 	inspectCh  chan func(*Raft)
 	shutdownCh chan struct{}
 }
@@ -74,6 +78,7 @@ func New(addrs []string, fsm FSM, stable Stable, log Log) *Raft {
 		state:            follower,
 		heartbeatTimeout: heartbeatTimeout,
 		applyCh:          make(chan newEntry, 100), // todo configurable capacity
+		newEntries:       list.New(),
 		inspectCh:        make(chan func(*Raft)),
 		shutdownCh:       make(chan struct{}),
 	}
@@ -199,8 +204,6 @@ func (e NotLeaderError) Error() string {
 	return "node is not the leader"
 }
 
-// NOTE: Raft will block writing to this channel, so it should either be
-// buffered or aggressively consumed
 func (r *Raft) Apply(cmd []byte, respCh chan<- interface{}) {
 	r.applyCh <- newEntry{
 		entry: &entry{

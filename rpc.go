@@ -150,6 +150,7 @@ func (r *Raft) checkTerm(cmd command) {
 			debug(r, r.state, "-> follower")
 		}
 		r.state = follower
+		r.leaderID = ""
 		stateChanged(r)
 	}
 }

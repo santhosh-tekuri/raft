@@ -14,9 +14,7 @@ func (r *Raft) fsmLoop() {
 		debug(r.addr, "fsm.apply", newEntry.index)
 		resp := r.fsm.Apply(newEntry.entry.data)
 		fsmApplied(r, newEntry.index) // generate event
-		if newEntry.respCh != nil {
-			newEntry.respCh <- resp // user channel, so waiting even on shutdown
-		}
+		newEntry.sendResponse(resp)
 	}
 	debug(r, "fsmLoop shutdown")
 }
