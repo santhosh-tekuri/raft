@@ -13,7 +13,7 @@ func (r *Raft) fsmLoop() {
 	for newEntry := range r.fsmApplyCh {
 		resp := r.fsm.Apply(newEntry.entry.data)
 		if newEntry.respCh != nil {
-			newEntry.respCh <- resp
+			newEntry.respCh <- resp // user channel, so waiting even on shutdown
 		}
 	}
 	debug(r, "fsmLoop shutdown")
@@ -41,7 +41,10 @@ func (r *Raft) fsmApply(newEntries *list.List) {
 
 		debug(r, "fsm.apply", ne.index)
 		if ne.entry.typ != entryNoop {
-			r.fsmApplyCh <- ne
+			select {
+			case <-r.shutdownCh:
+			case r.fsmApplyCh <- ne:
+			}
 		}
 	}
 }

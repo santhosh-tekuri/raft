@@ -199,6 +199,7 @@ func (e NotLeaderError) Error() string {
 	return "node is not the leader"
 }
 
+// note: if respCh is not recvd, then shutdown will block
 func (r *Raft) Apply(cmd []byte, respCh chan<- interface{}) {
 	r.applyCh <- newEntry{
 		entry: &entry{

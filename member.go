@@ -99,7 +99,11 @@ func (m *member) retryAppendEntries(req *appendEntriesRequest, stopCh <-chan str
 			}
 		}
 		if resp.term > req.term {
-			stepDownCh <- resp
+			select {
+			case <-stopCh:
+				return resp, true
+			case stepDownCh <- resp:
+			}
 			return resp, true
 		}
 		return resp, false
@@ -122,7 +126,7 @@ func (m *member) replicate(storage *storage, req *appendEntriesRequest, matchUpd
 			return
 		} else if resp.success {
 			matchIndex = req.prevLogIndex
-			m.setMatchIndex(matchIndex, matchUpdatedCh)
+			m.setMatchIndex(stopCh, matchIndex, matchUpdatedCh)
 			break
 		} else {
 			m.nextIndex = max(min(m.nextIndex-1, resp.lastLogIndex+1), 1)
@@ -176,7 +180,7 @@ func (m *member) replicate(storage *storage, req *appendEntriesRequest, matchUpd
 
 		m.nextIndex = resp.lastLogIndex + 1
 		matchIndex = resp.lastLogIndex
-		m.setMatchIndex(matchIndex, matchUpdatedCh)
+		m.setMatchIndex(stopCh, matchIndex, matchUpdatedCh)
 
 		if matchIndex < lastIndex {
 			// replication of entries [m.nextIndex, lastIndex] is still pending: no more sleeping!!!
@@ -191,7 +195,10 @@ func (m *member) getMatchIndex() uint64 {
 	return atomic.LoadUint64(&m.matchIndex)
 }
 
-func (m *member) setMatchIndex(v uint64, updatedCh chan<- *member) {
+func (m *member) setMatchIndex(stopCh <-chan struct{}, v uint64, updatedCh chan<- *member) {
 	atomic.StoreUint64(&m.matchIndex, v)
-	updatedCh <- m
+	select {
+	case <-stopCh:
+	case updatedCh <- m:
+	}
 }
