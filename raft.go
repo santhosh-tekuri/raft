@@ -153,7 +153,7 @@ func (r *Raft) loop() {
 }
 
 func (r *Raft) String() string {
-	return fmt.Sprintf("%s %d %s |", r.addr, r.term, r.state)
+	return fmt.Sprintf("%s %d %s %d |", r.addr, r.term, r.state, r.lastLogIndex)
 }
 
 func (r *Raft) quorumSize() int {
@@ -161,9 +161,6 @@ func (r *Raft) quorumSize() int {
 }
 
 func (r *Raft) setTerm(term uint64) {
-	if r.term == term {
-		return
-	}
 	if err := r.storage.SetVars(term, ""); err != nil {
 		panic(fmt.Sprintf("stable.Set failed: %v", err))
 	}

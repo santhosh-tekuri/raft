@@ -19,7 +19,8 @@ func (r *Raft) replyRPC(rpc rpc) bool {
 }
 
 func (r *Raft) requestVote(req *requestVoteRequest) *requestVoteResponse {
-	debug(r, "-> requestVoteFor", req.term, req.candidateID)
+	debug(r, "-> requestVoteFor", req.term, req.candidateID, req.lastLogIndex, req.lastLogTerm)
+	gotRequestVote(r, req)
 	resp := &requestVoteResponse{
 		term:    r.term,
 		granted: false,
@@ -48,7 +49,7 @@ func (r *Raft) requestVote(req *requestVoteRequest) *requestVoteResponse {
 
 	// reject if candidate’s log is not at least as up-to-date as ours
 	if r.lastLogTerm > req.lastLogTerm || (r.lastLogTerm == req.lastLogTerm && r.lastLogIndex > req.lastLogIndex) {
-		debug(r, "rejectVoteTo", req.candidateID, "logNotUptoDate")
+		debug(r, "rejectVoteTo", req.candidateID, "logNotUptoDate", r.lastLogIndex, r.lastLogTerm, req.lastLogIndex, req.lastLogTerm)
 		return resp
 	}
 

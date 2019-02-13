@@ -185,7 +185,6 @@ func (c *cluster) launch(n int) {
 	addrs := make([]string, n)
 	for i := range addrs {
 		host := string('A' + i)
-		c.network.AddHost(host)
 		addrs[i] = host + ":8888"
 	}
 
@@ -222,6 +221,14 @@ func (c *cluster) ensureStability() {
 
 	stateChanged := make(chan struct{}, 10)
 	onStateChange(func(r *Raft) {
+		select {
+		case stateChanged <- struct{}{}:
+		default:
+		}
+	})
+	defer onStateChange(nil)
+
+	onRequestVote(func(r *Raft, req *requestVoteRequest) {
 		select {
 		case stateChanged <- struct{}{}:
 		default:
@@ -398,6 +405,7 @@ func (r *Raft) waitApply(cmd string, timeout time.Duration) (fsmReply, error) {
 var mu sync.RWMutex
 var stateChangedfn func(*Raft)
 var fsmAppliedfn func(*Raft, uint64)
+var requestVotefn func(*Raft, *requestVoteRequest)
 
 func init() {
 	stateChanged = func(r *Raft) {
@@ -417,6 +425,15 @@ func init() {
 			f(r, index)
 		}
 	}
+
+	gotRequestVote = func(r *Raft, req *requestVoteRequest) {
+		mu.RLock()
+		f := requestVotefn
+		mu.RUnlock()
+		if f != nil {
+			f(r, req)
+		}
+	}
 }
 
 func onStateChange(f func(*Raft)) {
@@ -428,6 +445,12 @@ func onStateChange(f func(*Raft)) {
 func onFSMApplied(f func(*Raft, uint64)) {
 	mu.Lock()
 	fsmAppliedfn = f
+	mu.Unlock()
+}
+
+func onRequestVote(f func(*Raft, *requestVoteRequest)) {
+	mu.Lock()
+	requestVotefn = f
 	mu.Unlock()
 }
 

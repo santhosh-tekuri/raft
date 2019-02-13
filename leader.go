@@ -134,7 +134,7 @@ func (r *Raft) storeNewEntry(newEntry newEntry) {
 		debug(r, "log.append cmd", newEntry.index)
 	}
 	r.storage.append(newEntry.entry)
-	r.lastLogIndex++
+	r.lastLogIndex, r.lastLogTerm = newEntry.index, newEntry.term
 	r.newEntries.PushBack(newEntry)
 
 	// we updated lastLogIndex, so notify replicators

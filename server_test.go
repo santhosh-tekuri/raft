@@ -34,9 +34,8 @@ func TestServer(t *testing.T) {
 		},
 	}
 
-	network := fnet.New()
-	earth, _ := network.AddHost("earth")
-	addr := "earth:8888"
+	nw := fnet.New()
+	earth, addr := nw.Host("earth"), "earth:8888"
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

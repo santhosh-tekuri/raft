@@ -1,5 +1,7 @@
 package raft
 
+import "time"
+
 func (r *Raft) runCandidate() {
 	timeoutCh := afterRandomTimeout(r.heartbeatTimeout)
 	results := r.startElection()
@@ -66,7 +68,7 @@ func (r *Raft) startElection() <-chan voteResult {
 	}
 
 	// reset election timer
-	debug(r, "startElection")
+	debug(r, "startElection", time.Now().UTC())
 
 	// send RequestVote RPCs to all other servers
 	req := &requestVoteRequest{
