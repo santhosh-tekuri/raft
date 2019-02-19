@@ -160,11 +160,11 @@ func (m *member) replicate(storage *storage, req *appendEntriesRequest, matchUpd
 			// replication of entries [m.nextIndex, lastIndex] is pending
 			maxIndex := min(lastIndex, m.nextIndex+uint64(maxAppendEntries)-1)
 			storage.fillEntries(req, m.nextIndex, maxIndex)
-			debug(ldr, m.addr, "appendEntriesRequest->", len(req.entries))
+			debug(ldr, m.addr, ">> appendEntriesRequest", len(req.entries))
 		} else {
 			// send heartbeat
 			req.prevLogIndex, req.prevLogTerm, req.entries = lastIndex, req.term, nil // zero entries
-			debug(ldr, m.addr, "heartbeat ->")
+			debug(ldr, m.addr, ">> heartbeat")
 		}
 
 		resp, stop := m.retryAppendEntries(req, stopCh, stepDownCh)

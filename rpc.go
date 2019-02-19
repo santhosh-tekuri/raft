@@ -19,7 +19,7 @@ func (r *Raft) replyRPC(rpc rpc) bool {
 }
 
 func (r *Raft) requestVote(req *requestVoteRequest) *requestVoteResponse {
-	debug(r, "-> requestVoteFor", req.term, req.candidateID, req.lastLogIndex, req.lastLogTerm)
+	debug(r, "<< voteRequest", req.term, req.candidateID, req.lastLogIndex, req.lastLogTerm)
 	gotRequestVote(r, req)
 	resp := &requestVoteResponse{
 		term:    r.term,

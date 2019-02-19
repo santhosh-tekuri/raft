@@ -15,15 +15,16 @@ func (r *Raft) runCandidate() {
 			r.replyRPC(rpc)
 
 		case vote := <-results:
+			if vote.voterID != r.addr {
+				debug(r, "<< voteResponse", vote.voterID, vote.granted, vote.term)
+			}
+
 			if r.checkTerm(vote); r.state != candidate {
 				return
 			}
 
 			// if votes received from majority of servers: become leader
 			if vote.granted {
-				if vote.voterID != r.addr {
-					debug(r, "gotVoteFrom", vote.voterID)
-				}
 				votesNeeded--
 				if votesNeeded <= 0 {
 					debug(r, "candidate -> leader")

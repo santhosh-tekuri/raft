@@ -122,10 +122,10 @@ func (r *Raft) Serve() error {
 }
 
 func (r *Raft) Shutdown() {
-	debug(r.addr, "-> shutdown()")
+	debug(r.addr, ">> shutdown()")
 	close(r.shutdownCh)
 	r.wg.Wait()
-	debug(r.addr, "shutdown() ->")
+	debug(r.addr, "<< shutdown()")
 }
 
 func (r *Raft) loop() {

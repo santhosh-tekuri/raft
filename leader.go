@@ -52,7 +52,7 @@ func (r *Raft) runLeader() {
 			prevLogIndex:      r.lastLogIndex,
 			prevLogTerm:       r.lastLogTerm,
 		}
-		debug(r, "heartbeat ->", m.addr)
+		debug(r, m.addr, ">> firstHeartbeat")
 		m.retryAppendEntries(req, stopCh, stepDownCh)
 
 		r.wg.Add(1)
