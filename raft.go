@@ -203,6 +203,12 @@ func (e NotLeaderError) Error() string {
 }
 
 func (r *Raft) Apply(cmd []byte, respCh chan<- interface{}) {
+	// todo: provide timeout to enqueue newEntry or
+	//       make r.applyCh public to developer
+	//       for example developer can do:
+	//            r.ApplyCh <- raft.MakeNewEntry(cmd, respChan)
+	//       or rename newEntry to Command. then
+	//            r.ApplyCh <- raft.NewCommand(data, respChan)
 	r.applyCh <- newEntry{
 		entry: &entry{
 			typ:  entryCommand,
