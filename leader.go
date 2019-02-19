@@ -87,7 +87,7 @@ func (r *Raft) runLeader() {
 				}
 			}
 
-			r.commitAndAppyOnMajority()
+			r.commitAndApplyOnMajority()
 
 		case newEntry := <-r.applyCh:
 			r.storeNewEntry(newEntry)
@@ -101,7 +101,7 @@ func (r *Raft) runLeader() {
 // If there exists an N such that N > commitIndex, a majority
 // of matchIndex[i] ≥ N, and log[N].term == currentTerm:
 // set commitIndex = N
-func (r *Raft) commitAndAppyOnMajority() {
+func (r *Raft) commitAndApplyOnMajority() {
 	majorityMatchIndex := r.lastLogIndex
 	if len(r.members) > 1 {
 		matched := make(decrUint64Slice, len(r.members))
@@ -139,7 +139,7 @@ func (r *Raft) storeNewEntry(newEntry newEntry) {
 
 	// we updated lastLogIndex, so notify replicators
 	if len(r.members) == 1 {
-		r.commitAndAppyOnMajority()
+		r.commitAndApplyOnMajority()
 	} else {
 		r.notifyReplicators()
 	}
