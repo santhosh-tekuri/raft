@@ -62,8 +62,9 @@ func (r *Raft) runLeader() {
 			prevLogIndex:      r.lastLogIndex,
 			prevLogTerm:       r.lastLogTerm,
 		}
+		// don't retry on failure. so that we can respond to apply/inspect
 		debug(r, m.addr, ">> firstHeartbeat")
-		m.retryAppendEntries(req, r.shutdownCh, newTermCh)
+		m.appendEntries(req)
 
 		r.wg.Add(1)
 		go func(m *member) {

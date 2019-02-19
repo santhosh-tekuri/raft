@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -182,23 +183,49 @@ func TestRaft_LeaderFail(t *testing.T) {
 	}
 	c.ensureFSMReplicated(1)
 
+	// disconnect leader
+	ldrTerm := ldr.getTerm()
 	c.disconnect(ldr)
-	ch := make(chan struct{}, 1)
-	onStateChange(func(raft *Raft) {
-		if raft == ldr && raft.state != leader {
-			close(ch)
-			onStateChange(nil)
-		}
-	})
-	defer onStateChange(nil)
-	if ldr.getState() != follower {
-		select {
-		case <-ch:
-			break
-		case <-time.After(c.longTimeout):
-			t.Fatal("leader should transition to follower")
-		}
+
+	// leader should stepDown
+	if !ldr.waitForState(c.longTimeout, follower, candidate) {
+		t.Fatal("leader should stepDown")
 	}
+
+	// wait for new leader
+	c.ensureStability()
+	newLdr := c.leader()
+	if newLdr == ldr {
+		t.Fatalf("newLeader: got %s, want !=%s", newLdr.addr, ldr.addr)
+	}
+
+	// ensure leader term is greater
+	if newLdrTerm := newLdr.getTerm(); newLdrTerm <= ldrTerm {
+		t.Fatalf("expected new leader term: newLdrTerm=%d, ldrTerm=%d", newLdrTerm, ldrTerm)
+	}
+
+	// apply should work not work on old leader
+	_, err = ldr.waitApply("reject", c.commitTimeout)
+	if err, ok := err.(NotLeaderError); !ok {
+		t.Fatalf("got %v, want NotLeaderError", err)
+	} else if err.Leader != "" {
+		t.Fatalf("got %s, want ", err.Leader)
+	}
+
+	// apply should work on new leader
+	if _, err = newLdr.waitApply("accept", c.commitTimeout); err != nil {
+		t.Fatalf("got %v, want nil", err)
+	}
+
+	// reconnect the networks
+	c.connect()
+	c.ensureHealthy()
+
+	// wait for log replication
+	c.ensureFSMReplicated(2)
+
+	// Check two entries are applied to the FSM
+	c.ensureFSMSame([]string{"test", "accept"})
 }
 
 // ---------------------------------------------
@@ -394,10 +421,29 @@ loop:
 	}
 }
 
+// if want==nil, we ensure all fsm are same
+// if want!=nil, we ensure all fms has want
+func (c *cluster) ensureFSMSame(want []string) {
+	c.Helper()
+	if want == nil {
+		want = c.rr[0].fsmMock().commands()
+	}
+	for _, r := range c.rr {
+		if got := r.fsmMock().commands(); !reflect.DeepEqual(got, want) {
+			c.Fatalf("got %v, want %v", got, want)
+		}
+	}
+}
+
 func (c *cluster) disconnect(r *Raft) {
 	host, _, _ := net.SplitHostPort(r.addr)
 	debug("disconnecting", host)
 	c.network.SetFirewall(fnet.Split([]string{host}, fnet.AllowAll))
+}
+
+func (c *cluster) connect() {
+	debug("reconnecting")
+	c.network.SetFirewall(fnet.AllowAll)
 }
 
 func (c *cluster) shutdown() {
@@ -430,6 +476,36 @@ func (r *Raft) getLeaderID() string {
 		leaderID = r.leaderID
 	})
 	return leaderID
+}
+
+// wait until state is one of given states
+func (r *Raft) waitForState(timeout time.Duration, states ...state) bool {
+	matchesState := func(curState state) bool {
+		for _, s := range states {
+			if curState == s {
+				return true
+			}
+		}
+		return false
+	}
+
+	ch := make(chan struct{}, 1)
+	onStateChange(func(raft *Raft) {
+		if raft == r && matchesState(r.state) {
+			close(ch)
+			onStateChange(nil)
+		}
+	})
+	defer onStateChange(nil)
+	if !matchesState(r.getState()) {
+		select {
+		case <-ch:
+			break
+		case <-time.After(timeout):
+			return false
+		}
+	}
+	return true
 }
 
 func (r *Raft) fsmMock() *fsmMock {
