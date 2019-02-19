@@ -286,6 +286,52 @@ func TestRaft_ApplyNonLeader(t *testing.T) {
 	}
 }
 
+func TestRaft_ApplyConcurrent(t *testing.T) {
+	debug("\nTestRaft_ApplyConcurrent --------------------------")
+	c := newCluster(t)
+	c.launch(3)
+	defer c.shutdown()
+	ldr := c.ensureHealthy()
+
+	// should agree on leader
+	c.ensureLeader(ldr.addr)
+
+	// concurrently apply
+	wg := sync.WaitGroup{}
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			if _, err := ldr.waitApply(fmt.Sprintf("test%d", i), 0); err != nil {
+				debug("FAIL got", err, "want nil")
+				t.Fail() // note: t.Fatal should note be called from non-test goroutine
+			}
+		}(i)
+	}
+
+	// wait to finish
+	doneCh := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(doneCh)
+	}()
+	select {
+	case <-doneCh:
+		break
+	case <-time.After(c.longTimeout):
+		t.Fatal("timeout")
+	}
+
+	// check If anything failed
+	if t.Failed() {
+		t.Fatal("one or more of the apply operations failed")
+	}
+
+	// check the FSMs
+	c.ensureFSMReplicated(100)
+	c.ensureFSMSame(nil)
+}
+
 func TestMain(m *testing.M) {
 	code := m.Run()
 
@@ -579,7 +625,12 @@ func (r *Raft) fsmMock() *fsmMock {
 	return r.fsm.(*fsmMock)
 }
 
+// use zero timeout, to wait till reply received
 func (r *Raft) waitApply(cmd string, timeout time.Duration) (fsmReply, error) {
+	var timer <-chan time.Time
+	if timeout > 0 {
+		timer = time.After(timeout)
+	}
 	respCh := make(chan interface{}, 1)
 	r.Apply([]byte(cmd), respCh)
 	select {
@@ -588,7 +639,7 @@ func (r *Raft) waitApply(cmd string, timeout time.Duration) (fsmReply, error) {
 			return fsmReply{}, err
 		}
 		return resp.(fsmReply), nil
-	case <-time.After(timeout):
+	case <-timer:
 		return fsmReply{}, fmt.Errorf("waitApply(%q): timedout", cmd)
 	}
 }
