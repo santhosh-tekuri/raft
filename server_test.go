@@ -39,7 +39,7 @@ func TestServer(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s := &server{transport: earth}
+			s := &server{listenFn: earth.Listen}
 			if err := s.listen(addr); err != nil {
 				t.Fatalf("server.listen failed: %v", err)
 			}
@@ -55,7 +55,7 @@ func TestServer(t *testing.T) {
 				}
 			}()
 
-			c, err := dial(earth, addr, 10*time.Second)
+			c, err := dial(earth.DialTimeout, addr, 10*time.Second)
 			if err != nil {
 				t.Fatalf("dial failed: %v", err)
 			}

@@ -4,6 +4,7 @@ import (
 	"container/list"
 	"fmt"
 	"math/rand"
+	"net"
 	"sync"
 	"time"
 )
@@ -21,10 +22,9 @@ func (s state) String() string {
 }
 
 type Raft struct {
-	transport transport
-	addr      string
-	members   []*member
-	wg        sync.WaitGroup
+	addr    string
+	members []*member
+	wg      sync.WaitGroup
 
 	fsmApplyCh chan newEntry
 	fsm        FSM
@@ -59,7 +59,7 @@ func New(addrs []string, fsm FSM, stable Stable, log Log) *Raft {
 	for i, addr := range addrs {
 		members[i] = &member{
 			storage:          storage,
-			transport:        tcpTransport{},
+			dialFn:           net.DialTimeout,
 			addr:             addr,
 			timeout:          10 * time.Second, // todo
 			heartbeatTimeout: heartbeatTimeout,
@@ -68,12 +68,11 @@ func New(addrs []string, fsm FSM, stable Stable, log Log) *Raft {
 	}
 
 	return &Raft{
-		transport:        tcpTransport{},
 		addr:             addrs[0],
 		fsmApplyCh:       make(chan newEntry, 128), // todo configurable capacity
 		fsm:              fsm,
 		storage:          storage,
-		server:           &server{transport: tcpTransport{}},
+		server:           &server{listenFn: net.Listen},
 		members:          members,
 		state:            follower,
 		heartbeatTimeout: heartbeatTimeout,

@@ -13,7 +13,7 @@ type leaderUpdate struct {
 
 type member struct {
 	storage          *storage
-	transport        transport
+	dialFn           dialFn
 	addr             string
 	timeout          time.Duration
 	heartbeatTimeout time.Duration
@@ -39,7 +39,7 @@ func (m *member) getConn() (*netConn, error) {
 
 	num := len(m.connPool)
 	if num == 0 {
-		return dial(m.transport, m.addr, m.timeout)
+		return dial(m.dialFn, m.addr, m.timeout)
 	}
 	var conn *netConn
 	conn, m.connPool[num-1] = m.connPool[num-1], nil

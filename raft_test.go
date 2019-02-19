@@ -200,10 +200,9 @@ func (c *cluster) launch(n int) {
 
 		// switch to fnet transport
 		host := c.network.Host(string('A' + i))
-		r.transport = host
-		r.server.transport = host
+		r.server.listenFn = host.Listen
 		for _, m := range r.members {
-			m.transport = host
+			m.dialFn = host.DialTimeout
 		}
 
 		if err := r.Listen(); err != nil {

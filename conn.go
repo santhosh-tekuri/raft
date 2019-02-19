@@ -14,8 +14,10 @@ type netConn struct {
 	timeout time.Duration
 }
 
-func dial(transport transport, target string, timeout time.Duration) (*netConn, error) {
-	conn, err := transport.DialTimeout(target, timeout)
+type dialFn func(network, address string, timeout time.Duration) (net.Conn, error)
+
+func dial(dialFn dialFn, target string, timeout time.Duration) (*netConn, error) {
+	conn, err := dialFn("tcp", target, timeout)
 	if err != nil {
 		return nil, err
 	}
