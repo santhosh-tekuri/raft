@@ -111,7 +111,7 @@ func (m *member) retryAppendEntries(req *appendEntriesRequest, stopCh <-chan str
 
 const maxAppendEntries = 64 // todo: should be configurable
 
-func (m *member) replicate(storage *storage, req *appendEntriesRequest, matchUpdatedCh chan<- *member, stopCh <-chan struct{}, stepDownCh chan<- command) {
+func (m *member) replicate(storage *storage, req *appendEntriesRequest, stopCh <-chan struct{}, matchUpdatedCh chan<- *member, stepDownCh chan<- command) {
 	ldr := fmt.Sprintf("%s %d %s |", req.leaderID, req.term, leader)
 
 	lastIndex, matchIndex := req.prevLogIndex, m.matchIndex
