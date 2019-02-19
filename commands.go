@@ -7,7 +7,7 @@ import (
 type rpcType int
 
 const (
-	rpcRequestVote rpcType = iota
+	rpcVote rpcType = iota
 	rpcAppendEntries
 )
 
@@ -67,18 +67,18 @@ func (e *entry) encode(w io.Writer) error {
 	return nil
 }
 
-type requestVoteRequest struct {
+type voteRequest struct {
 	term         uint64 // candidate's term
 	candidateID  string // candidate requesting vote
 	lastLogIndex uint64 // index of candidate's last log entry
 	lastLogTerm  uint64 // term of candidate's last log entry
 }
 
-func (req *requestVoteRequest) getTerm() uint64 {
+func (req *voteRequest) getTerm() uint64 {
 	return req.term
 }
 
-func (req *requestVoteRequest) decode(r io.Reader) error {
+func (req *voteRequest) decode(r io.Reader) error {
 	var err error
 
 	if req.term, err = readUint64(r); err != nil {
@@ -96,7 +96,7 @@ func (req *requestVoteRequest) decode(r io.Reader) error {
 	return nil
 }
 
-func (req *requestVoteRequest) encode(w io.Writer) error {
+func (req *voteRequest) encode(w io.Writer) error {
 	if err := writeUint64(w, req.term); err != nil {
 		return err
 	}
@@ -112,16 +112,16 @@ func (req *requestVoteRequest) encode(w io.Writer) error {
 	return nil
 }
 
-type requestVoteResponse struct {
+type voteResponse struct {
 	term    uint64 // currentTerm, for candidate to update itself
 	granted bool   // true means candidate received vote
 }
 
-func (resp *requestVoteResponse) getTerm() uint64 {
+func (resp *voteResponse) getTerm() uint64 {
 	return resp.term
 }
 
-func (resp *requestVoteResponse) decode(r io.Reader) error {
+func (resp *voteResponse) decode(r io.Reader) error {
 	var err error
 
 	if resp.term, err = readUint64(r); err != nil {
@@ -133,7 +133,7 @@ func (resp *requestVoteResponse) decode(r io.Reader) error {
 	return nil
 }
 
-func (resp *requestVoteResponse) encode(w io.Writer) error {
+func (resp *voteResponse) encode(w io.Writer) error {
 	if err := writeUint64(w, resp.term); err != nil {
 		return err
 	}

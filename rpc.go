@@ -5,7 +5,7 @@ func (r *Raft) replyRPC(rpc rpc) bool {
 	var resp command
 	var valid bool
 	switch req := rpc.req.(type) {
-	case *requestVoteRequest:
+	case *voteRequest:
 		reply := r.requestVote(req)
 		resp, valid = reply, reply.granted
 	case *appendEntriesRequest:
@@ -18,10 +18,10 @@ func (r *Raft) replyRPC(rpc rpc) bool {
 	return valid
 }
 
-func (r *Raft) requestVote(req *requestVoteRequest) *requestVoteResponse {
+func (r *Raft) requestVote(req *voteRequest) *voteResponse {
 	debug(r, "<< voteRequest", req.term, req.candidateID, req.lastLogIndex, req.lastLogTerm)
-	gotRequestVote(r, req)
-	resp := &requestVoteResponse{
+	gotVoteRequest(r, req)
+	resp := &voteResponse{
 		term:    r.term,
 		granted: false,
 	}
@@ -30,7 +30,7 @@ func (r *Raft) requestVote(req *requestVoteRequest) *requestVoteResponse {
 	case req.term < r.term: // reject: older term
 		debug(r, "rejectVoteTo", req.candidateID, "oldTerm")
 		return resp
-	case req.term > r.term: // conver to follower
+	case req.term > r.term: // convert to follower
 		debug(r, "stateChange", req.term, follower)
 		r.state = follower
 		r.setTerm(req.term)

@@ -74,7 +74,7 @@ func TestRaft_Voting(t *testing.T) {
 	defer c.shutdown()
 	ldr := c.ensureHealthy()
 
-	req := &requestVoteRequest{}
+	req := &voteRequest{}
 	ldr.inspect(func(r *Raft) {
 		req.term = r.term
 		req.lastLogIndex = r.lastLogIndex
@@ -228,7 +228,7 @@ func (c *cluster) ensureStability() {
 	})
 	defer onStateChange(nil)
 
-	onRequestVote(func(r *Raft, req *requestVoteRequest) {
+	onVoteRequest(func(r *Raft, req *voteRequest) {
 		select {
 		case stateChanged <- struct{}{}:
 		default:
@@ -403,14 +403,14 @@ func (r *Raft) waitApply(cmd string, timeout time.Duration) (fsmReply, error) {
 }
 
 var mu sync.RWMutex
-var stateChangedfn func(*Raft)
-var fsmAppliedfn func(*Raft, uint64)
-var requestVotefn func(*Raft, *requestVoteRequest)
+var stateChangedFn func(*Raft)
+var fsmAppliedFn func(*Raft, uint64)
+var voteRequestFn func(*Raft, *voteRequest)
 
 func init() {
 	stateChanged = func(r *Raft) {
 		mu.RLock()
-		f := stateChangedfn
+		f := stateChangedFn
 		mu.RUnlock()
 		if f != nil {
 			f(r)
@@ -419,16 +419,16 @@ func init() {
 
 	fsmApplied = func(r *Raft, index uint64) {
 		mu.RLock()
-		f := fsmAppliedfn
+		f := fsmAppliedFn
 		mu.RUnlock()
 		if f != nil {
 			f(r, index)
 		}
 	}
 
-	gotRequestVote = func(r *Raft, req *requestVoteRequest) {
+	gotVoteRequest = func(r *Raft, req *voteRequest) {
 		mu.RLock()
-		f := requestVotefn
+		f := voteRequestFn
 		mu.RUnlock()
 		if f != nil {
 			f(r, req)
@@ -438,19 +438,19 @@ func init() {
 
 func onStateChange(f func(*Raft)) {
 	mu.Lock()
-	stateChangedfn = f
+	stateChangedFn = f
 	mu.Unlock()
 }
 
 func onFSMApplied(f func(*Raft, uint64)) {
 	mu.Lock()
-	fsmAppliedfn = f
+	fsmAppliedFn = f
 	mu.Unlock()
 }
 
-func onRequestVote(f func(*Raft, *requestVoteRequest)) {
+func onVoteRequest(f func(*Raft, *voteRequest)) {
 	mu.Lock()
-	requestVotefn = f
+	voteRequestFn = f
 	mu.Unlock()
 }
 

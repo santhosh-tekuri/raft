@@ -70,9 +70,9 @@ func (m *member) doRPC(typ rpcType, req, resp command) error {
 	return nil
 }
 
-func (m *member) requestVote(req *requestVoteRequest) (*requestVoteResponse, error) {
-	resp := new(requestVoteResponse)
-	err := m.doRPC(rpcRequestVote, req, resp)
+func (m *member) requestVote(req *voteRequest) (*voteResponse, error) {
+	resp := new(voteResponse)
+	err := m.doRPC(rpcVote, req, resp)
 	return resp, err
 }
 

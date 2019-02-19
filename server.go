@@ -110,8 +110,8 @@ func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) erro
 
 	// decode request
 	switch typ {
-	case rpcRequestVote:
-		req := &requestVoteRequest{}
+	case rpcVote:
+		req := &voteRequest{}
 		rpc.req = req
 	case rpcAppendEntries:
 		req := &appendEntriesRequest{}
@@ -150,7 +150,7 @@ func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) erro
 
 func (s *server) shutdown() {
 	close(s.shutdownCh)
-	s.listener.Close()
+	_ = s.listener.Close()
 	s.wg.Wait()
 	close(s.rpcCh)
 }

@@ -16,9 +16,9 @@ func TestServer(t *testing.T) {
 	}{
 		{
 			name: "requestVote",
-			typ:  rpcRequestVote,
-			req:  &requestVoteRequest{term: 5, candidateID: "localhost:1234", lastLogIndex: 3, lastLogTerm: 5},
-			resp: &requestVoteResponse{term: 5, granted: true},
+			typ:  rpcVote,
+			req:  &voteRequest{term: 5, candidateID: "localhost:1234", lastLogIndex: 3, lastLogTerm: 5},
+			resp: &voteResponse{term: 5, granted: true},
 		},
 		{
 			name: "appendEntries",
@@ -26,8 +26,8 @@ func TestServer(t *testing.T) {
 			req: &appendEntriesRequest{
 				term: 5, leaderID: "localhost:5678", prevLogIndex: 3, prevLogTerm: 5,
 				entries: []*entry{
-					&entry{index: 3, term: 5, typ: 2, data: []byte("sleep")},
-					&entry{index: 4, term: 5, typ: 3, data: []byte("wakeup")},
+					{index: 3, term: 5, typ: 2, data: []byte("sleep")},
+					{index: 4, term: 5, typ: 3, data: []byte("wakeup")},
 				}, leaderCommitIndex: 7,
 			},
 			resp: &appendEntriesResponse{term: 5, success: true},

@@ -48,7 +48,7 @@ func (r *Raft) runCandidate() {
 }
 
 type voteResult struct {
-	*requestVoteResponse
+	*voteResponse
 	voterID string
 }
 
@@ -61,7 +61,7 @@ func (r *Raft) startElection() <-chan voteResult {
 	// vote for self
 	r.setVotedFor(r.addr)
 	results <- voteResult{
-		requestVoteResponse: &requestVoteResponse{
+		voteResponse: &voteResponse{
 			term:    r.term,
 			granted: true,
 		},
@@ -72,7 +72,7 @@ func (r *Raft) startElection() <-chan voteResult {
 	debug(r, "startElection", time.Now().UTC())
 
 	// send RequestVote RPCs to all other servers
-	req := &requestVoteRequest{
+	req := &voteRequest{
 		term:         r.term,
 		candidateID:  r.addr,
 		lastLogIndex: r.lastLogIndex,
@@ -84,7 +84,7 @@ func (r *Raft) startElection() <-chan voteResult {
 		}
 		go func(m *member) {
 			result := voteResult{
-				requestVoteResponse: &requestVoteResponse{
+				voteResponse: &voteResponse{
 					term:    req.term,
 					granted: false,
 				},
@@ -97,7 +97,7 @@ func (r *Raft) startElection() <-chan voteResult {
 			if err != nil {
 				return
 			}
-			result.requestVoteResponse = resp
+			result.voteResponse = resp
 		}(m)
 	}
 	return results
