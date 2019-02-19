@@ -57,7 +57,7 @@ func (r *Raft) runLeader() {
 			prevLogTerm:       r.lastLogTerm,
 		}
 		debug(r, m.addr, ">> firstHeartbeat")
-		m.retryAppendEntries(req, stopCh, newTermCh)
+		m.retryAppendEntries(req, r.shutdownCh, newTermCh)
 
 		r.wg.Add(1)
 		go func(m *member) {
