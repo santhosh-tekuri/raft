@@ -5,6 +5,8 @@ import (
 )
 
 func (r *Raft) runLeader() {
+	assert(r.leaderID == r.addr, "r.leaderID: got %s, want %s", r.leaderID, r.addr)
+
 	r.leaderTermStartIndex = r.lastLogIndex + 1
 	assert(r.newEntries.Len() == 0, "newEntries must be empty on leader start")
 
@@ -32,7 +34,7 @@ func (r *Raft) runLeader() {
 		}
 	}()
 
-	// to recieve stale term notification from replicators
+	// to receive stale term notification from replicators
 	stepDownCh := make(chan command, len(r.members))
 
 	// start replication routine for each follower
@@ -69,7 +71,16 @@ func (r *Raft) runLeader() {
 			return
 
 		case cmd := <-stepDownCh:
-			r.checkTerm(cmd)
+			// if response contains term T > currentTerm:
+			// set currentTerm = T, convert to follower
+			if cmd.getTerm() > r.term {
+				debug(r, "leader -> follower")
+				r.state = follower
+				r.setTerm(cmd.getTerm())
+				r.leaderID = ""
+				stateChanged(r)
+				return
+			}
 
 		case rpc := <-r.server.rpcCh:
 			r.replyRPC(rpc)

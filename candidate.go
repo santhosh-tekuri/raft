@@ -3,6 +3,7 @@ package raft
 import "time"
 
 func (r *Raft) runCandidate() {
+	assert(r.leaderID == "", "r.leaderID: got %s, want ", r.leaderID)
 	timeoutCh := afterRandomTimeout(r.heartbeatTimeout)
 	results := r.startElection()
 	votesNeeded := r.quorumSize()
@@ -19,7 +20,13 @@ func (r *Raft) runCandidate() {
 				debug(r, "<< voteResponse", vote.voterID, vote.granted, vote.term)
 			}
 
-			if r.checkTerm(vote); r.state != candidate {
+			// if response contains term T > currentTerm:
+			// set currentTerm = T, convert to follower
+			if vote.term > r.term {
+				debug(r, "candidate -> follower")
+				r.state = follower
+				r.setTerm(vote.term)
+				stateChanged(r)
 				return
 			}
 
@@ -29,8 +36,8 @@ func (r *Raft) runCandidate() {
 				if votesNeeded <= 0 {
 					debug(r, "candidate -> leader")
 					r.state = leader
-					stateChanged(r)
 					r.leaderID = r.addr
+					stateChanged(r)
 					return
 				}
 			}

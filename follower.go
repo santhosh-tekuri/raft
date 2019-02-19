@@ -1,6 +1,8 @@
 package raft
 
 func (r *Raft) runFollower() {
+	assert(r.leaderID != r.addr, "r.leaderID: got %s, want !=%s", r.leaderID, r.addr)
+
 	timeoutCh := afterRandomTimeout(r.heartbeatTimeout)
 	for r.state == follower {
 		select {

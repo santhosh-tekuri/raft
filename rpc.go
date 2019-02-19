@@ -150,21 +150,6 @@ func (r *Raft) appendEntries(req *appendEntriesRequest) *appendEntriesResponse {
 	return resp
 }
 
-// if RPC request or response contains term T > currentTerm:
-// set currentTerm = T, convert to follower
-func (r *Raft) checkTerm(cmd command) {
-	if cmd.getTerm() > r.term {
-		debug(r, "staleTerm")
-		r.setTerm(cmd.getTerm())
-		if r.state != follower {
-			debug(r, r.state, "-> follower")
-		}
-		r.state = follower
-		r.leaderID = ""
-		stateChanged(r)
-	}
-}
-
 func (r *Raft) lastLog(req *appendEntriesRequest) (index uint64, term uint64) {
 	switch n := len(req.entries); {
 	case n == 0:
