@@ -53,10 +53,12 @@ type Raft struct {
 
 func New(addrs []string, fsm FSM, stable Stable, log Log) *Raft {
 	heartbeatTimeout := 50 * time.Millisecond // todo
+	storage := &storage{Stable: stable, log: log}
 
 	members := make([]*member, len(addrs))
 	for i, addr := range addrs {
 		members[i] = &member{
+			storage:          storage,
 			transport:        tcpTransport{},
 			addr:             addr,
 			timeout:          10 * time.Second, // todo
@@ -70,7 +72,7 @@ func New(addrs []string, fsm FSM, stable Stable, log Log) *Raft {
 		addr:             addrs[0],
 		fsmApplyCh:       make(chan newEntry, 128), // todo configurable capacity
 		fsm:              fsm,
-		storage:          &storage{Stable: stable, log: log},
+		storage:          storage,
 		server:           &server{transport: tcpTransport{}},
 		members:          members,
 		state:            follower,

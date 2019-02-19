@@ -12,6 +12,7 @@ type leaderUpdate struct {
 }
 
 type member struct {
+	storage          *storage
 	transport        transport
 	addr             string
 	timeout          time.Duration
@@ -53,7 +54,7 @@ func (m *member) returnConn(conn *netConn) {
 	if len(m.connPool) < m.maxConns {
 		m.connPool = append(m.connPool, conn)
 	} else {
-		conn.close()
+		_ = conn.close()
 	}
 }
 
@@ -63,7 +64,7 @@ func (m *member) doRPC(typ rpcType, req, resp command) error {
 		return err
 	}
 	if err = conn.doRPC(typ, req, resp); err != nil {
-		conn.close()
+		_ = conn.close()
 		return err
 	}
 	m.returnConn(conn)
@@ -111,7 +112,7 @@ func (m *member) retryAppendEntries(req *appendEntriesRequest, stopCh <-chan str
 
 const maxAppendEntries = 64 // todo: should be configurable
 
-func (m *member) replicate(storage *storage, req *appendEntriesRequest, stopCh <-chan struct{}, matchUpdatedCh chan<- *member, stepDownCh chan<- command) {
+func (m *member) replicate(req *appendEntriesRequest, stopCh <-chan struct{}, matchUpdatedCh chan<- *member, stepDownCh chan<- command) {
 	ldr := fmt.Sprintf("%s %d %s |", req.leaderID, req.term, leader)
 
 	lastIndex, matchIndex := req.prevLogIndex, m.matchIndex
@@ -119,7 +120,7 @@ func (m *member) replicate(storage *storage, req *appendEntriesRequest, stopCh <
 	// know which entries to replicate: fixes m.nextIndex and m.matchIndex
 	// after loop: m.matchIndex + 1 == m.nextIndex
 	for m.matchIndex+1 != m.nextIndex {
-		storage.fillEntries(req, m.nextIndex, m.nextIndex-1) // zero entries
+		m.storage.fillEntries(req, m.nextIndex, m.nextIndex-1) // zero entries
 		resp, stop := m.retryAppendEntries(req, stopCh, stepDownCh)
 		if stop {
 			return
@@ -159,7 +160,7 @@ func (m *member) replicate(storage *storage, req *appendEntriesRequest, stopCh <
 		if matchIndex < lastIndex {
 			// replication of entries [m.nextIndex, lastIndex] is pending
 			maxIndex := min(lastIndex, m.nextIndex+uint64(maxAppendEntries)-1)
-			storage.fillEntries(req, m.nextIndex, maxIndex)
+			m.storage.fillEntries(req, m.nextIndex, maxIndex)
 			debug(ldr, m.addr, ">> appendEntriesRequest", len(req.entries))
 		} else {
 			// send heartbeat

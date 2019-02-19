@@ -60,7 +60,7 @@ func (r *Raft) runLeader() {
 		r.wg.Add(1)
 		go func(m *member) {
 			defer r.wg.Done()
-			m.replicate(r.storage, req, stopCh, recalculateMatchCh, stepDownCh)
+			m.replicate(req, stopCh, recalculateMatchCh, stepDownCh)
 			debug(r, m.addr, "replicator closed")
 		}(m)
 	}
