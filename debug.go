@@ -5,6 +5,7 @@ package raft
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/fatih/color"
 )
@@ -15,7 +16,12 @@ var colorF = color.New(color.FgCyan)
 var colorR = color.New(color.FgYellow)
 var colorU = color.New(color.FgHiWhite)
 
+var printMu sync.Mutex
+
 func debug(args ...interface{}) {
+	printMu.Lock()
+	defer printMu.Unlock()
+
 	switch msg := fmt.Sprintln(args...); {
 	case strings.Index(msg, " L | ") != -1:
 		i := strings.Index(msg, " L | ")
