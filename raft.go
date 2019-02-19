@@ -153,7 +153,7 @@ func (r *Raft) loop() {
 }
 
 func (r *Raft) String() string {
-	return fmt.Sprintf("%s %d %s %d |", r.addr, r.term, r.state, r.lastLogIndex)
+	return fmt.Sprintf("%s %d %s |", r.addr, r.term, r.state)
 }
 
 func (r *Raft) quorumSize() int {
