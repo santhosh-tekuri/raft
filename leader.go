@@ -17,10 +17,15 @@ func (r *Raft) runLeader() {
 		},
 	})
 
-	recalculateMatchCh := make(chan *member, 2*len(r.members)) // room given for any new members
+	// to receive new term notifications from replicators
+	newTermCh := make(chan uint64, len(r.members))
+
+	// to receive matchIndex updates from replicators
+	matchUpdatedCh := make(chan *member, len(r.members))
 
 	// to send stop signal to replicators
 	stopCh := make(chan struct{})
+
 	defer func() {
 		close(stopCh)
 
@@ -33,9 +38,6 @@ func (r *Raft) runLeader() {
 			e.Value.(newEntry).sendResponse(NotLeaderError{r.leaderID})
 		}
 	}()
-
-	// to receive new term notification from replicators
-	newTermCh := make(chan uint64, len(r.members))
 
 	// start replication routine for each follower
 	for _, m := range r.members {
@@ -60,7 +62,7 @@ func (r *Raft) runLeader() {
 		r.wg.Add(1)
 		go func(m *member) {
 			defer r.wg.Done()
-			m.replicate(req, stopCh, recalculateMatchCh, newTermCh)
+			m.replicate(req, stopCh, matchUpdatedCh, newTermCh)
 			debug(r, m.addr, "replicator closed")
 		}(m)
 	}
@@ -83,13 +85,13 @@ func (r *Raft) runLeader() {
 		case rpc := <-r.server.rpcCh:
 			r.replyRPC(rpc)
 
-		case m := <-recalculateMatchCh:
+		case m := <-matchUpdatedCh:
 		loop:
 			// get latest matchIndex from all notified members
 			for {
 				m.matchedIndex = m.getMatchIndex()
 				select {
-				case m = <-recalculateMatchCh:
+				case m = <-matchUpdatedCh:
 					break
 				default:
 					break loop

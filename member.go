@@ -115,11 +115,11 @@ const maxAppendEntries = 64 // todo: should be configurable
 func (m *member) replicate(req *appendEntriesRequest, stopCh <-chan struct{}, matchUpdatedCh chan<- *member, newTermCh chan<- uint64) {
 	ldr := fmt.Sprintf("%s %d %s |", req.leaderID, req.term, leader)
 
-	lastIndex, matchIndex := req.prevLogIndex, m.matchIndex
+	lastIndex, matchIndex := req.prevLogIndex, m.getMatchIndex()
 
 	// know which entries to replicate: fixes m.nextIndex and m.matchIndex
 	// after loop: m.matchIndex + 1 == m.nextIndex
-	for m.matchIndex+1 != m.nextIndex {
+	for matchIndex+1 != m.nextIndex {
 		m.storage.fillEntries(req, m.nextIndex, m.nextIndex-1) // zero entries
 		resp, stop := m.retryAppendEntries(req, stopCh, newTermCh)
 		if stop {
