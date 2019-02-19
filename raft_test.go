@@ -263,6 +263,29 @@ func TestRaft_BehindFollower(t *testing.T) {
 	c.ensureLeader(c.leader().addr)
 }
 
+func TestRaft_ApplyNonLeader(t *testing.T) {
+	debug("\nTestRaft_ApplyNonLeader --------------------------")
+	c := newCluster(t)
+	c.launch(3)
+	defer c.shutdown()
+	ldr := c.ensureHealthy()
+
+	// should agree on leader
+	c.ensureLeader(ldr.addr)
+
+	// apply should work not work on non-leader
+	for _, r := range c.rr {
+		if r != ldr {
+			_, err := r.waitApply("reject", c.commitTimeout)
+			if err, ok := err.(NotLeaderError); !ok {
+				t.Fatalf("got %v, want NotLeaderError", err)
+			} else if err.Leader != ldr.addr {
+				t.Fatalf("got %s, want %s", err.Leader, ldr.addr)
+			}
+		}
+	}
+}
+
 func TestMain(m *testing.M) {
 	code := m.Run()
 
