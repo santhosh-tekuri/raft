@@ -74,14 +74,15 @@ func (s *server) handleClient(conn net.Conn) {
 		}
 		err := s.handleRPC(conn, r, w)
 		if err != nil {
-			if err != io.EOF {
-				log.Printf("error in handleRPC: %v", err)
+			if err != io.EOF && err != ErrServerClosed {
+				log.Printf("unexpected error from handleRPC: %v", err)
 			}
 			return
 		}
 	}
 }
 
+// if shutdown signal received, returns ErrServerClosed immediately
 func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) error {
 	var typ rpcType
 	// close client if idle, on shutdown signal
@@ -92,7 +93,7 @@ func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) erro
 			if err, ok := err.(net.Error); ok && err.Timeout() {
 				select {
 				case <-s.shutdownCh:
-					return nil
+					return ErrServerClosed
 				default:
 					continue
 				}
@@ -107,6 +108,7 @@ func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) erro
 	respCh := make(chan command, 1)
 	rpc := rpc{respCh: respCh}
 
+	// decode request
 	switch typ {
 	case rpcRequestVote:
 		req := &requestVoteRequest{}
@@ -119,16 +121,23 @@ func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) erro
 	}
 	// todo: set read deadline
 	if err := rpc.req.decode(r); err != nil {
+		if err == io.EOF {
+			err = io.ErrUnexpectedEOF
+		}
 		return err
 	}
+
+	// send request for processing
 	select {
 	case <-s.shutdownCh:
-		return errors.New("shuddown signal recieved")
+		return ErrServerClosed
 	case s.rpcCh <- rpc:
 	}
+
+	// wait for response and send reply
 	select {
 	case <-s.shutdownCh:
-		return errors.New("shuddown signal recieved")
+		return ErrServerClosed
 	case resp := <-respCh:
 		// todo: set write deadline
 		if err := resp.encode(w); err != nil {
