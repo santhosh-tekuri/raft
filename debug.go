@@ -15,10 +15,16 @@ var colorF = color.New(color.FgCyan)
 var colorR = color.New(color.FgYellow)
 var colorU = color.New(color.FgHiWhite)
 
+var barrierCh = make(chan struct{}, 1)
 var messages = func() chan string {
 	ch := make(chan string, 10000)
 	go func() {
 		for msg := range ch {
+			if msg == "barrier\n" {
+				// signal that barrier reached
+				barrierCh <- struct{}{}
+				continue
+			}
 			switch {
 			case strings.Index(msg, " L | ") != -1:
 				i := strings.Index(msg, " L | ")
@@ -40,7 +46,12 @@ var messages = func() chan string {
 }()
 
 func debug(args ...interface{}) {
-	messages <- fmt.Sprintln(args...)
+	msg := fmt.Sprintln(args...)
+	messages <- msg
+	if msg == "barrier\n" {
+		// wait all pending messages are printed
+		<-barrierCh
+	}
 }
 
 func assert(b bool, format string, args ...interface{}) {

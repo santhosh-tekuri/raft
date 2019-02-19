@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"reflect"
 	"sync"
 	"testing"
@@ -228,6 +229,49 @@ func TestRaft_LeaderFail(t *testing.T) {
 	c.ensureFSMSame([]string{"test", "accept"})
 }
 
+func TestRaft_BehindFollower(t *testing.T) {
+	debug("\nTestRaft_BehindFollower --------------------------")
+	c := newCluster(t)
+	c.launch(3)
+	defer c.shutdown()
+	ldr := c.ensureHealthy()
+
+	// should agree on leader
+	c.ensureLeader(ldr.addr)
+
+	// disconnect one follower
+	behind := c.followers()[0]
+	c.disconnect(behind)
+
+	// commit a lot of things
+	for i := 0; i < 100; i++ {
+		ldr.Apply([]byte(fmt.Sprintf("test%d", i)), nil)
+	}
+	if _, err := ldr.waitApply("test100", c.longTimeout); err != nil {
+		t.Fatal(err)
+	}
+
+	// reconnect the behind node
+	c.connect()
+	c.ensureHealthy()
+
+	// ensure all the logs are the same
+	c.ensureFSMReplicated(101)
+	c.ensureFSMSame(nil)
+
+	// Ensure one leader
+	c.ensureLeader(c.leader().addr)
+}
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+
+	// wait until all pending debug messages are printed to stdout
+	debug("barrier")
+
+	os.Exit(code)
+}
+
 // ---------------------------------------------
 
 type cluster struct {
@@ -268,7 +312,7 @@ func (c *cluster) launch(n int) {
 		r.leaderLeaseTimeout = c.heartbeatTimeout
 		c.rr[i] = r
 
-		// switch to fnet transport
+		// switch to fake transport
 		host := c.network.Host(string('A' + i))
 		r.server.listenFn = host.Listen
 		for _, m := range r.members {
