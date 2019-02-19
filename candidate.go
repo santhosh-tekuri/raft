@@ -3,7 +3,7 @@ package raft
 import "time"
 
 func (r *Raft) runCandidate() {
-	assert(r.leaderID == "", "r.leaderID: got %s, want ", r.leaderID)
+	assert(r.leaderID == "", "%s r.leaderID: got %s, want ", r, r.leaderID)
 	timeoutCh := afterRandomTimeout(r.heartbeatTimeout)
 	results := r.startElection()
 	votesNeeded := r.quorumSize()
@@ -17,7 +17,7 @@ func (r *Raft) runCandidate() {
 
 		case vote := <-results:
 			if vote.voterID != r.addr {
-				debug(r, "<< voteResponse", vote.voterID, vote.granted, vote.term)
+				debug(r, "<< voteResponse", vote.voterID, vote.granted, vote.term, vote.err)
 			}
 
 			// if response contains term T > currentTerm:
@@ -57,6 +57,7 @@ func (r *Raft) runCandidate() {
 type voteResult struct {
 	*voteResponse
 	voterID string
+	err     error
 }
 
 func (r *Raft) startElection() <-chan voteResult {
@@ -76,7 +77,7 @@ func (r *Raft) startElection() <-chan voteResult {
 	}
 
 	// reset election timer
-	debug(r, "startElection", time.Now().UTC())
+	debug(r, "startElection", time.Now().UnixNano()/int64(time.Millisecond))
 
 	// send RequestVote RPCs to all other servers
 	req := &voteRequest{
@@ -102,6 +103,7 @@ func (r *Raft) startElection() <-chan voteResult {
 			}()
 			resp, err := m.requestVote(req)
 			if err != nil {
+				result.err = err
 				return
 			}
 			result.voteResponse = resp

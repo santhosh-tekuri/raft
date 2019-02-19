@@ -1,7 +1,6 @@
 package raft
 
 import (
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -31,6 +30,13 @@ type member struct {
 
 	// leader notifies replicator with update
 	leaderUpdateCh chan leaderUpdate
+
+	// from what time the replicator unable to reach this member
+	// zero value means it is reachable
+	noContactMu sync.RWMutex
+	noContact   time.Time
+
+	ldr string // used for debug() calls from replicator
 }
 
 func (m *member) getConn() (*netConn, error) {
@@ -80,6 +86,15 @@ func (m *member) requestVote(req *voteRequest) (*voteResponse, error) {
 func (m *member) appendEntries(req *appendEntriesRequest) (*appendEntriesResponse, error) {
 	resp := new(appendEntriesResponse)
 	err := m.doRPC(rpcAppendEntries, req, resp)
+
+	m.noContactMu.Lock()
+	if err == nil {
+		m.noContact = time.Time{} // zeroing
+	} else if m.noContact.IsZero() {
+		m.noContact = time.Now()
+	}
+	m.noContactMu.Unlock()
+
 	return resp, err
 }
 
@@ -95,7 +110,7 @@ func (m *member) retryAppendEntries(req *appendEntriesRequest, stopCh <-chan str
 			case <-stopCh:
 				return resp, true
 			case <-time.After(backoff(failures)):
-				debug(m.addr, "retry appendEntries")
+				debug(m.ldr, m.addr, "retry appendEntries")
 				continue
 			}
 		}
@@ -113,8 +128,6 @@ func (m *member) retryAppendEntries(req *appendEntriesRequest, stopCh <-chan str
 const maxAppendEntries = 64 // todo: should be configurable
 
 func (m *member) replicate(req *appendEntriesRequest, stopCh <-chan struct{}, matchUpdatedCh chan<- *member, newTermCh chan<- uint64) {
-	ldr := fmt.Sprintf("%s %d %s |", req.leaderID, req.term, leader)
-
 	lastIndex, matchIndex := req.prevLogIndex, m.getMatchIndex()
 
 	// know which entries to replicate: fixes m.nextIndex and m.matchIndex
@@ -151,7 +164,7 @@ func (m *member) replicate(req *appendEntriesRequest, stopCh <-chan struct{}, ma
 			return
 		case update := <-m.leaderUpdateCh:
 			lastIndex, req.leaderCommitIndex = update.lastIndex, update.commitIndex
-			debug(ldr, m.addr, "{last:", lastIndex, "commit:", req.leaderCommitIndex, "} <-leaderUpdateCh")
+			debug(m.ldr, m.addr, "{last:", lastIndex, "commit:", req.leaderCommitIndex, "} <-leaderUpdateCh")
 			timerCh = closedCh
 		case <-timerCh:
 		}
@@ -161,11 +174,11 @@ func (m *member) replicate(req *appendEntriesRequest, stopCh <-chan struct{}, ma
 			// replication of entries [m.nextIndex, lastIndex] is pending
 			maxIndex := min(lastIndex, m.nextIndex+uint64(maxAppendEntries)-1)
 			m.storage.fillEntries(req, m.nextIndex, maxIndex)
-			debug(ldr, m.addr, ">> appendEntriesRequest", len(req.entries))
+			debug(m.ldr, m.addr, ">> appendEntriesRequest", len(req.entries))
 		} else {
 			// send heartbeat
 			req.prevLogIndex, req.prevLogTerm, req.entries = lastIndex, req.term, nil // zero entries
-			debug(ldr, m.addr, ">> heartbeat")
+			debug(m.ldr, m.addr, ">> heartbeat")
 		}
 
 		resp, stop := m.retryAppendEntries(req, stopCh, newTermCh)
@@ -173,7 +186,7 @@ func (m *member) replicate(req *appendEntriesRequest, stopCh <-chan struct{}, ma
 			return
 		} else if !resp.success {
 			// follower have transitioned to candidate and started election
-			assert(resp.term > req.term, "follower must have started election")
+			assert(resp.term > req.term, "%s %s follower must have started election", m.ldr, m.addr)
 			return
 		}
 

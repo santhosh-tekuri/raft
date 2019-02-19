@@ -3,6 +3,7 @@ package raft
 import (
 	"errors"
 	"fmt"
+	"net"
 	"sync"
 	"testing"
 	"time"
@@ -155,8 +156,49 @@ func TestRaft_TripleNode(t *testing.T) {
 	if resp.index != 1 {
 		t.Fatalf("fsmReplyIndex: got %d want 1", resp.index)
 	}
-
 	c.ensureFSMReplicated(1)
+}
+
+func TestRaft_LeaderFail(t *testing.T) {
+	debug("\nTestRaft_LeaderFail --------------------------")
+	c := newCluster(t)
+	c.launch(3)
+	defer c.shutdown()
+	ldr := c.ensureHealthy()
+
+	// should agree on leader
+	c.ensureLeader(ldr.addr)
+
+	// should be able to apply
+	resp, err := ldr.waitApply("test", c.commitTimeout)
+	if err != nil {
+		t.Fatalf("apply failed: %v", err)
+	}
+	if resp.msg != "test" {
+		t.Fatalf("apply response mismatch. got %s, want test", resp.msg)
+	}
+	if resp.index != 1 {
+		t.Fatalf("fsmReplyIndex: got %d want 1", resp.index)
+	}
+	c.ensureFSMReplicated(1)
+
+	c.disconnect(ldr)
+	ch := make(chan struct{}, 1)
+	onStateChange(func(raft *Raft) {
+		if raft == ldr && raft.state != leader {
+			close(ch)
+			onStateChange(nil)
+		}
+	})
+	defer onStateChange(nil)
+	if ldr.getState() != follower {
+		select {
+		case <-ch:
+			break
+		case <-time.After(c.longTimeout):
+			t.Fatal("leader should transition to follower")
+		}
+	}
 }
 
 // ---------------------------------------------
@@ -196,6 +238,7 @@ func (c *cluster) launch(n int) {
 		storage := new(inmem.Storage)
 		r := New(members, &fsmMock{}, storage, storage)
 		r.heartbeatTimeout = c.heartbeatTimeout
+		r.leaderLeaseTimeout = c.heartbeatTimeout
 		c.rr[i] = r
 
 		// switch to fnet transport
@@ -351,6 +394,12 @@ loop:
 	}
 }
 
+func (c *cluster) disconnect(r *Raft) {
+	host, _, _ := net.SplitHostPort(r.addr)
+	debug("disconnecting", host)
+	c.network.SetFirewall(fnet.Split([]string{host}, fnet.AllowAll))
+}
+
 func (c *cluster) shutdown() {
 	for _, r := range c.rr {
 		r.Shutdown()
@@ -400,6 +449,8 @@ func (r *Raft) waitApply(cmd string, timeout time.Duration) (fsmReply, error) {
 		return fsmReply{}, fmt.Errorf("waitApply(%q): timedout", cmd)
 	}
 }
+
+// events ----------------------------------------------------------------------
 
 var mu sync.RWMutex
 var stateChangedFn func(*Raft)

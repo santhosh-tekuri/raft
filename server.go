@@ -75,6 +75,8 @@ func (s *server) handleClient(conn net.Conn) {
 		err := s.handleRPC(conn, r, w)
 		if err != nil {
 			if err != io.EOF && err != ErrServerClosed {
+				debug("unexpected error from handleRPC:", err)
+				// todo: abstract logger
 				log.Printf("unexpected error from handleRPC: %v", err)
 			}
 			return

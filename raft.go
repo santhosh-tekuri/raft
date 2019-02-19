@@ -35,8 +35,9 @@ type Raft struct {
 	state    state
 	leaderID string
 
-	votedFor         string
-	heartbeatTimeout time.Duration
+	votedFor           string
+	heartbeatTimeout   time.Duration
+	leaderLeaseTimeout time.Duration
 
 	lastLogIndex         uint64
 	lastLogTerm          uint64
@@ -68,18 +69,19 @@ func New(addrs []string, fsm FSM, stable Stable, log Log) *Raft {
 	}
 
 	return &Raft{
-		addr:             addrs[0],
-		fsmApplyCh:       make(chan newEntry, 128), // todo configurable capacity
-		fsm:              fsm,
-		storage:          storage,
-		server:           &server{listenFn: net.Listen},
-		members:          members,
-		state:            follower,
-		heartbeatTimeout: heartbeatTimeout,
-		applyCh:          make(chan newEntry, 100), // todo configurable capacity
-		newEntries:       list.New(),
-		inspectCh:        make(chan func(*Raft)),
-		shutdownCh:       make(chan struct{}),
+		addr:               addrs[0],
+		fsmApplyCh:         make(chan newEntry, 128), // todo configurable capacity
+		fsm:                fsm,
+		storage:            storage,
+		server:             &server{listenFn: net.Listen},
+		members:            members,
+		state:              follower,
+		heartbeatTimeout:   heartbeatTimeout,
+		leaderLeaseTimeout: heartbeatTimeout,
+		applyCh:            make(chan newEntry, 100), // todo configurable capacity
+		newEntries:         list.New(),
+		inspectCh:          make(chan func(*Raft)),
+		shutdownCh:         make(chan struct{}),
 	}
 }
 
@@ -221,14 +223,6 @@ func (r *Raft) inspect(f func(*Raft)) {
 		wg.Done()
 	}
 	wg.Wait()
-}
-
-func randomTimeout(min time.Duration) time.Duration {
-	return min + time.Duration(rand.Int63())%min
-}
-
-func randomTimer(min time.Duration) *time.Timer {
-	return time.NewTimer(randomTimeout(min))
 }
 
 func afterRandomTimeout(min time.Duration) <-chan time.Time {

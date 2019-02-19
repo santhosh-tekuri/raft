@@ -1,7 +1,7 @@
 package raft
 
 func (r *Raft) runFollower() {
-	assert(r.leaderID != r.addr, "r.leaderID: got %s, want !=%s", r.leaderID, r.addr)
+	assert(r.leaderID != r.addr, "%s r.leaderID: got %s, want !=%s", r, r.leaderID, r.addr)
 
 	timeoutCh := afterRandomTimeout(r.heartbeatTimeout)
 	for r.state == follower {
@@ -22,6 +22,7 @@ func (r *Raft) runFollower() {
 		case <-timeoutCh:
 			debug(r, "heartbeatTimeout follower -> candidate")
 			r.state = candidate
+			r.leaderID = ""
 			stateChanged(r)
 
 		case newEntry := <-r.applyCh:

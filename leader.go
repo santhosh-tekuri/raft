@@ -2,13 +2,14 @@ package raft
 
 import (
 	"sort"
+	"time"
 )
 
 func (r *Raft) runLeader() {
-	assert(r.leaderID == r.addr, "r.leaderID: got %s, want %s", r.leaderID, r.addr)
+	assert(r.leaderID == r.addr, "%s r.leaderID: got %s, want %s", r, r.leaderID, r.addr)
 
 	r.leaderTermStartIndex = r.lastLogIndex + 1
-	assert(r.newEntries.Len() == 0, "newEntries must be empty on leader start")
+	assert(r.newEntries.Len() == 0, "%s newEntries must be empty on leader start", r)
 
 	// add a blank no-op entry into log at the start of its term
 	r.storeNewEntry(newEntry{
@@ -47,6 +48,11 @@ func (r *Raft) runLeader() {
 
 		// follower's nextIndex initialized to leader last log index + 1
 		m.nextIndex = r.lastLogIndex + 1
+		m.matchedIndex = m.getMatchIndex()
+		m.noContactMu.Lock() //todo: should we take lock. just ensure replicators are closed on runLeader return
+		m.noContact = time.Time{}
+		m.noContactMu.Unlock()
+		m.ldr = r.String()
 
 		// send initial empty AppendEntries RPCs (heartbeat) to each follower
 		req := &appendEntriesRequest{
@@ -63,9 +69,12 @@ func (r *Raft) runLeader() {
 		go func(m *member) {
 			defer r.wg.Done()
 			m.replicate(req, stopCh, matchUpdatedCh, newTermCh)
-			debug(r, m.addr, "replicator closed")
+			debug(m.ldr, m.addr, "replicator closed")
 		}(m)
 	}
+
+	leaseTimer := time.NewTicker(r.leaderLeaseTimeout)
+	defer leaseTimer.Stop()
 
 	for r.state == leader {
 		select {
@@ -105,6 +114,13 @@ func (r *Raft) runLeader() {
 
 		case f := <-r.inspectCh:
 			f(r)
+
+		case <-leaseTimer.C:
+			if !r.isQuorumReachable() {
+				r.state = follower
+				r.leaderID = ""
+				stateChanged(r)
+			}
 		}
 	}
 }
@@ -154,6 +170,25 @@ func (r *Raft) storeNewEntry(newEntry newEntry) {
 	} else {
 		r.notifyReplicators()
 	}
+}
+
+func (r *Raft) isQuorumReachable() bool {
+	reachable := 1 // including self
+	now := time.Now()
+	for _, m := range r.members {
+		if m.addr != r.addr {
+			m.noContactMu.RLock()
+			noContact := m.noContact
+			m.noContactMu.RUnlock()
+			if noContact.IsZero() || now.Sub(noContact) < r.leaderLeaseTimeout {
+				reachable++
+			}
+		}
+	}
+	if reachable < r.quorumSize() {
+		debug(r, "quorumUnreachable: ", reachable, "<", r.quorumSize())
+	}
+	return reachable >= r.quorumSize()
 }
 
 func (r *Raft) notifyReplicators() {
