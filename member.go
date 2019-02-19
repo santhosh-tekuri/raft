@@ -85,7 +85,7 @@ func (m *member) appendEntries(req *appendEntriesRequest) (*appendEntriesRespons
 
 // retries request until success or got stop signal
 // last return value is true in case of stop signal
-func (m *member) retryAppendEntries(req *appendEntriesRequest, stopCh <-chan struct{}, stepDownCh chan<- command) (*appendEntriesResponse, bool) {
+func (m *member) retryAppendEntries(req *appendEntriesRequest, stopCh <-chan struct{}, newTermCh chan<- uint64) (*appendEntriesResponse, bool) {
 	var failures uint64
 	for {
 		resp, err := m.appendEntries(req)
@@ -102,7 +102,7 @@ func (m *member) retryAppendEntries(req *appendEntriesRequest, stopCh <-chan str
 		if resp.term > req.term {
 			select {
 			case <-stopCh:
-			case stepDownCh <- resp:
+			case newTermCh <- resp.term:
 			}
 			return resp, true
 		}
@@ -112,7 +112,7 @@ func (m *member) retryAppendEntries(req *appendEntriesRequest, stopCh <-chan str
 
 const maxAppendEntries = 64 // todo: should be configurable
 
-func (m *member) replicate(req *appendEntriesRequest, stopCh <-chan struct{}, matchUpdatedCh chan<- *member, stepDownCh chan<- command) {
+func (m *member) replicate(req *appendEntriesRequest, stopCh <-chan struct{}, matchUpdatedCh chan<- *member, newTermCh chan<- uint64) {
 	ldr := fmt.Sprintf("%s %d %s |", req.leaderID, req.term, leader)
 
 	lastIndex, matchIndex := req.prevLogIndex, m.matchIndex
@@ -121,7 +121,7 @@ func (m *member) replicate(req *appendEntriesRequest, stopCh <-chan struct{}, ma
 	// after loop: m.matchIndex + 1 == m.nextIndex
 	for m.matchIndex+1 != m.nextIndex {
 		m.storage.fillEntries(req, m.nextIndex, m.nextIndex-1) // zero entries
-		resp, stop := m.retryAppendEntries(req, stopCh, stepDownCh)
+		resp, stop := m.retryAppendEntries(req, stopCh, newTermCh)
 		if stop {
 			return
 		} else if resp.success {
@@ -168,7 +168,7 @@ func (m *member) replicate(req *appendEntriesRequest, stopCh <-chan struct{}, ma
 			debug(ldr, m.addr, ">> heartbeat")
 		}
 
-		resp, stop := m.retryAppendEntries(req, stopCh, stepDownCh)
+		resp, stop := m.retryAppendEntries(req, stopCh, newTermCh)
 		if stop {
 			return
 		} else if !resp.success {

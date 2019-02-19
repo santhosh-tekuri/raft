@@ -34,8 +34,8 @@ func (r *Raft) runLeader() {
 		}
 	}()
 
-	// to receive stale term notification from replicators
-	stepDownCh := make(chan command, len(r.members))
+	// to receive new term notification from replicators
+	newTermCh := make(chan uint64, len(r.members))
 
 	// start replication routine for each follower
 	for _, m := range r.members {
@@ -55,12 +55,12 @@ func (r *Raft) runLeader() {
 			prevLogTerm:       r.lastLogTerm,
 		}
 		debug(r, m.addr, ">> firstHeartbeat")
-		m.retryAppendEntries(req, stopCh, stepDownCh)
+		m.retryAppendEntries(req, stopCh, newTermCh)
 
 		r.wg.Add(1)
 		go func(m *member) {
 			defer r.wg.Done()
-			m.replicate(req, stopCh, recalculateMatchCh, stepDownCh)
+			m.replicate(req, stopCh, recalculateMatchCh, newTermCh)
 			debug(r, m.addr, "replicator closed")
 		}(m)
 	}
@@ -70,17 +70,15 @@ func (r *Raft) runLeader() {
 		case <-r.shutdownCh:
 			return
 
-		case cmd := <-stepDownCh:
+		case newTerm := <-newTermCh:
 			// if response contains term T > currentTerm:
 			// set currentTerm = T, convert to follower
-			if cmd.getTerm() > r.term {
-				debug(r, "leader -> follower")
-				r.state = follower
-				r.setTerm(cmd.getTerm())
-				r.leaderID = ""
-				stateChanged(r)
-				return
-			}
+			debug(r, "leader -> follower")
+			r.state = follower
+			r.setTerm(newTerm)
+			r.leaderID = ""
+			stateChanged(r)
+			return
 
 		case rpc := <-r.server.rpcCh:
 			r.replyRPC(rpc)
