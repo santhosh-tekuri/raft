@@ -11,65 +11,9 @@ import (
 	"time"
 
 	"github.com/fortytw2/leaktest"
-
 	"github.com/santhosh-tekuri/fnet"
 	"github.com/santhosh-tekuri/raft/inmem"
 )
-
-// func TestRaft(t *testing.T) {
-// 	var err error
-// 	cluster := new(cluster)
-// 	if err := cluster.launch(3); err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	defer cluster.shutdown()
-
-// 	var ldr *Raft
-// 	ldr, err = cluster.waitForLeader(10 * time.Second)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	if ldr.getState() != leader {
-// 		t.Fatal("leader lost leadership")
-// 	}
-
-// 	t.Run("nonLeader should reject client requests with leaderID", func(t *testing.T) {
-// 		for _, r := range cluster.rr {
-// 			if r != ldr {
-// 				_, err := r.waitApply("test", 10*time.Second)
-// 				nlErr, ok := err.(NotLeaderError)
-// 				if !ok {
-// 					t.Fatal("non-leader should reply NotLeaderError")
-// 				}
-// 				if nlErr.Leader != ldr.addr {
-// 					t.Fatalf("leaderId: got %s, want %s", nlErr.Leader, ldr.addr)
-// 				}
-// 			}
-// 		}
-// 	})
-
-// 	cmd := "how are you?"
-// 	t.Run("leader should apply client requests to fsm", func(t *testing.T) {
-// 		debug(ldr, "raft.apply")
-// 		resp, err := ldr.waitApply(cmd, 10*time.Second)
-// 		if err != nil {
-// 			t.Fatal(err)
-// 		}
-// 		if resp != strings.ToUpper(cmd) {
-// 			t.Fatalf("reply mismatch: got %q, want %q", resp, strings.ToUpper(cmd))
-// 		}
-// 	})
-
-// 	t.Run("followers fsm should sync with leader", func(t *testing.T) {
-// 		// sleep so that followers get cmd applied
-// 		time.Sleep(50 * time.Millisecond)
-// 		for _, r := range cluster.rr {
-// 			if last := r.fsm.(*fsmMock).lastCommand(); last != cmd {
-// 				t.Errorf("%s lastCommand. got %q, want %q", r.getState(), last, cmd)
-// 			}
-// 		}
-// 	})
-// }
 
 func TestRaft_Voting(t *testing.T) {
 	debug("\nTestRaft_Voting --------------------------")
