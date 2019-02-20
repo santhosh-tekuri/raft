@@ -228,18 +228,11 @@ func (ldr *leaderState) commitAndApplyOnMajority() {
 
 func (ldr *leaderState) isQuorumReachable() bool {
 	reachable := 0
-	now := time.Now()
 	for _, m := range ldr.members {
 		if m.addr == ldr.addr {
 			reachable++
-		} else {
-			repl := ldr.repls[m.addr]
-			repl.noContactMu.RLock()
-			noContact := repl.noContact
-			repl.noContactMu.RUnlock()
-			if noContact.IsZero() || now.Sub(noContact) < ldr.leaseTimeout {
-				reachable++
-			}
+		} else if m.contacted(ldr.leaseTimeout) {
+			reachable++
 		}
 	}
 	if reachable < ldr.quorumSize() {

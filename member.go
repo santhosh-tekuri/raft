@@ -21,6 +21,11 @@ type member struct {
 	// owned exclusively by raft main goroutine
 	// used to recalculateMatch
 	matchIndex uint64
+
+	// from what time the replication unable to reach this member
+	// zero value means it is reachable
+	noContactMu sync.RWMutex
+	noContact   time.Time
 }
 
 func (m *member) getConn() (*netConn, error) {
@@ -65,4 +70,22 @@ func (m *member) requestVote(req *voteRequest) (*voteResponse, error) {
 	resp := new(voteResponse)
 	err := m.doRPC(rpcVote, req, resp)
 	return resp, err
+}
+
+func (m *member) contactSucceeded(b bool) {
+	m.noContactMu.Lock()
+	if b {
+		m.noContact = time.Time{} // zeroing
+	} else if m.noContact.IsZero() {
+		m.noContact = time.Now()
+	}
+	m.noContactMu.Unlock()
+}
+
+// did we have success full contact in last d duration
+func (m *member) contacted(d time.Duration) bool {
+	m.noContactMu.RLock()
+	noContact := m.noContact
+	m.noContactMu.RUnlock()
+	return noContact.IsZero() || time.Now().Sub(noContact) < d
 }

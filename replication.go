@@ -1,7 +1,6 @@
 package raft
 
 import (
-	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -20,11 +19,6 @@ type replication struct {
 	matchUpdatedCh chan<- *replication
 	newTermCh      chan<- uint64
 	stopCh         <-chan struct{}
-
-	// from what time the replication unable to reach this member
-	// zero value means it is reachable
-	noContactMu sync.RWMutex
-	noContact   time.Time
 
 	str string // used for debug() calls
 }
@@ -149,15 +143,7 @@ func (repl *replication) retryAppendEntries(req *appendEntriesRequest) (*appendE
 func (repl *replication) appendEntries(req *appendEntriesRequest) (*appendEntriesResponse, error) {
 	resp := new(appendEntriesResponse)
 	err := repl.member.doRPC(rpcAppendEntries, req, resp)
-
-	repl.noContactMu.Lock()
-	if err == nil {
-		repl.noContact = time.Time{} // zeroing
-	} else if repl.noContact.IsZero() {
-		repl.noContact = time.Now()
-	}
-	repl.noContactMu.Unlock()
-
+	repl.member.contactSucceeded(err == nil)
 	return resp, err
 }
 
