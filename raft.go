@@ -59,12 +59,9 @@ func New(addrs []string, fsm FSM, stable Stable, log Log) *Raft {
 	members := make([]*member, len(addrs))
 	for i, addr := range addrs {
 		members[i] = &member{
-			storage:          storage,
-			dialFn:           net.DialTimeout,
-			addr:             addr,
-			timeout:          10 * time.Second, // todo
-			heartbeatTimeout: heartbeatTimeout,
-			leaderUpdateCh:   make(chan leaderUpdate, 1),
+			dialFn:  net.DialTimeout,
+			addr:    addr,
+			timeout: 10 * time.Second, // todo
 		}
 	}
 

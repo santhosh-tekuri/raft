@@ -16,19 +16,19 @@ func (r *Raft) runLeader() {
 		entry: &entry{
 			typ: entryNoop,
 		},
-	})
+	}, nil)
 
 	// to receive new term notifications from replicators
 	newTermCh := make(chan uint64, len(r.members))
 
 	// to receive matchIndex updates from replicators
-	matchUpdatedCh := make(chan *member, len(r.members))
+	matchUpdatedCh := make(chan *replicator, len(r.members))
 
 	// to send stop signal to replicators
-	stopCh := make(chan struct{})
+	stopReplsCh := make(chan struct{})
 
 	defer func() {
-		close(stopCh)
+		close(stopReplsCh)
 
 		if r.leaderID == r.addr {
 			r.leaderID = ""
@@ -41,18 +41,26 @@ func (r *Raft) runLeader() {
 	}()
 
 	// start replication routine for each follower
+	repls := make(map[string]*replicator) // todo: move repls as field in Raft
 	for _, m := range r.members {
 		if m.addr == r.addr {
 			continue
 		}
 
-		// follower's nextIndex initialized to leader last log index + 1
-		m.nextIndex = r.lastLogIndex + 1
-		m.matchedIndex = m.getMatchIndex()
-		m.noContactMu.Lock() //todo: should we take lock. just ensure replicators are closed on runLeader return
-		m.noContact = time.Time{}
-		m.noContactMu.Unlock()
-		m.ldr = r.String()
+		repl := &replicator{
+			member:           m,
+			heartbeatTimeout: r.heartbeatTimeout,
+			storage:          r.storage,
+			nextIndex:        r.lastLogIndex + 1, // nextIndex initialized to leader last log index + 1
+			matchIndex:       0,                  // matchIndex initialized to zero
+			matchedIndex:     0,
+			stopCh:           stopReplsCh,
+			matchUpdatedCh:   matchUpdatedCh,
+			newTermCh:        newTermCh,
+			leaderUpdateCh:   make(chan leaderUpdate, 1),
+			ldr:              r.String(),
+		}
+		repls[m.addr] = repl
 
 		// send initial empty AppendEntries RPCs (heartbeat) to each follower
 		req := &appendEntriesRequest{
@@ -64,14 +72,15 @@ func (r *Raft) runLeader() {
 		}
 		// don't retry on failure. so that we can respond to apply/inspect
 		debug(r, m.addr, ">> firstHeartbeat")
-		m.appendEntries(req)
+		_, _ = repl.appendEntries(req)
 
+		// todo: should runLeader wait for repls to stop ?
 		r.wg.Add(1)
-		go func(m *member) {
+		go func() {
 			defer r.wg.Done()
-			m.replicate(req, stopCh, matchUpdatedCh, newTermCh)
-			debug(m.ldr, m.addr, "replicator closed")
-		}(m)
+			repl.runLoop(req)
+			debug(repl.ldr, repl.member.addr, "replicator closed")
+		}()
 	}
 
 	leaseTimer := time.NewTicker(r.leaderLeaseTimeout)
@@ -108,16 +117,16 @@ func (r *Raft) runLeader() {
 				}
 			}
 
-			r.commitAndApplyOnMajority()
+			r.commitAndApplyOnMajority(repls)
 
 		case ne := <-r.ApplyCh:
-			r.storeNewEntry(ne)
+			r.storeNewEntry(ne, repls)
 
 		case f := <-r.inspectCh:
 			f(r)
 
 		case <-leaseTimer.C:
-			if !r.isQuorumReachable() {
+			if !r.isQuorumReachable(repls) {
 				r.state = follower
 				r.leaderID = ""
 				stateChanged(r)
@@ -129,7 +138,7 @@ func (r *Raft) runLeader() {
 // If there exists an N such that N > commitIndex, a majority
 // of matchIndex[i] ≥ N, and log[N].term == currentTerm:
 // set commitIndex = N
-func (r *Raft) commitAndApplyOnMajority() {
+func (r *Raft) commitAndApplyOnMajority(repls map[string]*replicator) {
 	majorityMatchIndex := r.lastLogIndex
 	if len(r.members) > 1 {
 		matched := make(decrUint64Slice, len(r.members))
@@ -137,7 +146,7 @@ func (r *Raft) commitAndApplyOnMajority() {
 			if m.addr == r.addr {
 				matched[i] = r.lastLogIndex
 			} else {
-				matched[i] = m.matchedIndex
+				matched[i] = repls[m.addr].matchedIndex
 			}
 		}
 		// sort in decrease order
@@ -148,11 +157,11 @@ func (r *Raft) commitAndApplyOnMajority() {
 	if majorityMatchIndex > r.commitIndex && majorityMatchIndex >= r.leaderTermStartIndex {
 		r.commitIndex = majorityMatchIndex
 		r.fsmApply(r.newEntries)
-		r.notifyReplicators() // we updated commit index
+		r.notifyReplicators(repls) // we updated commit index
 	}
 }
 
-func (r *Raft) storeNewEntry(ne NewEntry) {
+func (r *Raft) storeNewEntry(ne NewEntry, repls map[string]*replicator) {
 	if ne.entry == nil {
 		ne.entry = &entry{}
 	}
@@ -170,21 +179,32 @@ func (r *Raft) storeNewEntry(ne NewEntry) {
 	r.newEntries.PushBack(ne)
 
 	// we updated lastLogIndex, so notify replicators
-	if len(r.members) == 1 {
-		r.commitAndApplyOnMajority()
+	if repls == nil {
+		// no-op entry, repls have not yet created
+		if len(r.members) == 1 {
+			r.commitIndex = r.lastLogIndex
+			r.fsmApply(r.newEntries)
+		}
 	} else {
-		r.notifyReplicators()
+		if len(r.members) == 1 {
+			r.commitAndApplyOnMajority(repls)
+		} else {
+			r.notifyReplicators(repls)
+		}
 	}
 }
 
-func (r *Raft) isQuorumReachable() bool {
-	reachable := 1 // including self
+func (r *Raft) isQuorumReachable(repls map[string]*replicator) bool {
+	reachable := 0
 	now := time.Now()
 	for _, m := range r.members {
-		if m.addr != r.addr {
-			m.noContactMu.RLock()
-			noContact := m.noContact
-			m.noContactMu.RUnlock()
+		if m.addr == r.addr {
+			reachable++
+		} else {
+			repl := repls[m.addr]
+			repl.noContactMu.RLock()
+			noContact := repl.noContact
+			repl.noContactMu.RUnlock()
 			if noContact.IsZero() || now.Sub(noContact) < r.leaderLeaseTimeout {
 				reachable++
 			}
@@ -196,18 +216,16 @@ func (r *Raft) isQuorumReachable() bool {
 	return reachable >= r.quorumSize()
 }
 
-func (r *Raft) notifyReplicators() {
+func (r *Raft) notifyReplicators(repls map[string]*replicator) {
 	leaderUpdate := leaderUpdate{
 		lastIndex:   r.lastLogIndex,
 		commitIndex: r.commitIndex,
 	}
-	for _, m := range r.members {
-		if m.addr != r.addr {
-			select {
-			case m.leaderUpdateCh <- leaderUpdate:
-			case <-m.leaderUpdateCh:
-				m.leaderUpdateCh <- leaderUpdate
-			}
+	for _, repl := range repls {
+		select {
+		case repl.leaderUpdateCh <- leaderUpdate:
+		case <-repl.leaderUpdateCh:
+			repl.leaderUpdateCh <- leaderUpdate
 		}
 	}
 }
