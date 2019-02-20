@@ -36,25 +36,25 @@ type replication struct {
 
 const maxAppendEntries = 64 // todo: should be configurable
 
-func (r *replication) runLoop(req *appendEntriesRequest) {
-	lastIndex, matchIndex := req.prevLogIndex, r.getMatchIndex()
+func (repl *replication) runLoop(req *appendEntriesRequest) {
+	lastIndex, matchIndex := req.prevLogIndex, repl.getMatchIndex()
 
-	// know which entries to replicate: fixes r.nextIndex and r.matchIndex
-	// after loop: r.matchIndex + 1 == r.nextIndex
-	for matchIndex+1 != r.nextIndex {
-		r.storage.fillEntries(req, r.nextIndex, r.nextIndex-1) // zero entries
-		resp, stop := r.retryAppendEntries(req)
+	// know which entries to replicate: fixes repl.nextIndex and repl.matchIndex
+	// after loop: repl.matchIndex + 1 == repl.nextIndex
+	for matchIndex+1 != repl.nextIndex {
+		repl.storage.fillEntries(req, repl.nextIndex, repl.nextIndex-1) // zero entries
+		resp, stop := repl.retryAppendEntries(req)
 		if stop {
 			return
 		} else if resp.success {
 			matchIndex = req.prevLogIndex
-			r.setMatchIndex(matchIndex)
+			repl.setMatchIndex(matchIndex)
 			break
 		} else {
-			r.nextIndex = max(min(r.nextIndex-1, resp.lastLogIndex+1), 1)
+			repl.nextIndex = max(min(repl.nextIndex-1, resp.lastLogIndex+1), 1)
 		}
 		select {
-		case <-r.stopCh:
+		case <-repl.stopCh:
 			return
 		default:
 		}
@@ -69,81 +69,81 @@ func (r *replication) runLoop(req *appendEntriesRequest) {
 
 	for {
 		select {
-		case <-r.stopCh:
+		case <-repl.stopCh:
 			return
-		case update := <-r.leaderUpdateCh:
+		case update := <-repl.leaderUpdateCh:
 			lastIndex, req.leaderCommitIndex = update.lastIndex, update.commitIndex
-			debug(r.ldr, r.member.addr, "{last:", lastIndex, "commit:", req.leaderCommitIndex, "} <-leaderUpdateCh")
+			debug(repl.ldr, repl.member.addr, "{last:", lastIndex, "commit:", req.leaderCommitIndex, "} <-leaderUpdateCh")
 			timerCh = closedCh
 		case <-timerCh:
 		}
 
 		// setup request
 		if matchIndex < lastIndex {
-			// replication of entries [r.nextIndex, lastIndex] is pending
-			maxIndex := min(lastIndex, r.nextIndex+uint64(maxAppendEntries)-1)
-			r.storage.fillEntries(req, r.nextIndex, maxIndex)
-			debug(r.ldr, r.member.addr, ">> appendEntriesRequest", len(req.entries))
+			// replication of entries [repl.nextIndex, lastIndex] is pending
+			maxIndex := min(lastIndex, repl.nextIndex+uint64(maxAppendEntries)-1)
+			repl.storage.fillEntries(req, repl.nextIndex, maxIndex)
+			debug(repl.ldr, repl.member.addr, ">> appendEntriesRequest", len(req.entries))
 		} else {
 			// send heartbeat
 			req.prevLogIndex, req.prevLogTerm, req.entries = lastIndex, req.term, nil // zero entries
-			debug(r.ldr, r.member.addr, ">> heartbeat")
+			debug(repl.ldr, repl.member.addr, ">> heartbeat")
 		}
 
-		resp, stop := r.retryAppendEntries(req)
+		resp, stop := repl.retryAppendEntries(req)
 		if stop {
 			return
 		} else if !resp.success {
 			// follower have transitioned to candidate and started election
-			assert(resp.term > req.term, "%s %s follower must have started election", r.ldr, r.member.addr)
+			assert(resp.term > req.term, "%s %s follower must have started election", repl.ldr, repl.member.addr)
 			return
 		}
 
-		r.nextIndex = resp.lastLogIndex + 1
+		repl.nextIndex = resp.lastLogIndex + 1
 		matchIndex = resp.lastLogIndex
-		r.setMatchIndex(matchIndex)
+		repl.setMatchIndex(matchIndex)
 
 		if matchIndex < lastIndex {
-			// replication of entries [r.nextIndex, lastIndex] is still pending: no more sleeping!!!
+			// replication of entries [repl.nextIndex, lastIndex] is still pending: no more sleeping!!!
 			timerCh = closedCh
 		} else {
-			timerCh = afterRandomTimeout(r.heartbeatTimeout / 10)
+			timerCh = afterRandomTimeout(repl.heartbeatTimeout / 10)
 		}
 	}
 }
 
-func (r *replication) getMatchIndex() uint64 {
-	return atomic.LoadUint64(&r.matchIndex)
+func (repl *replication) getMatchIndex() uint64 {
+	return atomic.LoadUint64(&repl.matchIndex)
 }
 
-func (r *replication) setMatchIndex(v uint64) {
-	atomic.StoreUint64(&r.matchIndex, v)
+func (repl *replication) setMatchIndex(v uint64) {
+	atomic.StoreUint64(&repl.matchIndex, v)
 	select {
-	case <-r.stopCh:
-	case r.matchUpdatedCh <- r:
+	case <-repl.stopCh:
+	case repl.matchUpdatedCh <- repl:
 	}
 }
 
 // retries request until success or got stop signal
 // last return value is true in case of stop signal
-func (r *replication) retryAppendEntries(req *appendEntriesRequest) (*appendEntriesResponse, bool) {
+func (repl *replication) retryAppendEntries(req *appendEntriesRequest) (*appendEntriesResponse, bool) {
 	var failures uint64
 	for {
-		resp, err := r.appendEntries(req)
+		resp, err := repl.appendEntries(req)
 		if err != nil {
 			failures++
 			select {
-			case <-r.stopCh:
+			case <-repl.stopCh:
 				return resp, true
 			case <-time.After(backoff(failures)):
-				debug(r.ldr, r.member.addr, "retry appendEntries")
+				debug(repl.ldr, repl.member.addr, "retry appendEntries")
 				continue
 			}
 		}
 		if resp.term > req.term {
 			select {
-			case <-r.stopCh:
-			case r.newTermCh <- resp.term:
+			case <-repl.stopCh:
+			case repl.newTermCh <- resp.term:
 			}
 			return resp, true
 		}
@@ -151,17 +151,17 @@ func (r *replication) retryAppendEntries(req *appendEntriesRequest) (*appendEntr
 	}
 }
 
-func (r *replication) appendEntries(req *appendEntriesRequest) (*appendEntriesResponse, error) {
+func (repl *replication) appendEntries(req *appendEntriesRequest) (*appendEntriesResponse, error) {
 	resp := new(appendEntriesResponse)
-	err := r.member.doRPC(rpcAppendEntries, req, resp)
+	err := repl.member.doRPC(rpcAppendEntries, req, resp)
 
-	r.noContactMu.Lock()
+	repl.noContactMu.Lock()
 	if err == nil {
-		r.noContact = time.Time{} // zeroing
-	} else if r.noContact.IsZero() {
-		r.noContact = time.Now()
+		repl.noContact = time.Time{} // zeroing
+	} else if repl.noContact.IsZero() {
+		repl.noContact = time.Now()
 	}
-	r.noContactMu.Unlock()
+	repl.noContactMu.Unlock()
 
 	return resp, err
 }
