@@ -9,7 +9,7 @@ func (r *Raft) runFollower() {
 		case <-r.shutdownCh:
 			return
 
-		case rpc := <-r.server.rpcCh:
+		case rpc := <-r.rpcCh:
 			if valid := r.replyRPC(rpc); valid {
 				// a server remains in follower state as long as it receives valid
 				// RPCs from a leader or candidate

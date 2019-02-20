@@ -21,6 +21,8 @@ func (s state) String() string {
 }
 
 type Raft struct {
+	*server
+
 	addr    string
 	members []*member
 	wg      sync.WaitGroup
@@ -30,7 +32,6 @@ type Raft struct {
 
 	storage  *storage
 	term     uint64
-	server   *server
 	state    state
 	leaderID string
 

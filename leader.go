@@ -129,7 +129,7 @@ func (ldr *leaderState) runLoop() {
 			stateChanged(ldr.Raft)
 			return
 
-		case rpc := <-ldr.server.rpcCh:
+		case rpc := <-ldr.rpcCh:
 			ldr.replyRPC(rpc)
 
 		case m := <-matchUpdatedCh:

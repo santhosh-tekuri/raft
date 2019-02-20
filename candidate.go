@@ -12,7 +12,7 @@ func (r *Raft) runCandidate() {
 		case <-r.shutdownCh:
 			return
 
-		case rpc := <-r.server.rpcCh:
+		case rpc := <-r.rpcCh:
 			r.replyRPC(rpc)
 
 		case vote := <-results:
