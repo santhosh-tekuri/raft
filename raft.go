@@ -26,7 +26,7 @@ type Raft struct {
 	members []*member
 	wg      sync.WaitGroup
 
-	fsmApplyCh chan newEntry
+	fsmApplyCh chan NewEntry
 	fsm        FSM
 
 	storage  *storage
@@ -45,7 +45,7 @@ type Raft struct {
 	lastApplied          uint64
 	leaderTermStartIndex uint64
 
-	applyCh    chan newEntry
+	ApplyCh    chan NewEntry
 	newEntries *list.List
 
 	inspectCh  chan func(*Raft)
@@ -70,7 +70,7 @@ func New(addrs []string, fsm FSM, stable Stable, log Log) *Raft {
 
 	return &Raft{
 		addr:               addrs[0],
-		fsmApplyCh:         make(chan newEntry, 128), // todo configurable capacity
+		fsmApplyCh:         make(chan NewEntry, 128), // todo configurable capacity
 		fsm:                fsm,
 		storage:            storage,
 		server:             &server{listenFn: net.Listen},
@@ -78,7 +78,7 @@ func New(addrs []string, fsm FSM, stable Stable, log Log) *Raft {
 		state:              follower,
 		heartbeatTimeout:   heartbeatTimeout,
 		leaderLeaseTimeout: heartbeatTimeout,
-		applyCh:            make(chan newEntry, 100), // todo configurable capacity
+		ApplyCh:            make(chan NewEntry, 100), // todo configurable capacity
 		newEntries:         list.New(),
 		inspectCh:          make(chan func(*Raft)),
 		shutdownCh:         make(chan struct{}),
@@ -177,18 +177,24 @@ func (r *Raft) setVotedFor(v string) {
 	r.votedFor = v
 }
 
-type newEntry struct {
+type NewEntry struct {
 	*entry
-	respCh chan<- interface{}
+	Data []byte
+
+	// RespCh is the channel on which response received.
+	//
+	// In case of error, the interface{} returned will be error.
+	// It can be set to nil, if you want to fire and forget.
+	RespCh chan<- interface{}
 }
 
-func (ne newEntry) sendResponse(resp interface{}) {
-	if ne.respCh != nil {
+func (ne NewEntry) sendResponse(resp interface{}) {
+	if ne.RespCh != nil {
 		select {
-		case ne.respCh <- resp:
+		case ne.RespCh <- resp:
 		default:
 			go func() {
-				ne.respCh <- resp
+				ne.RespCh <- resp
 			}()
 		}
 	}
@@ -200,22 +206,6 @@ type NotLeaderError struct {
 
 func (e NotLeaderError) Error() string {
 	return "node is not the leader"
-}
-
-func (r *Raft) Apply(cmd []byte, respCh chan<- interface{}) {
-	// todo: provide timeout to enqueue newEntry or
-	//       make r.applyCh public to developer
-	//       for example developer can do:
-	//            r.ApplyCh <- raft.MakeNewEntry(cmd, respChan)
-	//       or rename newEntry to Command. then
-	//            r.ApplyCh <- raft.NewCommand(data, respChan)
-	r.applyCh <- newEntry{
-		entry: &entry{
-			typ:  entryCommand,
-			data: cmd,
-		},
-		respCh: respCh,
-	}
 }
 
 // inspect blocks until f got executed.

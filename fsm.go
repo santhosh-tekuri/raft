@@ -27,14 +27,14 @@ func (r *Raft) fsmLoop() {
 //      - reply end user with response
 func (r *Raft) fsmApply(newEntries *list.List) {
 	for ; r.commitIndex > r.lastApplied; r.lastApplied++ {
-		var ne newEntry
+		var ne NewEntry
 
 		if newEntries == nil {
 			ne.entry = &entry{}
 			r.storage.getEntry(r.lastApplied+1, ne.entry)
 		} else {
 			elem := newEntries.Front()
-			ne = elem.Value.(newEntry)
+			ne = elem.Value.(NewEntry)
 			assert(ne.index == r.lastApplied+1, "BUG")
 			newEntries.Remove(elem)
 		}

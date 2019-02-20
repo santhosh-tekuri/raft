@@ -12,7 +12,7 @@ func (r *Raft) runLeader() {
 	assert(r.newEntries.Len() == 0, "%s newEntries must be empty on leader start", r)
 
 	// add a blank no-op entry into log at the start of its term
-	r.storeNewEntry(newEntry{
+	r.storeNewEntry(NewEntry{
 		entry: &entry{
 			typ: entryNoop,
 		},
@@ -36,7 +36,7 @@ func (r *Raft) runLeader() {
 
 		// respond to any pending user entries
 		for e := r.newEntries.Front(); e != nil; e = e.Next() {
-			e.Value.(newEntry).sendResponse(NotLeaderError{r.leaderID})
+			e.Value.(NewEntry).sendResponse(NotLeaderError{r.leaderID})
 		}
 	}()
 
@@ -110,8 +110,8 @@ func (r *Raft) runLeader() {
 
 			r.commitAndApplyOnMajority()
 
-		case newEntry := <-r.applyCh:
-			r.storeNewEntry(newEntry)
+		case ne := <-r.ApplyCh:
+			r.storeNewEntry(ne)
 
 		case f := <-r.inspectCh:
 			f(r)
@@ -152,18 +152,22 @@ func (r *Raft) commitAndApplyOnMajority() {
 	}
 }
 
-func (r *Raft) storeNewEntry(newEntry newEntry) {
-	newEntry.index, newEntry.term = r.lastLogIndex+1, r.term
+func (r *Raft) storeNewEntry(ne NewEntry) {
+	if ne.entry == nil {
+		ne.entry = &entry{}
+	}
+	ne.data, ne.Data = ne.Data, nil
+	ne.index, ne.term = r.lastLogIndex+1, r.term
 
 	// append entry to local log
-	if newEntry.typ == entryNoop {
-		debug(r, "log.append noop", newEntry.index)
+	if ne.typ == entryNoop {
+		debug(r, "log.append noop", ne.index)
 	} else {
-		debug(r, "log.append cmd", newEntry.index)
+		debug(r, "log.append cmd", ne.index)
 	}
-	r.storage.append(newEntry.entry)
-	r.lastLogIndex, r.lastLogTerm = newEntry.index, newEntry.term
-	r.newEntries.PushBack(newEntry)
+	r.storage.append(ne.entry)
+	r.lastLogIndex, r.lastLogTerm = ne.index, ne.term
+	r.newEntries.PushBack(ne)
 
 	// we updated lastLogIndex, so notify replicators
 	if len(r.members) == 1 {

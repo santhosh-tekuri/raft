@@ -45,8 +45,8 @@ func (r *Raft) runCandidate() {
 			// election timeout elapsed: start new election
 			return
 
-		case newEntry := <-r.applyCh:
-			newEntry.sendResponse(NotLeaderError{r.leaderID})
+		case ne := <-r.ApplyCh:
+			ne.sendResponse(NotLeaderError{r.leaderID})
 
 		case f := <-r.inspectCh:
 			f(r)
