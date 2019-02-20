@@ -6,7 +6,6 @@ import (
 	"time"
 )
 
-// todo: implement String() for debug statements
 type replication struct {
 	member           *member
 	storage          *storage

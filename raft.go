@@ -1,7 +1,6 @@
 package raft
 
 import (
-	"container/list"
 	"fmt"
 	"math/rand"
 	"net"
@@ -35,18 +34,15 @@ type Raft struct {
 	state    state
 	leaderID string
 
-	votedFor           string
-	heartbeatTimeout   time.Duration
-	leaderLeaseTimeout time.Duration
+	votedFor         string
+	heartbeatTimeout time.Duration
 
-	lastLogIndex         uint64
-	lastLogTerm          uint64
-	commitIndex          uint64
-	lastApplied          uint64
-	leaderTermStartIndex uint64
+	lastLogIndex uint64
+	lastLogTerm  uint64
+	commitIndex  uint64
+	lastApplied  uint64
 
-	ApplyCh    chan NewEntry
-	newEntries *list.List
+	ApplyCh chan NewEntry
 
 	inspectCh  chan func(*Raft)
 	shutdownCh chan struct{}
@@ -66,19 +62,17 @@ func New(addrs []string, fsm FSM, stable Stable, log Log) *Raft {
 	}
 
 	return &Raft{
-		addr:               addrs[0],
-		fsmApplyCh:         make(chan NewEntry, 128), // todo configurable capacity
-		fsm:                fsm,
-		storage:            storage,
-		server:             &server{listenFn: net.Listen},
-		members:            members,
-		state:              follower,
-		heartbeatTimeout:   heartbeatTimeout,
-		leaderLeaseTimeout: heartbeatTimeout,
-		ApplyCh:            make(chan NewEntry, 100), // todo configurable capacity
-		newEntries:         list.New(),
-		inspectCh:          make(chan func(*Raft)),
-		shutdownCh:         make(chan struct{}),
+		addr:             addrs[0],
+		fsmApplyCh:       make(chan NewEntry, 128), // todo configurable capacity
+		fsm:              fsm,
+		storage:          storage,
+		server:           &server{listenFn: net.Listen},
+		members:          members,
+		state:            follower,
+		heartbeatTimeout: heartbeatTimeout,
+		ApplyCh:          make(chan NewEntry, 100), // todo configurable capacity
+		inspectCh:        make(chan func(*Raft)),
+		shutdownCh:       make(chan struct{}),
 	}
 }
 

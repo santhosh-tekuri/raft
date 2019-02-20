@@ -378,7 +378,6 @@ func (c *cluster) launch(n int) {
 		storage := new(inmem.Storage)
 		r := New(members, &fsmMock{}, storage, storage)
 		r.heartbeatTimeout = c.heartbeatTimeout
-		r.leaderLeaseTimeout = c.heartbeatTimeout
 		c.rr[i] = r
 
 		// switch to fake transport
