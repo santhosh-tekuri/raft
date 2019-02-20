@@ -7,13 +7,14 @@ import (
 
 var (
 	ErrNotFound   = errors.New("not found")
-	ErrOutofRange = errors.New("out of range")
+	ErrOutOfRange = errors.New("out of range")
 )
 
 type Storage struct {
-	muStable sync.RWMutex
-	term     uint64
-	votedFor string
+	muStable    sync.RWMutex
+	term        uint64
+	votedFor    string
+	configIndex uint64
 
 	muLog sync.RWMutex
 	list  [][]byte
@@ -29,6 +30,19 @@ func (s *Storage) SetVars(term uint64, votedFor string) error {
 	s.muStable.Lock()
 	defer s.muStable.Unlock()
 	s.term, s.votedFor = term, votedFor
+	return nil
+}
+
+func (s *Storage) GetConfigIndex() (uint64, error) {
+	s.muStable.RLock()
+	defer s.muStable.RUnlock()
+	return s.configIndex, nil
+}
+
+func (s *Storage) SetConfigIndex(i uint64) error {
+	s.muStable.Lock()
+	defer s.muStable.Unlock()
+	s.configIndex = i
 	return nil
 }
 
@@ -76,7 +90,7 @@ func (s *Storage) DeleteFirst(n uint64) error {
 	s.muLog.Lock()
 	defer s.muLog.Unlock()
 	if n > uint64(len(s.list)) {
-		return ErrOutofRange
+		return ErrOutOfRange
 	}
 	s.list = s.list[n:]
 	return nil
@@ -86,7 +100,7 @@ func (s *Storage) DeleteLast(n uint64) error {
 	s.muLog.Lock()
 	defer s.muLog.Unlock()
 	if n > uint64(len(s.list)) {
-		return ErrOutofRange
+		return ErrOutOfRange
 	}
 	s.list = s.list[:len(s.list)-int(n)]
 	return nil

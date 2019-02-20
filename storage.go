@@ -9,6 +9,8 @@ import (
 type Stable interface {
 	GetVars() (term uint64, votedFor string, err error)
 	SetVars(term uint64, votedFor string) error
+	GetConfigIndex() (uint64, error)
+	SetConfigIndex(i uint64) error
 }
 
 type Log interface {
