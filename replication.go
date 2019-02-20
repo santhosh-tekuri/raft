@@ -31,7 +31,7 @@ type replication struct {
 	noContactMu sync.RWMutex
 	noContact   time.Time
 
-	ldr string // used for debug() calls
+	str string // used for debug() calls
 }
 
 const maxAppendEntries = 64 // todo: should be configurable
@@ -73,7 +73,7 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 			return
 		case update := <-repl.leaderUpdateCh:
 			lastIndex, req.leaderCommitIndex = update.lastIndex, update.commitIndex
-			debug(repl.ldr, repl.member.addr, "{last:", lastIndex, "commit:", req.leaderCommitIndex, "} <-leaderUpdateCh")
+			debug(repl, "{last:", lastIndex, "commit:", req.leaderCommitIndex, "} <-leaderUpdateCh")
 			timerCh = closedCh
 		case <-timerCh:
 		}
@@ -83,11 +83,11 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 			// replication of entries [repl.nextIndex, lastIndex] is pending
 			maxIndex := min(lastIndex, repl.nextIndex+uint64(maxAppendEntries)-1)
 			repl.storage.fillEntries(req, repl.nextIndex, maxIndex)
-			debug(repl.ldr, repl.member.addr, ">> appendEntriesRequest", len(req.entries))
+			debug(repl, ">> appendEntriesRequest", len(req.entries))
 		} else {
 			// send heartbeat
 			req.prevLogIndex, req.prevLogTerm, req.entries = lastIndex, req.term, nil // zero entries
-			debug(repl.ldr, repl.member.addr, ">> heartbeat")
+			debug(repl, ">> heartbeat")
 		}
 
 		resp, stop := repl.retryAppendEntries(req)
@@ -95,7 +95,7 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 			return
 		} else if !resp.success {
 			// follower have transitioned to candidate and started election
-			assert(resp.term > req.term, "%s %s follower must have started election", repl.ldr, repl.member.addr)
+			assert(resp.term > req.term, "%s follower must have started election", repl)
 			return
 		}
 
@@ -136,7 +136,7 @@ func (repl *replication) retryAppendEntries(req *appendEntriesRequest) (*appendE
 			case <-repl.stopCh:
 				return resp, true
 			case <-time.After(backoff(failures)):
-				debug(repl.ldr, repl.member.addr, "retry appendEntries")
+				debug(repl, "retry appendEntries")
 				continue
 			}
 		}
@@ -164,4 +164,8 @@ func (repl *replication) appendEntries(req *appendEntriesRequest) (*appendEntrie
 	repl.noContactMu.Unlock()
 
 	return resp, err
+}
+
+func (repl *replication) String() string {
+	return repl.str
 }

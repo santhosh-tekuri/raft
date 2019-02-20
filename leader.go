@@ -58,7 +58,7 @@ func (r *Raft) runLeader() {
 			matchUpdatedCh:   matchUpdatedCh,
 			newTermCh:        newTermCh,
 			leaderUpdateCh:   make(chan leaderUpdate, 1),
-			ldr:              r.String(),
+			str:              r.String() + " " + m.addr,
 		}
 		repls[m.addr] = repl
 
@@ -79,7 +79,7 @@ func (r *Raft) runLeader() {
 		go func() {
 			defer r.wg.Done()
 			repl.runLoop(req)
-			debug(repl.ldr, repl.member.addr, "replication closed")
+			debug(repl, "replication closed")
 		}()
 	}
 
