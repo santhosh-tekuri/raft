@@ -112,6 +112,11 @@ func (ldr *leaderState) runLoop() {
 		}()
 	}
 
+	// todo: should count only voting repls here
+	if len(ldr.repls) == 0 {
+		ldr.commitAndApplyOnMajority() // for noop entry
+	}
+
 	leaseTimer := time.NewTicker(ldr.leaseTimeout)
 	defer leaseTimer.Stop()
 
@@ -181,19 +186,9 @@ func (ldr *leaderState) storeNewEntry(ne NewEntry) {
 	ldr.lastLogIndex, ldr.lastLogTerm = ne.index, ne.term
 	ldr.newEntries.PushBack(ne)
 
-	// we updated lastLogIndex, so notify replicators
-	if ldr.repls == nil {
-		// no-op entry, repls have not yet created
-		if len(ldr.members) == 1 {
-			ldr.commitIndex = ldr.lastLogIndex
-			ldr.fsmApply(ldr.newEntries)
-		}
-	} else {
-		if len(ldr.members) == 1 {
-			ldr.commitAndApplyOnMajority()
-		} else {
-			ldr.notifyReplicators()
-		}
+	if ne.typ != entryNoop {
+		// we updated lastLogIndex, so notify replicators
+		ldr.notifyReplicators()
 	}
 }
 
@@ -225,6 +220,7 @@ func (ldr *leaderState) commitAndApplyOnMajority() {
 	// majorityMatchIndex.term == currentTerm
 	if majorityMatchIndex > ldr.commitIndex && majorityMatchIndex >= ldr.startIndex {
 		ldr.commitIndex = majorityMatchIndex
+		debug(ldr, "commitIndex", ldr.commitIndex)
 		ldr.fsmApply(ldr.newEntries)
 		ldr.notifyReplicators() // we updated commit index
 	}
@@ -253,6 +249,12 @@ func (ldr *leaderState) isQuorumReachable() bool {
 }
 
 func (ldr *leaderState) notifyReplicators() {
+	// todo: should count only voting repls here
+	if len(ldr.repls) == 0 {
+		ldr.commitAndApplyOnMajority()
+		return
+	}
+
 	leaderUpdate := leaderUpdate{
 		lastIndex:   ldr.lastLogIndex,
 		commitIndex: ldr.commitIndex,
