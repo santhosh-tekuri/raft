@@ -25,7 +25,7 @@ type Raft struct {
 	dialFn dialFn
 
 	addr   string
-	config configuration
+	config config
 	wg     sync.WaitGroup
 
 	fsmApplyCh chan NewEntry
@@ -70,7 +70,7 @@ func New(addrs []string, fsm FSM, stable Stable, log Log) *Raft {
 		fsm:              fsm,
 		storage:          storage,
 		server:           &server{listenFn: net.Listen},
-		config:           &config{members},
+		config:           &stableConfig{members},
 		state:            follower,
 		heartbeatTimeout: heartbeatTimeout,
 		ApplyCh:          make(chan NewEntry, 100), // todo configurable capacity
