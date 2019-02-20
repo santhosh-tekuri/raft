@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/santhosh-tekuri/fnet"
-
 	"github.com/santhosh-tekuri/raft/inmem"
 )
 
@@ -148,7 +147,7 @@ func TestRaft_TripleNode(t *testing.T) {
 	c.ensureLeader(ldr.addr)
 
 	// should be able to apply
-	resp, err := ldr.waitApply("test", c.commitTimeout)
+	resp, err := ldr.waitApply("test", c.heartbeatTimeout)
 	if err != nil {
 		t.Fatalf("apply failed: %v", err)
 	}
@@ -172,7 +171,7 @@ func TestRaft_LeaderFail(t *testing.T) {
 	c.ensureLeader(ldr.addr)
 
 	// should be able to apply
-	resp, err := ldr.waitApply("test", c.commitTimeout)
+	resp, err := ldr.waitApply("test", c.heartbeatTimeout)
 	if err != nil {
 		t.Fatalf("apply failed: %v", err)
 	}
@@ -206,7 +205,7 @@ func TestRaft_LeaderFail(t *testing.T) {
 	}
 
 	// apply should work not work on old leader
-	_, err = ldr.waitApply("reject", c.commitTimeout)
+	_, err = ldr.waitApply("reject", c.heartbeatTimeout)
 	if err, ok := err.(NotLeaderError); !ok {
 		t.Fatalf("got %v, want NotLeaderError", err)
 	} else if err.Leader != "" {
@@ -214,7 +213,7 @@ func TestRaft_LeaderFail(t *testing.T) {
 	}
 
 	// apply should work on new leader
-	if _, err = newLdr.waitApply("accept", c.commitTimeout); err != nil {
+	if _, err = newLdr.waitApply("accept", c.heartbeatTimeout); err != nil {
 		t.Fatalf("got %v, want nil", err)
 	}
 
