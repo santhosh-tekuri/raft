@@ -17,6 +17,10 @@ type member struct {
 	connPoolMu sync.Mutex
 	connPool   []*netConn
 	maxConns   int
+
+	// owned exclusively by raft main goroutine
+	// used to recalculateMatch
+	matchIndex uint64
 }
 
 func (m *member) getConn() (*netConn, error) {

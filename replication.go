@@ -14,10 +14,6 @@ type replication struct {
 	nextIndex  uint64
 	matchIndex uint64
 
-	// owned exclusively by raft main goroutine
-	// used to recalculateMatch
-	matchedIndex uint64
-
 	// leader notifies replication with update
 	leaderUpdateCh chan leaderUpdate
 

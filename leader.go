@@ -75,13 +75,14 @@ func (ldr *leaderState) runLoop() {
 			continue
 		}
 
+		// matchIndex initialized to zero
+		m.matchIndex = 0 // todo: should we reset always to zero?
 		repl := &replication{
 			member:           m,
 			heartbeatTimeout: ldr.heartbeatTimeout,
 			storage:          ldr.storage,
 			nextIndex:        ldr.lastLogIndex + 1, // nextIndex initialized to leader last log index + 1
-			matchIndex:       0,                    // matchIndex initialized to zero
-			matchedIndex:     0,
+			matchIndex:       m.matchIndex,
 			stopCh:           stopReplsCh,
 			matchUpdatedCh:   matchUpdatedCh,
 			newTermCh:        newTermCh,
@@ -136,7 +137,7 @@ func (ldr *leaderState) runLoop() {
 		loop:
 			// get latest matchIndex from all notified members
 			for {
-				m.matchedIndex = m.getMatchIndex()
+				m.member.matchIndex = m.getMatchIndex()
 				select {
 				case m = <-matchUpdatedCh:
 					break
@@ -205,7 +206,7 @@ func (ldr *leaderState) majorityMatchIndex() uint64 {
 			if m.addr == ldr.addr {
 				matched[i] = ldr.lastLogIndex
 			} else {
-				matched[i] = ldr.repls[m.addr].matchedIndex
+				matched[i] = m.matchIndex
 			}
 		}
 		// sort in decrease order
