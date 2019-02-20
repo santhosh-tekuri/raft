@@ -5,10 +5,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fortytw2/leaktest"
 	"github.com/santhosh-tekuri/fnet"
 )
 
 func TestServer(t *testing.T) {
+	defer leaktest.Check(t)()
 	tests := []struct {
 		name      string
 		typ       rpcType

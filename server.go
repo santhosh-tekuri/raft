@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"sync"
 	"time"
@@ -71,15 +70,9 @@ func (s *server) handleClient(conn net.Conn) {
 		case <-s.shutdownCh:
 			return
 		default:
-		}
-		err := s.handleRPC(conn, r, w)
-		if err != nil {
-			if err != io.EOF && err != ErrServerClosed {
-				debug("unexpected error from handleRPC:", err)
-				// todo: abstract logger
-				log.Printf("unexpected error from handleRPC: %v", err)
+			if err := s.handleRPC(conn, r, w); err != nil {
+				return
 			}
-			return
 		}
 	}
 }
@@ -89,7 +82,9 @@ func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) erro
 	var typ rpcType
 	// close client if idle, on shutdown signal
 	for {
-		conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		if err := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+			return err
+		}
 		b, err := r.ReadByte()
 		if err != nil {
 			if err, ok := err.(net.Error); ok && err.Timeout() {
@@ -103,7 +98,9 @@ func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) erro
 			return err
 		}
 		typ = rpcType(b)
-		conn.SetReadDeadline(time.Time{}) // clears deadline
+		if err := conn.SetReadDeadline(time.Time{}); err != nil { // clears deadline
+			return err
+		}
 		break
 	}
 
