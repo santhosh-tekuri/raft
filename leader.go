@@ -22,7 +22,7 @@ func (r *Raft) runLeader() {
 	newTermCh := make(chan uint64, len(r.members))
 
 	// to receive matchIndex updates from replicators
-	matchUpdatedCh := make(chan *replicator, len(r.members))
+	matchUpdatedCh := make(chan *replication, len(r.members))
 
 	// to send stop signal to replicators
 	stopReplsCh := make(chan struct{})
@@ -41,13 +41,13 @@ func (r *Raft) runLeader() {
 	}()
 
 	// start replication routine for each follower
-	repls := make(map[string]*replicator) // todo: move repls as field in Raft
+	repls := make(map[string]*replication) // todo: move repls as field in Raft
 	for _, m := range r.members {
 		if m.addr == r.addr {
 			continue
 		}
 
-		repl := &replicator{
+		repl := &replication{
 			member:           m,
 			heartbeatTimeout: r.heartbeatTimeout,
 			storage:          r.storage,
@@ -79,7 +79,7 @@ func (r *Raft) runLeader() {
 		go func() {
 			defer r.wg.Done()
 			repl.runLoop(req)
-			debug(repl.ldr, repl.member.addr, "replicator closed")
+			debug(repl.ldr, repl.member.addr, "replication closed")
 		}()
 	}
 
@@ -138,7 +138,7 @@ func (r *Raft) runLeader() {
 // If there exists an N such that N > commitIndex, a majority
 // of matchIndex[i] ≥ N, and log[N].term == currentTerm:
 // set commitIndex = N
-func (r *Raft) commitAndApplyOnMajority(repls map[string]*replicator) {
+func (r *Raft) commitAndApplyOnMajority(repls map[string]*replication) {
 	majorityMatchIndex := r.lastLogIndex
 	if len(r.members) > 1 {
 		matched := make(decrUint64Slice, len(r.members))
@@ -161,7 +161,7 @@ func (r *Raft) commitAndApplyOnMajority(repls map[string]*replicator) {
 	}
 }
 
-func (r *Raft) storeNewEntry(ne NewEntry, repls map[string]*replicator) {
+func (r *Raft) storeNewEntry(ne NewEntry, repls map[string]*replication) {
 	if ne.entry == nil {
 		ne.entry = &entry{}
 	}
@@ -194,7 +194,7 @@ func (r *Raft) storeNewEntry(ne NewEntry, repls map[string]*replicator) {
 	}
 }
 
-func (r *Raft) isQuorumReachable(repls map[string]*replicator) bool {
+func (r *Raft) isQuorumReachable(repls map[string]*replication) bool {
 	reachable := 0
 	now := time.Now()
 	for _, m := range r.members {
@@ -216,7 +216,7 @@ func (r *Raft) isQuorumReachable(repls map[string]*replicator) bool {
 	return reachable >= r.quorumSize()
 }
 
-func (r *Raft) notifyReplicators(repls map[string]*replicator) {
+func (r *Raft) notifyReplicators(repls map[string]*replication) {
 	leaderUpdate := leaderUpdate{
 		lastIndex:   r.lastLogIndex,
 		commitIndex: r.commitIndex,

@@ -6,9 +6,8 @@ import (
 	"time"
 )
 
-// todo: rename to replication
 // todo: implement String() for debug statements
-type replicator struct {
+type replication struct {
 	member           *member
 	storage          *storage
 	heartbeatTimeout time.Duration
@@ -20,24 +19,24 @@ type replicator struct {
 	// used to recalculateMatch
 	matchedIndex uint64
 
-	// leader notifies replicator with update
+	// leader notifies replication with update
 	leaderUpdateCh chan leaderUpdate
 
-	matchUpdatedCh chan<- *replicator
+	matchUpdatedCh chan<- *replication
 	newTermCh      chan<- uint64
 	stopCh         <-chan struct{}
 
-	// from what time the replicator unable to reach this member
+	// from what time the replication unable to reach this member
 	// zero value means it is reachable
 	noContactMu sync.RWMutex
 	noContact   time.Time
 
-	ldr string // used for debug() calls from replicator
+	ldr string // used for debug() calls
 }
 
 const maxAppendEntries = 64 // todo: should be configurable
 
-func (r *replicator) runLoop(req *appendEntriesRequest) {
+func (r *replication) runLoop(req *appendEntriesRequest) {
 	lastIndex, matchIndex := req.prevLogIndex, r.getMatchIndex()
 
 	// know which entries to replicate: fixes r.nextIndex and r.matchIndex
@@ -113,11 +112,11 @@ func (r *replicator) runLoop(req *appendEntriesRequest) {
 	}
 }
 
-func (r *replicator) getMatchIndex() uint64 {
+func (r *replication) getMatchIndex() uint64 {
 	return atomic.LoadUint64(&r.matchIndex)
 }
 
-func (r *replicator) setMatchIndex(v uint64) {
+func (r *replication) setMatchIndex(v uint64) {
 	atomic.StoreUint64(&r.matchIndex, v)
 	select {
 	case <-r.stopCh:
@@ -127,7 +126,7 @@ func (r *replicator) setMatchIndex(v uint64) {
 
 // retries request until success or got stop signal
 // last return value is true in case of stop signal
-func (r *replicator) retryAppendEntries(req *appendEntriesRequest) (*appendEntriesResponse, bool) {
+func (r *replication) retryAppendEntries(req *appendEntriesRequest) (*appendEntriesResponse, bool) {
 	var failures uint64
 	for {
 		resp, err := r.appendEntries(req)
@@ -152,7 +151,7 @@ func (r *replicator) retryAppendEntries(req *appendEntriesRequest) (*appendEntri
 	}
 }
 
-func (r *replicator) appendEntries(req *appendEntriesRequest) (*appendEntriesResponse, error) {
+func (r *replication) appendEntries(req *appendEntriesRequest) (*appendEntriesResponse, error) {
 	resp := new(appendEntriesResponse)
 	err := r.member.doRPC(rpcAppendEntries, req, resp)
 
