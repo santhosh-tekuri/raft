@@ -20,7 +20,7 @@ type command interface {
 type entryType uint8
 
 const (
-	entryCommand entryType = iota
+	entryCommand entryType = iota // note: command type must be default value
 	entryNoop
 )
 

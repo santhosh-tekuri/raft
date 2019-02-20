@@ -40,7 +40,7 @@ func (r *Raft) fsmApply(newEntries *list.List) {
 		}
 
 		debug(r, "lastApplied", ne.index)
-		if ne.entry.typ != entryNoop {
+		if ne.entry.typ == entryCommand {
 			select {
 			case <-r.shutdownCh:
 			case r.fsmApplyCh <- ne:
