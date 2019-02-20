@@ -153,7 +153,8 @@ func (ldr *leaderState) runLoop() {
 			f(ldr.Raft)
 
 		case <-leaseTimer.C:
-			if !ldr.config.isQuorumReachable(ldr.leaseTimeout) {
+			t := time.Now().Add(-ldr.leaseTimeout)
+			if !ldr.config.isQuorumReachable(t) {
 				debug(ldr, "quorumUnreachable")
 				ldr.state = follower
 				ldr.leaderID = ""

@@ -22,6 +22,7 @@ func (s state) String() string {
 
 type Raft struct {
 	*server
+	dialFn dialFn
 
 	addr   string
 	config configuration
@@ -63,6 +64,7 @@ func New(addrs []string, fsm FSM, stable Stable, log Log) *Raft {
 	}
 
 	return &Raft{
+		dialFn:           net.DialTimeout,
 		addr:             addrs[0],
 		fsmApplyCh:       make(chan NewEntry, 128), // todo configurable capacity
 		fsm:              fsm,

@@ -341,7 +341,7 @@ func (c *cluster) launch(n int) {
 
 		// switch to fake transport
 		host := c.network.Host(string('A' + i))
-		r.listenFn = host.Listen
+		r.listenFn, r.dialFn = host.Listen, host.DialTimeout
 		for _, m := range r.config.members() {
 			m.dialFn = host.DialTimeout
 		}
