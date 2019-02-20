@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fortytw2/leaktest"
+
 	"github.com/santhosh-tekuri/fnet"
 	"github.com/santhosh-tekuri/raft/inmem"
 )
@@ -71,6 +73,7 @@ import (
 
 func TestRaft_Voting(t *testing.T) {
 	debug("\nTestRaft_Voting --------------------------")
+	defer leaktest.Check(t)()
 	c := newCluster(t)
 	c.launch(3)
 	defer c.shutdown()
@@ -106,6 +109,7 @@ func TestRaft_Voting(t *testing.T) {
 
 func TestRaft_SingleNode(t *testing.T) {
 	debug("\nTestRaft_SingleNode --------------------------")
+	defer leaktest.Check(t)()
 	c := newCluster(t)
 	c.launch(1)
 	defer c.shutdown()
@@ -138,6 +142,7 @@ func TestRaft_SingleNode(t *testing.T) {
 
 func TestRaft_TripleNode(t *testing.T) {
 	debug("\nTestRaft_TripleNode --------------------------")
+	defer leaktest.Check(t)()
 	c := newCluster(t)
 	c.launch(3)
 	defer c.shutdown()
@@ -162,6 +167,7 @@ func TestRaft_TripleNode(t *testing.T) {
 
 func TestRaft_LeaderFail(t *testing.T) {
 	debug("\nTestRaft_LeaderFail --------------------------")
+	defer leaktest.Check(t)()
 	c := newCluster(t)
 	c.launch(3)
 	defer c.shutdown()
@@ -230,6 +236,7 @@ func TestRaft_LeaderFail(t *testing.T) {
 
 func TestRaft_BehindFollower(t *testing.T) {
 	debug("\nTestRaft_BehindFollower --------------------------")
+	defer leaktest.Check(t)()
 	c := newCluster(t)
 	c.launch(3)
 	defer c.shutdown()
@@ -264,6 +271,7 @@ func TestRaft_BehindFollower(t *testing.T) {
 
 func TestRaft_ApplyNonLeader(t *testing.T) {
 	debug("\nTestRaft_ApplyNonLeader --------------------------")
+	defer leaktest.Check(t)()
 	c := newCluster(t)
 	c.launch(3)
 	defer c.shutdown()
@@ -287,6 +295,7 @@ func TestRaft_ApplyNonLeader(t *testing.T) {
 
 func TestRaft_ApplyConcurrent(t *testing.T) {
 	debug("\nTestRaft_ApplyConcurrent --------------------------")
+	defer leaktest.Check(t)()
 	c := newCluster(t)
 	c.launch(3)
 	defer c.shutdown()
