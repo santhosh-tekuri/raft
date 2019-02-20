@@ -82,10 +82,10 @@ func (m *member) contactSucceeded(b bool) {
 	m.noContactMu.Unlock()
 }
 
-// did we have success full contact in last d duration
-func (m *member) contacted(d time.Duration) bool {
+// did we have success full contact after time t
+func (m *member) contactedAfter(t time.Time) bool {
 	m.noContactMu.RLock()
 	noContact := m.noContact
 	m.noContactMu.RUnlock()
-	return noContact.IsZero() || time.Now().Sub(noContact) < d
+	return noContact.IsZero() || noContact.After(t)
 }

@@ -2,7 +2,6 @@ package raft
 
 import (
 	"container/list"
-	"sort"
 	"time"
 )
 
@@ -47,10 +46,10 @@ func (ldr *leaderState) runLoop() {
 	})
 
 	// to receive new term notifications from replicators
-	newTermCh := make(chan uint64, len(ldr.members))
+	newTermCh := make(chan uint64, len(ldr.config.members()))
 
 	// to receive matchIndex updates from replicators
-	matchUpdatedCh := make(chan *replication, len(ldr.members))
+	matchUpdatedCh := make(chan *replication, len(ldr.config.members()))
 
 	// to send stop signal to replicators
 	stopReplsCh := make(chan struct{})
@@ -70,7 +69,7 @@ func (ldr *leaderState) runLoop() {
 
 	// start replication routine for each follower
 	ldr.repls = make(map[string]*replication)
-	for _, m := range ldr.members {
+	for _, m := range ldr.config.members() {
 		// matchIndex initialized to zero
 		m.matchIndex = 0 // todo: should we reset always to zero?
 		repl := &replication{
@@ -154,7 +153,8 @@ func (ldr *leaderState) runLoop() {
 			f(ldr.Raft)
 
 		case <-leaseTimer.C:
-			if !ldr.isQuorumReachable() {
+			if !ldr.config.isQuorumReachable(ldr.leaseTimeout) {
+				debug(ldr, "quorumUnreachable")
 				ldr.state = follower
 				ldr.leaderID = ""
 				stateChanged(ldr.Raft)
@@ -184,29 +184,10 @@ func (ldr *leaderState) storeNewEntry(ne NewEntry) {
 	ldr.notifyReplicators()
 }
 
-// computes N such that, a majority of matchIndex[i] ≥ N
-func (ldr *leaderState) majorityMatchIndex() uint64 {
-	majorityMatchIndex := ldr.lastLogIndex
-	if len(ldr.members) > 1 {
-		matched := make(decrUint64Slice, len(ldr.members))
-		for i, m := range ldr.members {
-			if m.addr == ldr.addr {
-				matched[i] = ldr.lastLogIndex
-			} else {
-				matched[i] = m.matchIndex
-			}
-		}
-		// sort in decrease order
-		sort.Sort(matched)
-		majorityMatchIndex = matched[ldr.quorumSize()-1]
-	}
-	return majorityMatchIndex
-}
-
 // If majorityMatchIndex(N) > commitIndex,
 // and log[N].term == currentTerm: set commitIndex = N
 func (ldr *leaderState) commitAndApplyOnMajority() {
-	majorityMatchIndex := ldr.majorityMatchIndex()
+	majorityMatchIndex := ldr.config.majorityMatchIndex()
 
 	// note: if majorityMatchIndex >= ldr.startIndex, it also mean
 	// majorityMatchIndex.term == currentTerm
@@ -216,21 +197,6 @@ func (ldr *leaderState) commitAndApplyOnMajority() {
 		ldr.fsmApply(ldr.newEntries)
 		ldr.notifyReplicators() // we updated commit index
 	}
-}
-
-func (ldr *leaderState) isQuorumReachable() bool {
-	reachable := 0
-	for _, m := range ldr.members {
-		if m.addr == ldr.addr {
-			reachable++
-		} else if m.contacted(ldr.leaseTimeout) {
-			reachable++
-		}
-	}
-	if reachable < ldr.quorumSize() {
-		debug(ldr, "quorumUnreachable: ", reachable, "<", ldr.quorumSize())
-	}
-	return reachable >= ldr.quorumSize()
 }
 
 func (ldr *leaderState) notifyReplicators() {
@@ -246,9 +212,3 @@ func (ldr *leaderState) notifyReplicators() {
 		}
 	}
 }
-
-type decrUint64Slice []uint64
-
-func (s decrUint64Slice) Len() int           { return len(s) }
-func (s decrUint64Slice) Less(i, j int) bool { return s[i] > s[j] }
-func (s decrUint64Slice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }

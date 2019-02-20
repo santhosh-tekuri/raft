@@ -6,7 +6,7 @@ func (r *Raft) runCandidate() {
 	assert(r.leaderID == "", "%s r.leaderID: got %s, want ", r, r.leaderID)
 	timeoutCh := afterRandomTimeout(r.heartbeatTimeout)
 	results := r.startElection()
-	votesNeeded := r.quorumSize()
+	votes := make(map[string]struct{})
 	for r.state == candidate {
 		select {
 		case <-r.shutdownCh:
@@ -32,8 +32,8 @@ func (r *Raft) runCandidate() {
 
 			// if votes received from majority of servers: become leader
 			if vote.granted {
-				votesNeeded--
-				if votesNeeded <= 0 {
+				votes[vote.voterID] = struct{}{}
+				if r.config.isQuorum(votes) {
 					debug(r, "candidate -> leader")
 					r.state = leader
 					r.leaderID = r.addr
@@ -61,20 +61,10 @@ type voteResult struct {
 }
 
 func (r *Raft) startElection() <-chan voteResult {
-	results := make(chan voteResult, len(r.members))
+	results := make(chan voteResult, len(r.config.members()))
 
 	// increment currentTerm
 	r.setTerm(r.term + 1)
-
-	// vote for self
-	r.setVotedFor(r.addr)
-	results <- voteResult{
-		voteResponse: &voteResponse{
-			term:    r.term,
-			granted: true,
-		},
-		voterID: r.addr,
-	}
 
 	// reset election timer
 	debug(r, "startElection", time.Now().UnixNano()/int64(time.Millisecond))
@@ -86,8 +76,17 @@ func (r *Raft) startElection() <-chan voteResult {
 		lastLogIndex: r.lastLogIndex,
 		lastLogTerm:  r.lastLogTerm,
 	}
-	for _, m := range r.members {
+	for _, m := range r.config.members() {
 		if m.addr == r.addr {
+			// vote for self
+			r.setVotedFor(r.addr)
+			results <- voteResult{
+				voteResponse: &voteResponse{
+					term:    r.term,
+					granted: true,
+				},
+				voterID: r.addr,
+			}
 			continue
 		}
 		go func(m *member) {

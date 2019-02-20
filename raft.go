@@ -23,9 +23,9 @@ func (s state) String() string {
 type Raft struct {
 	*server
 
-	addr    string
-	members []*member
-	wg      sync.WaitGroup
+	addr   string
+	config configuration
+	wg     sync.WaitGroup
 
 	fsmApplyCh chan NewEntry
 	fsm        FSM
@@ -53,9 +53,9 @@ func New(addrs []string, fsm FSM, stable Stable, log Log) *Raft {
 	heartbeatTimeout := 50 * time.Millisecond // todo
 	storage := &storage{Stable: stable, log: log}
 
-	members := make([]*member, len(addrs))
-	for i, addr := range addrs {
-		members[i] = &member{
+	members := make(map[string]*member)
+	for _, addr := range addrs {
+		members[addr] = &member{
 			dialFn:  net.DialTimeout,
 			addr:    addr,
 			timeout: 10 * time.Second, // todo
@@ -68,7 +68,7 @@ func New(addrs []string, fsm FSM, stable Stable, log Log) *Raft {
 		fsm:              fsm,
 		storage:          storage,
 		server:           &server{listenFn: net.Listen},
-		members:          members,
+		config:           &config{members},
 		state:            follower,
 		heartbeatTimeout: heartbeatTimeout,
 		ApplyCh:          make(chan NewEntry, 100), // todo configurable capacity
@@ -149,10 +149,6 @@ func (r *Raft) loop() {
 
 func (r *Raft) String() string {
 	return fmt.Sprintf("%s %d %s |", r.addr, r.term, r.state)
-}
-
-func (r *Raft) quorumSize() int {
-	return len(r.members)/2 + 1
 }
 
 func (r *Raft) setTerm(term uint64) {

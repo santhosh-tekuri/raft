@@ -30,9 +30,16 @@ func TestRaft_Voting(t *testing.T) {
 		req.lastLogTerm = r.lastLogTerm
 	})
 
+	var followers []*member
+	for _, m := range ldr.config.members() {
+		if m.addr != ldr.addr {
+			followers = append(followers, m)
+		}
+	}
+
 	// a follower that thinks there's a leader should vote for that leader
 	req.candidateID = ldr.addr
-	resp, err := ldr.members[1].requestVote(req)
+	resp, err := followers[0].requestVote(req)
 	if err != nil {
 		t.Fatalf("requestVote failed: %v", err)
 	}
@@ -41,8 +48,8 @@ func TestRaft_Voting(t *testing.T) {
 	}
 
 	// a follower that thinks there's a leader shouldn't vote for a different candidate
-	req.candidateID = ldr.members[2].addr
-	resp, err = ldr.members[1].requestVote(req)
+	req.candidateID = followers[0].addr
+	resp, err = followers[1].requestVote(req)
 	if err != nil {
 		t.Fatalf("requestVote failed: %v", err)
 	}
@@ -335,7 +342,7 @@ func (c *cluster) launch(n int) {
 		// switch to fake transport
 		host := c.network.Host(string('A' + i))
 		r.listenFn = host.Listen
-		for _, m := range r.members {
+		for _, m := range r.config.members() {
 			m.dialFn = host.DialTimeout
 		}
 
