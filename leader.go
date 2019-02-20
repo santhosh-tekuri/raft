@@ -71,10 +71,6 @@ func (ldr *leaderState) runLoop() {
 	// start replication routine for each follower
 	ldr.repls = make(map[string]*replication)
 	for _, m := range ldr.members {
-		if m.addr == ldr.addr {
-			continue
-		}
-
 		// matchIndex initialized to zero
 		m.matchIndex = 0 // todo: should we reset always to zero?
 		repl := &replication{
@@ -99,9 +95,12 @@ func (ldr *leaderState) runLoop() {
 			prevLogIndex:      ldr.lastLogIndex,
 			prevLogTerm:       ldr.lastLogTerm,
 		}
-		// don't retry on failure. so that we can respond to apply/inspect
-		debug(repl, ">> firstHeartbeat")
-		_, _ = repl.appendEntries(req)
+
+		if m.addr != ldr.addr {
+			// don't retry on failure. so that we can respond to apply/inspect
+			debug(repl, ">> firstHeartbeat")
+			_, _ = repl.appendEntries(req)
+		}
 
 		// todo: should runLeader wait for repls to stop ?
 		ldr.wg.Add(1)
@@ -110,11 +109,6 @@ func (ldr *leaderState) runLoop() {
 			repl.runLoop(req)
 			debug(repl, "replication closed")
 		}()
-	}
-
-	// todo: should count only voting repls here
-	if len(ldr.repls) == 0 {
-		ldr.commitAndApplyOnMajority() // for noop entry
 	}
 
 	leaseTimer := time.NewTicker(ldr.leaseTimeout)
@@ -186,10 +180,8 @@ func (ldr *leaderState) storeNewEntry(ne NewEntry) {
 	ldr.lastLogIndex, ldr.lastLogTerm = ne.index, ne.term
 	ldr.newEntries.PushBack(ne)
 
-	if ne.typ != entryNoop {
-		// we updated lastLogIndex, so notify replicators
-		ldr.notifyReplicators()
-	}
+	// we updated lastLogIndex, so notify replicators
+	ldr.notifyReplicators()
 }
 
 // computes N such that, a majority of matchIndex[i] ≥ N
@@ -242,12 +234,6 @@ func (ldr *leaderState) isQuorumReachable() bool {
 }
 
 func (ldr *leaderState) notifyReplicators() {
-	// todo: should count only voting repls here
-	if len(ldr.repls) == 0 {
-		ldr.commitAndApplyOnMajority()
-		return
-	}
-
 	leaderUpdate := leaderUpdate{
 		lastIndex:   ldr.lastLogIndex,
 		commitIndex: ldr.commitIndex,

@@ -26,6 +26,20 @@ type replication struct {
 const maxAppendEntries = 64 // todo: should be configurable
 
 func (repl *replication) runLoop(req *appendEntriesRequest) {
+	if repl.member.addr == req.leaderID {
+		// self replication: when leaderUpdate comes
+		// just notify that it is replicated
+		repl.setMatchIndex(req.prevLogIndex)
+		for {
+			select {
+			case <-repl.stopCh:
+				return
+			case update := <-repl.leaderUpdateCh:
+				repl.setMatchIndex(update.lastIndex)
+			}
+		}
+	}
+
 	lastIndex, matchIndex := req.prevLogIndex, repl.getMatchIndex()
 
 	// know which entries to replicate: fixes repl.nextIndex and repl.matchIndex
