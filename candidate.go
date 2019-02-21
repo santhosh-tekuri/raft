@@ -26,7 +26,7 @@ func (r *Raft) runCandidate() {
 				debug(r, "candidate -> follower")
 				r.state = follower
 				r.setTerm(vote.term)
-				stateChanged(r)
+				StateChanged(r, byte(r.state))
 				return
 			}
 
@@ -37,7 +37,7 @@ func (r *Raft) runCandidate() {
 					debug(r, "candidate -> leader")
 					r.state = leader
 					r.leaderID = r.addr
-					stateChanged(r)
+					StateChanged(r, byte(r.state))
 					return
 				}
 			}

@@ -122,7 +122,7 @@ func (ldr *leaderState) runLoop() {
 			ldr.state = follower
 			ldr.setTerm(newTerm)
 			ldr.leaderID = ""
-			stateChanged(ldr.Raft)
+			StateChanged(ldr.Raft, byte(ldr.state))
 			return
 
 		case rpc := <-ldr.rpcCh:
@@ -152,7 +152,7 @@ func (ldr *leaderState) runLoop() {
 				debug(ldr, "quorumUnreachable")
 				ldr.state = follower
 				ldr.leaderID = ""
-				stateChanged(ldr.Raft)
+				StateChanged(ldr.Raft, byte(ldr.state))
 			}
 		}
 	}

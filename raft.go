@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-type state int
+type state byte
 
 const (
 	follower  state = 'F'

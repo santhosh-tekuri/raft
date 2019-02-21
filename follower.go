@@ -1,7 +1,5 @@
 package raft
 
-import "log"
-
 func (r *Raft) runFollower() {
 	assert(r.leaderID != r.addr, "%s r.leaderID: got %s, want !=%s", r, r.leaderID, r.addr)
 
@@ -25,9 +23,9 @@ func (r *Raft) runFollower() {
 			if !r.config.canStartElection(r.addr) {
 				// todo: abstract log
 				if len(r.config.members()) == 0 {
-					log.Println("[INFO] raft: no known peers, aborting election.")
+					ElectionAborted(r, "no known peers")
 				} else if _, ok := r.config.(*stableConfig); ok {
-					log.Println("[INFO] raft: not part of stable configuration, aborting election.")
+					ElectionAborted(r, "not part of cluster")
 				} else {
 					// jointConfig is in use, and i am not part of Cold, thus can not be
 					// elected leader
@@ -41,7 +39,7 @@ func (r *Raft) runFollower() {
 			debug(r, "heartbeatTimeout follower -> candidate")
 			r.state = candidate
 			r.leaderID = ""
-			stateChanged(r)
+			StateChanged(r, byte(r.state))
 
 		case t := <-r.TasksCh:
 			before := r.config.canStartElection(r.addr)

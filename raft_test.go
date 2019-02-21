@@ -632,7 +632,7 @@ var fsmAppliedFn func(*Raft, uint64)
 var voteRequestFn func(*Raft, *voteRequest)
 
 func init() {
-	stateChanged = func(r *Raft) {
+	StateChanged = func(r *Raft, _ byte) {
 		mu.RLock()
 		f := stateChangedFn
 		mu.RUnlock()

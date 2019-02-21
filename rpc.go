@@ -36,7 +36,7 @@ func (r *Raft) requestVote(req *voteRequest) *voteResponse {
 		debug(r, "stateChange", req.term, follower)
 		r.state = follower
 		r.setTerm(req.term)
-		stateChanged(r)
+		StateChanged(r, byte(r.state))
 	}
 
 	if r.votedFor != "" { // we already voted in this election before
@@ -79,7 +79,7 @@ func (r *Raft) appendEntries(req *appendEntriesRequest) *appendEntriesResponse {
 		debug(r, "stateChange", req.term, follower)
 		r.state = follower
 		r.setTerm(req.term)
-		stateChanged(r)
+		StateChanged(r, byte(r.state))
 	}
 
 	r.leaderID = req.leaderID
