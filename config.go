@@ -11,6 +11,7 @@ type config interface {
 	isQuorum(addrs map[string]struct{}) bool
 	majorityMatchIndex() uint64
 	isQuorumReachable(t time.Time) bool
+	canStartElection(addr string) bool
 }
 
 // ----------------------------------------------------------
@@ -68,6 +69,11 @@ func (c *stableConfig) quorumSize() int {
 	return len(c.voters)/2 + 1
 }
 
+func (c *stableConfig) canStartElection(addr string) bool {
+	_, ok := c.voters[addr]
+	return ok
+}
+
 // -------------------------------------------------------
 
 type jointConfig struct {
@@ -100,6 +106,15 @@ func (c *jointConfig) majorityMatchIndex() uint64 {
 
 func (c *jointConfig) isQuorumReachable(t time.Time) bool {
 	return c.old.isQuorumReachable(t) && c.new.isQuorumReachable(t)
+}
+
+func (c *jointConfig) canStartElection(addr string) bool {
+	// the leader transition occurs when Cnew is committed because this is
+	// the first point when the new configuration can operate independently.
+	//
+	// before this point, it may be the case that only a server from Cold
+	// can be elected leader.
+	return c.old.canStartElection(addr)
 }
 
 // -------------------------------------------------------
