@@ -202,7 +202,7 @@ func TestRaft_BehindFollower(t *testing.T) {
 
 	// commit a lot of things
 	for i := 0; i < 100; i++ {
-		ldr.TasksCh <- &Task{Command: []byte(fmt.Sprintf("test%d", i))}
+		ldr.TasksCh <- ApplyEntry([]byte(fmt.Sprintf("test%d", i)))
 	}
 	if _, err := ldr.waitApply("test100", c.longTimeout); err != nil {
 		t.Fatal(err)
@@ -583,23 +583,43 @@ func (r *Raft) fsmMock() *fsmMock {
 	return r.fsm.(*fsmMock)
 }
 
-// use zero timeout, to wait till reply received
-func (r *Raft) waitApply(cmd string, timeout time.Duration) (fsmReply, error) {
+func (r *Raft) waitTask(t Task, timeout time.Duration) (interface{}, error) {
 	var timer <-chan time.Time
 	if timeout > 0 {
 		timer = time.After(timeout)
 	}
-	t := Task{Command: []byte(cmd), Done: make(chan struct{})}
-	r.TasksCh <- &t
 	select {
-	case <-t.Done:
-		if t.Err() != nil {
-			return fsmReply{}, t.Err()
-		}
-		return t.Result.(fsmReply), nil
+	case r.TasksCh <- t:
+		break
 	case <-timer:
-		return fsmReply{}, fmt.Errorf("waitApply(%q): timedout", cmd)
+		return nil, fmt.Errorf("waitApply(%v): submit timedout", t)
 	}
+	select {
+	case <-t.Done():
+		return t.Result(), t.Err()
+	case <-timer:
+		return nil, fmt.Errorf("waitApply(%v): result timedout", t)
+	}
+}
+
+// use zero timeout, to wait till reply received
+func (r *Raft) waitApply(cmd string, timeout time.Duration) (fsmReply, error) {
+	result, err := r.waitTask(ApplyEntry([]byte(cmd)), timeout)
+	if err != nil {
+		return fsmReply{}, err
+	}
+	return result.(fsmReply), nil
+}
+
+func (r *Raft) inspect(fn func(*Raft)) {
+	t := &task{
+		fn: func(t Task, r *Raft) {
+			fn(r)
+			t.reply(nil)
+		},
+		done: make(chan struct{}),
+	}
+	_, _ = r.waitTask(t, 0)
 }
 
 // events ----------------------------------------------------------------------

@@ -46,10 +46,7 @@ func (r *Raft) runCandidate() {
 			return
 
 		case t := <-r.TasksCh:
-			t.reply(NotLeaderError{r.leaderID})
-
-		case f := <-r.inspectCh:
-			f(r)
+			t.execute(r)
 		}
 	}
 }

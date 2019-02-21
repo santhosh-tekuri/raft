@@ -44,9 +44,8 @@ type Raft struct {
 	commitIndex  uint64
 	lastApplied  uint64
 
-	TasksCh chan *Task
-
-	inspectCh  chan func(*Raft)
+	ldrState   *leaderState
+	TasksCh    chan Task
 	shutdownCh chan struct{}
 }
 
@@ -73,8 +72,7 @@ func New(addrs []string, fsm FSM, stable Stable, log Log) *Raft {
 		config:           &stableConfig{members},
 		state:            follower,
 		heartbeatTimeout: heartbeatTimeout,
-		TasksCh:          make(chan *Task, 100), // todo configurable capacity
-		inspectCh:        make(chan func(*Raft)),
+		TasksCh:          make(chan Task, 100), // todo configurable capacity
 		shutdownCh:       make(chan struct{}),
 	}
 }
@@ -169,29 +167,7 @@ func (r *Raft) setVotedFor(v string) {
 
 type newEntry struct {
 	*entry
-	task *Task
-}
-
-type Task struct {
-	Command interface{}
-	Result  interface{}
-	Done    chan struct{}
-}
-
-func (t *Task) Err() error {
-	if err, ok := t.Result.(error); ok {
-		return err
-	}
-	return nil
-}
-
-func (t *Task) reply(result interface{}) {
-	if t != nil {
-		t.Result = result
-		if t.Done != nil {
-			close(t.Done)
-		}
-	}
+	task Task
 }
 
 type NotLeaderError struct {
@@ -200,19 +176,6 @@ type NotLeaderError struct {
 
 func (e NotLeaderError) Error() string {
 	return "node is not the leader"
-}
-
-// inspect blocks until f got executed.
-// It is safe to invoke this from multiple goroutines.
-// used for testing purposes only
-func (r *Raft) inspect(f func(*Raft)) {
-	var wg sync.WaitGroup
-	wg.Add(1)
-	r.inspectCh <- func(r *Raft) {
-		f(r)
-		wg.Done()
-	}
-	wg.Wait()
 }
 
 func afterRandomTimeout(min time.Duration) <-chan time.Time {

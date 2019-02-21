@@ -6,12 +6,13 @@ import (
 )
 
 func (r *Raft) runLeader() {
-	ldr := &leaderState{
+	r.ldrState = &leaderState{
 		Raft:         r,
 		leaseTimeout: r.heartbeatTimeout, // todo: should it be same as heartbeatTimeout ?
 		newEntries:   list.New(),
 	}
-	ldr.runLoop()
+	r.ldrState.runLoop()
+	r.ldrState = nil
 }
 
 type leaderState struct {
@@ -39,11 +40,7 @@ func (ldr *leaderState) runLoop() {
 	ldr.startIndex = ldr.lastLogIndex + 1
 
 	// add a blank no-op entry into log at the start of its term
-	ldr.storeNewEntry(newEntry{
-		entry: &entry{
-			typ: entryNoop,
-		},
-	})
+	ApplyEntry(nil).execute(ldr.Raft)
 
 	// to receive new term notifications from replicators
 	newTermCh := make(chan uint64, len(ldr.config.members()))
@@ -147,16 +144,7 @@ func (ldr *leaderState) runLoop() {
 			ldr.commitAndApplyOnMajority()
 
 		case t := <-ldr.TasksCh:
-			ldr.storeNewEntry(newEntry{
-				entry: &entry{
-					typ:  entryCommand,
-					data: t.Command.([]byte),
-				},
-				task: t,
-			})
-
-		case f := <-ldr.inspectCh:
-			f(ldr.Raft)
+			t.execute(ldr.Raft)
 
 		case <-leaseTimer.C:
 			t := time.Now().Add(-ldr.leaseTimeout)
@@ -168,23 +156,6 @@ func (ldr *leaderState) runLoop() {
 			}
 		}
 	}
-}
-
-func (ldr *leaderState) storeNewEntry(ne newEntry) {
-	ne.index, ne.term = ldr.lastLogIndex+1, ldr.term
-
-	// append entry to local log
-	if ne.typ == entryNoop {
-		debug(ldr, "log.append noop", ne.index)
-	} else {
-		debug(ldr, "log.append cmd", ne.index)
-	}
-	ldr.storage.append(ne.entry)
-	ldr.lastLogIndex, ldr.lastLogTerm = ne.index, ne.term
-	ldr.newEntries.PushBack(ne)
-
-	// we updated lastLogIndex, so notify replicators
-	ldr.notifyReplicators()
 }
 
 // If majorityMatchIndex(N) > commitIndex,

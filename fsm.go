@@ -12,7 +12,13 @@ func (r *Raft) fsmLoop() {
 	defer r.wg.Done()
 	for ne := range r.fsmApplyCh {
 		debug(r.addr, "fsm.apply", ne.index)
-		ne.task.reply(r.fsm.Apply(ne.entry.data))
+		resp := r.fsm.Apply(ne.entry.data)
+
+		// ne.task is nil for follower's newEntry
+		if ne.task != nil {
+			ne.task.reply(resp)
+		}
+
 		fsmApplied(r, ne.index) // generate event
 	}
 	debug(r, "fsmLoop shutdown")

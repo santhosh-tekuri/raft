@@ -44,10 +44,7 @@ func (r *Raft) runFollower() {
 			stateChanged(r)
 
 		case t := <-r.TasksCh:
-			t.reply(NotLeaderError{r.leaderID})
-
-		case f := <-r.inspectCh:
-			f(r)
+			t.execute(r)
 		}
 	}
 }
