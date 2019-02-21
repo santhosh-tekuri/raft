@@ -63,7 +63,7 @@ func (ldr *leaderState) runLoop() {
 
 		// respond to any pending user entries
 		for e := ldr.newEntries.Front(); e != nil; e = e.Next() {
-			asyncReply(e.Value.(newEntry).respCh, NotLeaderError{ldr.leaderID})
+			e.Value.(newEntry).task.reply(NotLeaderError{ldr.leaderID})
 		}
 	}()
 
@@ -146,13 +146,13 @@ func (ldr *leaderState) runLoop() {
 
 			ldr.commitAndApplyOnMajority()
 
-		case req := <-ldr.ApplyCh:
+		case t := <-ldr.TasksCh:
 			ldr.storeNewEntry(newEntry{
 				entry: &entry{
 					typ:  entryCommand,
-					data: req.Data.([]byte),
+					data: t.Command.([]byte),
 				},
-				respCh: req.RespCh,
+				task: t,
 			})
 
 		case f := <-ldr.inspectCh:

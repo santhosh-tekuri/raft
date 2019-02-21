@@ -12,9 +12,8 @@ func (r *Raft) fsmLoop() {
 	defer r.wg.Done()
 	for ne := range r.fsmApplyCh {
 		debug(r.addr, "fsm.apply", ne.index)
-		resp := r.fsm.Apply(ne.entry.data)
+		ne.task.reply(r.fsm.Apply(ne.entry.data))
 		fsmApplied(r, ne.index) // generate event
-		asyncReply(ne.respCh, resp)
 	}
 	debug(r, "fsmLoop shutdown")
 }

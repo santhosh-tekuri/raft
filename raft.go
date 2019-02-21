@@ -44,7 +44,7 @@ type Raft struct {
 	commitIndex  uint64
 	lastApplied  uint64
 
-	ApplyCh chan ApplyRequest
+	TasksCh chan *Task
 
 	inspectCh  chan func(*Raft)
 	shutdownCh chan struct{}
@@ -73,7 +73,7 @@ func New(addrs []string, fsm FSM, stable Stable, log Log) *Raft {
 		config:           &stableConfig{members},
 		state:            follower,
 		heartbeatTimeout: heartbeatTimeout,
-		ApplyCh:          make(chan ApplyRequest, 100), // todo configurable capacity
+		TasksCh:          make(chan *Task, 100), // todo configurable capacity
 		inspectCh:        make(chan func(*Raft)),
 		shutdownCh:       make(chan struct{}),
 	}
@@ -167,31 +167,31 @@ func (r *Raft) setVotedFor(v string) {
 	r.votedFor = v
 }
 
-func asyncReply(ch chan<- interface{}, v interface{}) {
-	if ch != nil {
-		select {
-		case ch <- v:
-		default:
-			go func() {
-				ch <- v
-			}()
-		}
-	}
-}
-
 type newEntry struct {
 	*entry
-	respCh chan<- interface{}
+	task *Task
 }
 
-type ApplyRequest struct {
-	Data interface{}
+type Task struct {
+	Command interface{}
+	Result  interface{}
+	Done    chan struct{}
+}
 
-	// RespCh is the channel on which response received.
-	//
-	// In case of error, the interface{} returned will be error.
-	// It can be set to nil, if you want to fire and forget.
-	RespCh chan<- interface{}
+func (t *Task) Err() error {
+	if err, ok := t.Result.(error); ok {
+		return err
+	}
+	return nil
+}
+
+func (t *Task) reply(result interface{}) {
+	if t != nil {
+		t.Result = result
+		if t.Done != nil {
+			close(t.Done)
+		}
+	}
 }
 
 type NotLeaderError struct {
