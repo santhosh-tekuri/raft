@@ -34,14 +34,19 @@ func (r *Raft) fsmApply(newEntries *list.List) {
 	for ; r.commitIndex > r.lastApplied; r.lastApplied++ {
 		var ne newEntry
 
-		if newEntries == nil {
+		// check if entry to be applied is user submitted
+		// or we are applying old entry from storage
+		if newEntries != nil {
+			elem := newEntries.Front()
+			if elem.Value.(newEntry).index == r.lastApplied+1 {
+				ne = elem.Value.(newEntry)
+				newEntries.Remove(elem)
+			}
+		}
+
+		if ne.entry == nil {
 			ne.entry = &entry{}
 			r.storage.getEntry(r.lastApplied+1, ne.entry)
-		} else {
-			elem := newEntries.Front()
-			ne = elem.Value.(newEntry)
-			assert(ne.index == r.lastApplied+1, "BUG")
-			newEntries.Remove(elem)
 		}
 
 		debug(r, "lastApplied", ne.index)

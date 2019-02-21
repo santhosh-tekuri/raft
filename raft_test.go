@@ -331,11 +331,13 @@ func (c *cluster) launch(n int) {
 
 	c.rr = make([]*Raft, n)
 	for i := range c.rr {
-		members := make([]string, n)
-		copy(members, addrs)
-		members[0], members[i] = members[i], members[0]
 		storage := new(inmem.Storage)
-		r := New(members, &fsmMock{}, storage, storage)
+		r := New(addrs[i], &fsmMock{}, storage, storage)
+		_, err := r.storage.bootstrap(addrs, r.dialFn, 10*time.Second) // todo: timeout
+		if err != nil {
+			c.Fatalf("storage.bootstrap failed: %v", err)
+		}
+
 		r.heartbeatTimeout = c.heartbeatTimeout
 		c.rr[i] = r
 
@@ -349,7 +351,7 @@ func (c *cluster) launch(n int) {
 		if err := r.Listen(); err != nil {
 			c.Fatalf("raft.listen failed: %v", err)
 		}
-		go r.Serve()
+		go func() { _ = r.Serve() }()
 	}
 }
 

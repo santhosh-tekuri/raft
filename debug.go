@@ -56,6 +56,8 @@ func debug(args ...interface{}) {
 
 func assert(b bool, format string, args ...interface{}) {
 	if !b {
+		// wait until all pending debug messages are printed to stdout
+		debug("barrier")
 		panic(fmt.Errorf(format, args...))
 	}
 }

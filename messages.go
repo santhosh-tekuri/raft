@@ -22,6 +22,7 @@ type entryType uint8
 const (
 	entryCommand entryType = iota // note: command type must be default value
 	entryNoop
+	entryConfig
 )
 
 type entry struct {

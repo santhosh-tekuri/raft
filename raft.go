@@ -49,27 +49,18 @@ type Raft struct {
 	shutdownCh chan struct{}
 }
 
-func New(addrs []string, fsm FSM, stable Stable, log Log) *Raft {
+func New(addr string, fsm FSM, stable Stable, log Log) *Raft {
 	heartbeatTimeout := 50 * time.Millisecond // todo
 	storage := &storage{Stable: stable, log: log}
 
-	members := make(map[string]*member)
-	for _, addr := range addrs {
-		members[addr] = &member{
-			dialFn:  net.DialTimeout,
-			addr:    addr,
-			timeout: 10 * time.Second, // todo
-		}
-	}
-
 	return &Raft{
 		dialFn:           net.DialTimeout,
-		addr:             addrs[0],
+		addr:             addr,
 		fsmApplyCh:       make(chan newEntry, 128), // todo configurable capacity
 		fsm:              fsm,
 		storage:          storage,
 		server:           &server{listenFn: net.Listen},
-		config:           &stableConfig{members},
+		config:           &stableConfig{},
 		state:            follower,
 		heartbeatTimeout: heartbeatTimeout,
 		TasksCh:          make(chan Task, 100), // todo configurable capacity
@@ -101,6 +92,14 @@ func (r *Raft) Listen() error {
 	}
 	if last != nil {
 		r.lastLogIndex, r.lastLogTerm = last.index, last.term
+	}
+
+	_, latest, err := r.storage.GetConfig()
+	if err != nil {
+		return err
+	}
+	if latest != 0 {
+		r.config = r.getConfig(latest)
 	}
 
 	if err = r.server.listen(r.addr); err != nil {
@@ -163,6 +162,17 @@ func (r *Raft) setVotedFor(v string) {
 		panic(fmt.Sprintf("save votedFor failed: %v", err))
 	}
 	r.votedFor = v
+}
+
+func (r *Raft) getConfig(index uint64) config {
+	e := &entry{}
+	r.storage.getEntry(index, e)
+	assert(e.typ == entryConfig, "Raft.getConfig(%d).type: got %d, want %d", e.typ, entryConfig)
+	conf, err := decodeConfig(e.data, r.dialFn, 10*time.Second) // todo: hardcoded timeout
+	if err != nil {
+		panic(err)
+	}
+	return conf
 }
 
 type newEntry struct {

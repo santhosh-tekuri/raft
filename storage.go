@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"fmt"
 	"sync"
+	"time"
 )
 
 type Stable interface {
 	GetVars() (term uint64, votedFor string, err error)
 	SetVars(term uint64, votedFor string) error
-	GetConfigIndex() (uint64, error)
-	SetConfigIndex(i uint64) error
+	GetConfig() (committed, latest uint64, err error)
+	SetConfig(committed, latest uint64) error
 }
 
 type Log interface {
@@ -24,8 +25,8 @@ type Log interface {
 }
 
 type storage struct {
-	Stable
-	log Log
+	Stable // todo: cache values
+	log    Log
 
 	mu sync.RWMutex
 	// zero for no entries. note that we never have an entry with index zero
@@ -185,4 +186,35 @@ func (s *storage) fillEntries(req *appendEntriesRequest, nextIndex, lastIndex ui
 			s.getEntry(nextIndex+uint64(i), req.entries[i])
 		}
 	}
+}
+
+func (s *storage) bootstrap(addrs []string, dialFn dialFn, timeout time.Duration) (config, error) {
+	members := make(map[string]*member)
+	for _, addr := range addrs {
+		members[addr] = &member{
+			dialFn:  dialFn,
+			addr:    addr,
+			timeout: timeout,
+		}
+	}
+	config := &stableConfig{members}
+	bytes, err := encodeConfig(config)
+	if err != nil {
+		return nil, err
+	}
+	e := &entry{
+		typ:   entryConfig,
+		index: 1,
+		term:  1,
+		data:  bytes,
+	}
+
+	s.append(e)
+	if err := s.SetVars(1, ""); err != nil {
+		return nil, err
+	}
+	if err := s.SetConfig(0, 1); err != nil {
+		return nil, err
+	}
+	return config, nil
 }

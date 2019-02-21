@@ -1,5 +1,7 @@
 package raft
 
+import "time"
+
 // return if it is validate request
 func (r *Raft) replyRPC(rpc rpc) bool {
 	var resp message
@@ -108,6 +110,11 @@ func (r *Raft) appendEntries(req *appendEntriesRequest) *appendEntriesResponse {
 	if len(req.entries) > 0 { // todo: should we check this. what if leader wants us to truncate
 		var newEntries []*entry
 
+		committed, latest, err := r.storage.GetConfig()
+		if err != nil {
+			panic(err)
+		}
+
 		// if new entry conflicts, delete it and all that follow it
 		for i, ne := range req.entries {
 			if ne.index > r.lastLogIndex {
@@ -119,6 +126,12 @@ func (r *Raft) appendEntries(req *appendEntriesRequest) *appendEntriesResponse {
 			if e.term != ne.term { // conflicts
 				debug(r, "log.deleteGTE", ne.index)
 				r.storage.deleteGTE(ne.index)
+				if ne.index <= latest {
+					latest = committed
+					if err := r.storage.SetConfig(committed, latest); err != nil {
+						panic(err)
+					}
+				}
 				newEntries = req.entries[i:]
 				break
 			}
@@ -127,8 +140,23 @@ func (r *Raft) appendEntries(req *appendEntriesRequest) *appendEntriesResponse {
 		// append new entries not already in the log
 		if len(newEntries) > 0 {
 			debug(r, "log.appendN", "from:", newEntries[0].index, "n:", len(newEntries))
+			var confEntry *entry
 			for _, e := range newEntries {
 				r.storage.append(e)
+				if e.typ == entryConfig {
+					confEntry = e
+					committed, latest = latest, e.index
+				}
+			}
+			if confEntry != nil {
+				if err := r.storage.SetConfig(committed, latest); err != nil {
+					panic(err)
+				}
+				conf, err := decodeConfig(confEntry.data, r.dialFn, 10*time.Second) // todo
+				if err != nil {
+					panic(err)
+				}
+				r.config = conf
 			}
 			last := newEntries[len(newEntries)-1]
 			r.lastLogIndex, r.lastLogTerm = last.index, last.term

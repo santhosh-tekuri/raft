@@ -11,10 +11,11 @@ var (
 )
 
 type Storage struct {
-	muStable    sync.RWMutex
-	term        uint64
-	votedFor    string
-	configIndex uint64
+	muStable      sync.RWMutex
+	term          uint64
+	votedFor      string
+	confCommitted uint64
+	confLatest    uint64
 
 	muLog sync.RWMutex
 	list  [][]byte
@@ -33,16 +34,16 @@ func (s *Storage) SetVars(term uint64, votedFor string) error {
 	return nil
 }
 
-func (s *Storage) GetConfigIndex() (uint64, error) {
+func (s *Storage) GetConfig() (committed, latest uint64, err error) {
 	s.muStable.RLock()
 	defer s.muStable.RUnlock()
-	return s.configIndex, nil
+	return s.confCommitted, s.confLatest, nil
 }
 
-func (s *Storage) SetConfigIndex(i uint64) error {
+func (s *Storage) SetConfig(committed, latest uint64) error {
 	s.muStable.Lock()
 	defer s.muStable.Unlock()
-	s.configIndex = i
+	s.confCommitted, s.confLatest = committed, latest
 	return nil
 }
 

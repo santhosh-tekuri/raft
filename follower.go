@@ -44,7 +44,12 @@ func (r *Raft) runFollower() {
 			stateChanged(r)
 
 		case t := <-r.TasksCh:
+			before := r.config.canStartElection(r.addr)
 			t.execute(r)
+			if !before && r.config.canStartElection(r.addr) {
+				// we go config, which allows us to start election
+				timeoutCh = afterRandomTimeout(r.heartbeatTimeout)
+			}
 		}
 	}
 }

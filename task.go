@@ -1,5 +1,7 @@
 package raft
 
+import "time"
+
 type Task interface {
 	execute(r *Raft)
 	Done() <-chan struct{}
@@ -93,3 +95,35 @@ func applyEntry(t Task, r *Raft, data []byte) {
 }
 
 // ------------------------------------------------------------------------
+
+func Bootstrap(addrs []string) Task {
+	return &task{
+		fn: func(t Task, r *Raft) {
+			bootstrap(t, r, addrs)
+		},
+		done: make(chan struct{}),
+	}
+}
+
+func bootstrap(t Task, r *Raft, addrs []string) {
+	// todo: validate addrs
+	// todo: check whether bootstrap is allowed ?
+	config, err := r.storage.bootstrap(addrs, r.dialFn, 10*time.Second) // todo: timeout
+	if err != nil {
+		t.reply(err)
+		return
+	}
+	e, err := r.storage.lastEntry()
+	if err != nil {
+		t.reply(err)
+	}
+	term, votedFor, err := r.storage.GetVars()
+	if err != nil {
+		t.reply(err)
+	}
+
+	// everything is ok. bootstrapping now...
+	r.term, r.votedFor = term, votedFor
+	r.lastLogIndex, r.lastLogTerm = e.index, e.term
+	r.config = config
+}
