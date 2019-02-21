@@ -1,6 +1,10 @@
 package raft
 
-import "time"
+import (
+	"errors"
+	"fmt"
+	"time"
+)
 
 type Task interface {
 	execute(r *Raft)
@@ -96,6 +100,8 @@ func applyEntry(t Task, r *Raft, data []byte) {
 
 // ------------------------------------------------------------------------
 
+var ErrCantBootstrap = errors.New("raft: bootstrap only works on new clusters")
+
 func Bootstrap(addrs []string) Task {
 	return &task{
 		fn: func(t Task, r *Raft) {
@@ -107,7 +113,26 @@ func Bootstrap(addrs []string) Task {
 
 func bootstrap(t Task, r *Raft, addrs []string) {
 	// todo: validate addrs
+	addrsMap := make(map[string]struct{})
+	for _, addr := range addrs {
+		addrsMap[addr] = struct{}{}
+	}
+	if len(addrs) != len(addrsMap) {
+		t.reply("Raft.bootstrap: duplicate address")
+		return
+	}
+	if _, ok := addrsMap[r.addr]; !ok {
+		t.reply(fmt.Errorf("Raft.bootstrap: myself %s must be part of cluster", r.addr))
+		return
+	}
+
 	// todo: check whether bootstrap is allowed ?
+	if r.term != 0 || r.lastLogIndex != 0 {
+		t.reply(ErrCantBootstrap)
+		return
+	}
+
+	// persist config change
 	config, err := r.storage.bootstrap(addrs, r.dialFn, 10*time.Second) // todo: timeout
 	if err != nil {
 		t.reply(err)
@@ -126,4 +151,5 @@ func bootstrap(t Task, r *Raft, addrs []string) {
 	r.term, r.votedFor = term, votedFor
 	r.lastLogIndex, r.lastLogTerm = e.index, e.term
 	r.config = config
+	t.reply(nil)
 }

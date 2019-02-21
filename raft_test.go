@@ -19,7 +19,7 @@ func TestRaft_Voting(t *testing.T) {
 	debug("\nTestRaft_Voting --------------------------")
 	defer leaktest.Check(t)()
 	c := newCluster(t)
-	c.launch(3)
+	c.launch(3, true)
 	defer c.shutdown()
 	ldr := c.ensureHealthy()
 
@@ -62,7 +62,7 @@ func TestRaft_SingleNode(t *testing.T) {
 	debug("\nTestRaft_SingleNode --------------------------")
 	defer leaktest.Check(t)()
 	c := newCluster(t)
-	c.launch(1)
+	c.launch(1, true)
 	defer c.shutdown()
 	ldr := c.ensureHealthy()
 
@@ -95,7 +95,7 @@ func TestRaft_TripleNode(t *testing.T) {
 	debug("\nTestRaft_TripleNode --------------------------")
 	defer leaktest.Check(t)()
 	c := newCluster(t)
-	c.launch(3)
+	c.launch(3, true)
 	defer c.shutdown()
 	ldr := c.ensureHealthy()
 
@@ -120,7 +120,7 @@ func TestRaft_LeaderFail(t *testing.T) {
 	debug("\nTestRaft_LeaderFail --------------------------")
 	defer leaktest.Check(t)()
 	c := newCluster(t)
-	c.launch(3)
+	c.launch(3, true)
 	defer c.shutdown()
 	ldr := c.ensureHealthy()
 
@@ -189,7 +189,7 @@ func TestRaft_BehindFollower(t *testing.T) {
 	debug("\nTestRaft_BehindFollower --------------------------")
 	defer leaktest.Check(t)()
 	c := newCluster(t)
-	c.launch(3)
+	c.launch(3, true)
 	defer c.shutdown()
 	ldr := c.ensureHealthy()
 
@@ -224,7 +224,7 @@ func TestRaft_ApplyNonLeader(t *testing.T) {
 	debug("\nTestRaft_ApplyNonLeader --------------------------")
 	defer leaktest.Check(t)()
 	c := newCluster(t)
-	c.launch(3)
+	c.launch(3, true)
 	defer c.shutdown()
 	ldr := c.ensureHealthy()
 
@@ -248,7 +248,7 @@ func TestRaft_ApplyConcurrent(t *testing.T) {
 	debug("\nTestRaft_ApplyConcurrent --------------------------")
 	defer leaktest.Check(t)()
 	c := newCluster(t)
-	c.launch(3)
+	c.launch(3, true)
 	defer c.shutdown()
 	ldr := c.ensureHealthy()
 
@@ -291,6 +291,76 @@ func TestRaft_ApplyConcurrent(t *testing.T) {
 	c.ensureFSMSame(nil)
 }
 
+func TestRaft_Bootstrap(t *testing.T) {
+	debug("\nTestRaft_Bootstrap --------------------------")
+	defer leaktest.Check(t)()
+	c := newCluster(t)
+
+	// launch cluster without bootstrapping
+	addrCh := make(chan string, 3)
+	onElectionAborted(func(raft *Raft) {
+		select {
+		case addrCh <- raft.addr:
+		default:
+		}
+	})
+	defer onElectionAborted(nil)
+	c.launch(3, false)
+	defer c.shutdown()
+
+	// all nodes should must abort election
+	timeout := time.After(c.longTimeout)
+	aborted := make(map[string]struct{})
+	for i := 0; i < 3; i++ {
+		select {
+		case addr := <-addrCh:
+			aborted[addr] = struct{}{}
+		case <-timeout:
+			t.Fatal("timout in waiting for abort election")
+		}
+	}
+	if len(aborted) != 3 {
+		t.Fatalf("got %d, want 3", len(aborted))
+	}
+
+	// bootstrap one of the nodes
+	addrs := make([]string, 3)
+	for i, r := range c.rr {
+		addrs[i] = r.addr
+	}
+	if _, err := c.rr[0].waitTask(Bootstrap(addrs), c.longTimeout); err != nil {
+		t.Fatal(err)
+	}
+
+	// the bootstrapped node should be the leader
+	c.ensureHealthy()
+	ldr := c.rr[0]
+	c.ensureLeader(ldr.addr)
+
+	// should be able to apply
+	if _, err := ldr.waitApply("hello", 0); err != nil {
+		t.Fatal(err)
+	}
+	c.ensureFSMReplicated(1)
+	c.ensureFSMSame([]string{"hello"})
+
+	// ensure bootstrap fails if already bootstrapped
+	if _, err := c.rr[0].waitTask(Bootstrap(addrs), c.longTimeout); err != ErrCantBootstrap {
+		t.Fatalf("got %v, want %v", err, ErrCantBootstrap)
+	}
+	if _, err := c.rr[1].waitTask(Bootstrap(addrs), c.longTimeout); err != ErrCantBootstrap {
+		t.Fatalf("got %v, want %v", err, ErrCantBootstrap)
+	}
+
+	// disconnect leader, and ensure that new leader is chosen
+	c.disconnect(ldr)
+	c.ensureStability()
+	newLdr := c.leader()
+	if newLdr == ldr {
+		t.Fatalf("newLeader: got %s, want !=%s", newLdr.addr, ldr.addr)
+	}
+}
+
 func TestMain(m *testing.M) {
 	code := m.Run()
 
@@ -320,7 +390,7 @@ func newCluster(t *testing.T) *cluster {
 	}
 }
 
-func (c *cluster) launch(n int) {
+func (c *cluster) launch(n int, bootstrap bool) {
 	c.Helper()
 	c.network = fnet.New()
 	addrs := make([]string, n)
@@ -333,9 +403,11 @@ func (c *cluster) launch(n int) {
 	for i := range c.rr {
 		storage := new(inmem.Storage)
 		r := New(addrs[i], &fsmMock{}, storage, storage)
-		_, err := r.storage.bootstrap(addrs, r.dialFn, 10*time.Second) // todo: timeout
-		if err != nil {
-			c.Fatalf("storage.bootstrap failed: %v", err)
+		if bootstrap {
+			_, err := r.storage.bootstrap(addrs, r.dialFn, 10*time.Second) // todo: timeout
+			if err != nil {
+				c.Fatalf("storage.bootstrap failed: %v", err)
+			}
 		}
 
 		r.heartbeatTimeout = c.heartbeatTimeout
@@ -628,6 +700,7 @@ func (r *Raft) inspect(fn func(*Raft)) {
 
 var mu sync.RWMutex
 var stateChangedFn func(*Raft)
+var electionAbortedFn func(*Raft)
 var fsmAppliedFn func(*Raft, uint64)
 var voteRequestFn func(*Raft, *voteRequest)
 
@@ -635,6 +708,15 @@ func init() {
 	StateChanged = func(r *Raft, _ byte) {
 		mu.RLock()
 		f := stateChangedFn
+		mu.RUnlock()
+		if f != nil {
+			f(r)
+		}
+	}
+
+	ElectionAborted = func(r *Raft, reason string) {
+		mu.RLock()
+		f := electionAbortedFn
 		mu.RUnlock()
 		if f != nil {
 			f(r)
@@ -663,6 +745,12 @@ func init() {
 func onStateChange(f func(*Raft)) {
 	mu.Lock()
 	stateChangedFn = f
+	mu.Unlock()
+}
+
+func onElectionAborted(f func(*Raft)) {
+	mu.Lock()
+	electionAbortedFn = f
 	mu.Unlock()
 }
 
