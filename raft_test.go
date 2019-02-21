@@ -202,7 +202,7 @@ func TestRaft_BehindFollower(t *testing.T) {
 
 	// commit a lot of things
 	for i := 0; i < 100; i++ {
-		ldr.ApplyCh <- NewEntry{Data: []byte(fmt.Sprintf("test%d", i))}
+		ldr.ApplyCh <- ApplyRequest{Data: []byte(fmt.Sprintf("test%d", i))}
 	}
 	if _, err := ldr.waitApply("test100", c.longTimeout); err != nil {
 		t.Fatal(err)
@@ -590,7 +590,7 @@ func (r *Raft) waitApply(cmd string, timeout time.Duration) (fsmReply, error) {
 		timer = time.After(timeout)
 	}
 	respCh := make(chan interface{}, 1)
-	r.ApplyCh <- NewEntry{Data: []byte(cmd), RespCh: respCh}
+	r.ApplyCh <- ApplyRequest{Data: []byte(cmd), RespCh: respCh}
 	select {
 	case resp := <-respCh:
 		if err, ok := resp.(error); ok {

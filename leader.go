@@ -39,7 +39,7 @@ func (ldr *leaderState) runLoop() {
 	ldr.startIndex = ldr.lastLogIndex + 1
 
 	// add a blank no-op entry into log at the start of its term
-	ldr.storeNewEntry(NewEntry{
+	ldr.storeNewEntry(newEntry{
 		entry: &entry{
 			typ: entryNoop,
 		},
@@ -63,7 +63,7 @@ func (ldr *leaderState) runLoop() {
 
 		// respond to any pending user entries
 		for e := ldr.newEntries.Front(); e != nil; e = e.Next() {
-			e.Value.(NewEntry).sendResponse(NotLeaderError{ldr.leaderID})
+			asyncReply(e.Value.(newEntry).respCh, NotLeaderError{ldr.leaderID})
 		}
 	}()
 
@@ -146,8 +146,14 @@ func (ldr *leaderState) runLoop() {
 
 			ldr.commitAndApplyOnMajority()
 
-		case ne := <-ldr.ApplyCh:
-			ldr.storeNewEntry(ne)
+		case req := <-ldr.ApplyCh:
+			ldr.storeNewEntry(newEntry{
+				entry: &entry{
+					typ:  entryCommand,
+					data: req.Data.([]byte),
+				},
+				respCh: req.RespCh,
+			})
 
 		case f := <-ldr.inspectCh:
 			f(ldr.Raft)
@@ -164,11 +170,7 @@ func (ldr *leaderState) runLoop() {
 	}
 }
 
-func (ldr *leaderState) storeNewEntry(ne NewEntry) {
-	if ne.entry == nil {
-		ne.entry = &entry{}
-	}
-	ne.data, ne.Data = ne.Data, nil
+func (ldr *leaderState) storeNewEntry(ne newEntry) {
 	ne.index, ne.term = ldr.lastLogIndex+1, ldr.term
 
 	// append entry to local log

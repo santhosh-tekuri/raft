@@ -10,11 +10,11 @@ type FSM interface {
 
 func (r *Raft) fsmLoop() {
 	defer r.wg.Done()
-	for newEntry := range r.fsmApplyCh {
-		debug(r.addr, "fsm.apply", newEntry.index)
-		resp := r.fsm.Apply(newEntry.entry.data)
-		fsmApplied(r, newEntry.index) // generate event
-		newEntry.sendResponse(resp)
+	for ne := range r.fsmApplyCh {
+		debug(r.addr, "fsm.apply", ne.index)
+		resp := r.fsm.Apply(ne.entry.data)
+		fsmApplied(r, ne.index) // generate event
+		asyncReply(ne.respCh, resp)
 	}
 	debug(r, "fsmLoop shutdown")
 }
@@ -27,14 +27,14 @@ func (r *Raft) fsmLoop() {
 //      - reply end user with response
 func (r *Raft) fsmApply(newEntries *list.List) {
 	for ; r.commitIndex > r.lastApplied; r.lastApplied++ {
-		var ne NewEntry
+		var ne newEntry
 
 		if newEntries == nil {
 			ne.entry = &entry{}
 			r.storage.getEntry(r.lastApplied+1, ne.entry)
 		} else {
 			elem := newEntries.Front()
-			ne = elem.Value.(NewEntry)
+			ne = elem.Value.(newEntry)
 			assert(ne.index == r.lastApplied+1, "BUG")
 			newEntries.Remove(elem)
 		}

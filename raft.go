@@ -28,7 +28,7 @@ type Raft struct {
 	config config
 	wg     sync.WaitGroup
 
-	fsmApplyCh chan NewEntry
+	fsmApplyCh chan newEntry
 	fsm        FSM
 
 	storage  *storage
@@ -44,7 +44,7 @@ type Raft struct {
 	commitIndex  uint64
 	lastApplied  uint64
 
-	ApplyCh chan NewEntry
+	ApplyCh chan ApplyRequest
 
 	inspectCh  chan func(*Raft)
 	shutdownCh chan struct{}
@@ -66,14 +66,14 @@ func New(addrs []string, fsm FSM, stable Stable, log Log) *Raft {
 	return &Raft{
 		dialFn:           net.DialTimeout,
 		addr:             addrs[0],
-		fsmApplyCh:       make(chan NewEntry, 128), // todo configurable capacity
+		fsmApplyCh:       make(chan newEntry, 128), // todo configurable capacity
 		fsm:              fsm,
 		storage:          storage,
 		server:           &server{listenFn: net.Listen},
 		config:           &stableConfig{members},
 		state:            follower,
 		heartbeatTimeout: heartbeatTimeout,
-		ApplyCh:          make(chan NewEntry, 100), // todo configurable capacity
+		ApplyCh:          make(chan ApplyRequest, 100), // todo configurable capacity
 		inspectCh:        make(chan func(*Raft)),
 		shutdownCh:       make(chan struct{}),
 	}
@@ -167,27 +167,31 @@ func (r *Raft) setVotedFor(v string) {
 	r.votedFor = v
 }
 
-type NewEntry struct {
+func asyncReply(ch chan<- interface{}, v interface{}) {
+	if ch != nil {
+		select {
+		case ch <- v:
+		default:
+			go func() {
+				ch <- v
+			}()
+		}
+	}
+}
+
+type newEntry struct {
 	*entry
-	Data []byte
+	respCh chan<- interface{}
+}
+
+type ApplyRequest struct {
+	Data interface{}
 
 	// RespCh is the channel on which response received.
 	//
 	// In case of error, the interface{} returned will be error.
 	// It can be set to nil, if you want to fire and forget.
 	RespCh chan<- interface{}
-}
-
-func (ne NewEntry) sendResponse(resp interface{}) {
-	if ne.RespCh != nil {
-		select {
-		case ne.RespCh <- resp:
-		default:
-			go func() {
-				ne.RespCh <- resp
-			}()
-		}
-	}
 }
 
 type NotLeaderError struct {
