@@ -53,7 +53,7 @@ func (m *member) returnConn(conn *netConn) {
 	}
 }
 
-func (m *member) doRPC(typ rpcType, req, resp command) error {
+func (m *member) doRPC(typ rpcType, req, resp message) error {
 	conn, err := m.getConn()
 	if err != nil {
 		return err

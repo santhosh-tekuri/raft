@@ -2,7 +2,7 @@ package raft
 
 // return if it is validate request
 func (r *Raft) replyRPC(rpc rpc) bool {
-	var resp command
+	var resp message
 	var valid bool
 	switch req := rpc.req.(type) {
 	case *voteRequest:

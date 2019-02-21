@@ -15,8 +15,8 @@ import (
 var ErrServerClosed = errors.New("raft: Server closed")
 
 type rpc struct {
-	req    command
-	respCh chan<- command
+	req    message
+	respCh chan<- message
 }
 
 type server struct {
@@ -104,7 +104,7 @@ func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) erro
 		break
 	}
 
-	respCh := make(chan command, 1)
+	respCh := make(chan message, 1)
 	rpc := rpc{respCh: respCh}
 
 	// decode request

@@ -11,7 +11,7 @@ const (
 	rpcAppendEntries
 )
 
-type command interface {
+type message interface {
 	getTerm() uint64
 	decode(r io.Reader) error
 	encode(w io.Writer) error

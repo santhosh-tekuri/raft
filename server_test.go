@@ -14,7 +14,7 @@ func TestServer(t *testing.T) {
 	tests := []struct {
 		name      string
 		typ       rpcType
-		req, resp command
+		req, resp message
 	}{
 		{
 			name: "requestVote",
@@ -62,7 +62,7 @@ func TestServer(t *testing.T) {
 				t.Fatalf("dial failed: %v", err)
 			}
 			defer c.close()
-			resp := reflect.New(reflect.TypeOf(test.resp).Elem()).Interface().(command)
+			resp := reflect.New(reflect.TypeOf(test.resp).Elem()).Interface().(message)
 			if err := c.doRPC(test.typ, test.req, resp); err != nil {
 				t.Fatalf("c.doRPC() failed: %v", err)
 			}

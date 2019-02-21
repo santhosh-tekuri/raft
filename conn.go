@@ -29,7 +29,7 @@ func dial(dialFn dialFn, target string, timeout time.Duration) (*netConn, error)
 	}, nil
 }
 
-func (n *netConn) doRPC(typ rpcType, req, resp command) error {
+func (n *netConn) doRPC(typ rpcType, req, resp message) error {
 	if err := n.conn.SetDeadline(time.Now().Add(n.timeout)); err != nil {
 		return err
 	}

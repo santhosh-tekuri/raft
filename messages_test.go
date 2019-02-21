@@ -8,12 +8,12 @@ import (
 	"testing"
 )
 
-func TestCommands(t *testing.T) {
-	type command interface {
+func TestMessages(t *testing.T) {
+	type message interface {
 		decode(r io.Reader) error
 		encode(w io.Writer) error
 	}
-	tests := []command{
+	tests := []message{
 		&entry{index: 3, term: 5, typ: 2, data: []byte("sleep")},
 		&voteRequest{term: 5, candidateID: "localhost:1234", lastLogIndex: 3, lastLogTerm: 5},
 		&voteResponse{term: 5, granted: true},
@@ -27,14 +27,14 @@ func TestCommands(t *testing.T) {
 		&appendEntriesResponse{term: 5, success: true, lastLogIndex: 9},
 	}
 	for _, test := range tests {
-		name := fmt.Sprintf("command(%T)", test)
+		name := fmt.Sprintf("message(%T)", test)
 		t.Run(name, func(t *testing.T) {
 			b := new(bytes.Buffer)
 			if err := test.encode(b); err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			typ := reflect.TypeOf(test).Elem()
-			cmd := reflect.New(typ).Interface().(command)
+			cmd := reflect.New(typ).Interface().(message)
 			if err := cmd.decode(b); err != nil {
 				t.Fatalf("decode failed: %v", err)
 			}
