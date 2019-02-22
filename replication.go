@@ -9,9 +9,9 @@ type replication struct {
 	member           *member
 	storage          *storage
 	heartbeatTimeout time.Duration
-
-	nextIndex  uint64
-	matchIndex uint64
+	conn             *netConn
+	nextIndex        uint64
+	matchIndex       uint64
 
 	// leader notifies replication with update
 	leaderUpdateCh chan leaderUpdate
@@ -26,6 +26,12 @@ type replication struct {
 const maxAppendEntries = 64 // todo: should be configurable
 
 func (repl *replication) runLoop(req *appendEntriesRequest) {
+	defer func() {
+		if repl.conn != nil {
+			repl.member.returnConn(repl.conn)
+		}
+	}()
+
 	if repl.member.addr == req.leaderID {
 		// self replication: when leaderUpdate comes
 		// just notify that it is replicated
@@ -155,9 +161,20 @@ func (repl *replication) retryAppendEntries(req *appendEntriesRequest) (*appendE
 }
 
 func (repl *replication) appendEntries(req *appendEntriesRequest) (*appendEntriesResponse, error) {
+	if repl.conn == nil {
+		conn, err := repl.member.getConn()
+		if err != nil {
+			return nil, err
+		}
+		repl.conn = conn
+	}
 	resp := new(appendEntriesResponse)
-	err := repl.member.doRPC(rpcAppendEntries, req, resp)
+	err := repl.conn.doRPC(rpcAppendEntries, req, resp)
 	repl.member.contactSucceeded(err == nil)
+	if err != nil {
+		_ = repl.conn.close()
+		repl.conn = nil
+	}
 	return resp, err
 }
 

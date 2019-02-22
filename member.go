@@ -53,23 +53,18 @@ func (m *member) returnConn(conn *netConn) {
 	}
 }
 
-func (m *member) doRPC(typ rpcType, req, resp message) error {
+func (m *member) requestVote(req *voteRequest) (*voteResponse, error) {
 	conn, err := m.getConn()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if err = conn.doRPC(typ, req, resp); err != nil {
+	resp := new(voteResponse)
+	if err = conn.doRPC(rpcVote, req, resp); err != nil {
 		_ = conn.close()
-		return err
+		return resp, err
 	}
 	m.returnConn(conn)
-	return nil
-}
-
-func (m *member) requestVote(req *voteRequest) (*voteResponse, error) {
-	resp := new(voteResponse)
-	err := m.doRPC(rpcVote, req, resp)
-	return resp, err
+	return resp, nil
 }
 
 func (m *member) contactSucceeded(b bool) {
