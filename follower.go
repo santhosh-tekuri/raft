@@ -11,7 +11,7 @@ func (r *Raft) runFollower() {
 			return
 
 		case rpc := <-r.rpcCh:
-			if valid := r.replyRPC(rpc); valid {
+			if resetElectionTimer := r.replyRPC(rpc); resetElectionTimer {
 				// a server remains in follower state as long as it receives valid
 				// RPCs from a leader or candidate
 				timeoutCh = afterRandomTimeout(r.heartbeatTimeout)

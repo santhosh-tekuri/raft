@@ -1,21 +1,27 @@
 package raft
 
-// return if it is validate request
+// If election timeout elapses without receiving AppendEntries
+// RPC from current leader or granting vote to candidate:
+// convert to candidate.
+//
+// replyRPC return true if it is appendEntries request
+// or vote granted
 func (r *Raft) replyRPC(rpc rpc) bool {
 	var resp message
-	var valid bool
+	var resetElectionTimer bool
 	switch req := rpc.req.(type) {
 	case *voteRequest:
 		reply := r.onVoteRequest(req)
-		resp, valid = reply, reply.granted
+		resp, resetElectionTimer = reply, reply.granted
 	case *appendEntriesRequest:
 		reply := r.onAppendEntriesRequest(req)
-		resp, valid = reply, reply.success
+		resp, resetElectionTimer = reply, true
+		resp, resetElectionTimer = reply, true
 	default:
 		// todo
 	}
 	rpc.respCh <- resp
-	return valid
+	return resetElectionTimer
 }
 
 func (r *Raft) onVoteRequest(req *voteRequest) *voteResponse {
