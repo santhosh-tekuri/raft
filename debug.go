@@ -5,6 +5,7 @@ package raft
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/fatih/color"
 )
@@ -20,7 +21,7 @@ var messages = func() chan string {
 	ch := make(chan string, 10000)
 	go func() {
 		for msg := range ch {
-			if msg == "barrier\n" {
+			if isBarrier(msg) {
 				// signal that barrier reached
 				barrierCh <- struct{}{}
 				continue
@@ -45,10 +46,17 @@ var messages = func() chan string {
 	return ch
 }()
 
+var boot = time.Now()
+
+func isBarrier(msg string) bool {
+	return strings.HasSuffix(msg, "barrier\n")
+}
+
 func debug(args ...interface{}) {
-	msg := fmt.Sprintln(args...)
+	ms := time.Now().Sub(boot).Nanoseconds() / 1e6
+	msg := fmt.Sprintln(append([]interface{}{ms}, args...)...)
 	messages <- msg
-	if msg == "barrier\n" {
+	if isBarrier(msg) {
 		// wait all pending messages are printed
 		<-barrierCh
 	}
