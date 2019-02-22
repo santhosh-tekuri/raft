@@ -55,6 +55,7 @@ func ApplyEntry(data []byte) Task {
 	return newEntry{
 		task: &task{done: make(chan struct{})},
 		entry: &entry{
+			typ:  entryCommand,
 			data: data,
 		},
 	}
