@@ -3,6 +3,7 @@ package raft
 import (
 	"bufio"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -50,4 +51,41 @@ func (n *netConn) doRPC(typ rpcType, req, resp message) error {
 
 func (n *netConn) close() error {
 	return n.conn.Close()
+}
+
+// --------------------------------------------------------------------
+
+type connPool struct {
+	addr    string
+	dialFn  dialFn
+	timeout time.Duration
+	max     int
+
+	mu    sync.Mutex
+	conns []*netConn
+}
+
+func (pool *connPool) getConn() (*netConn, error) {
+	pool.mu.Lock()
+	defer pool.mu.Unlock()
+
+	num := len(pool.conns)
+	if num == 0 {
+		return dial(pool.dialFn, pool.addr, pool.timeout)
+	}
+	var conn *netConn
+	conn, pool.conns[num-1] = pool.conns[num-1], nil
+	pool.conns = pool.conns[:num-1]
+	return conn, nil
+}
+
+func (pool *connPool) returnConn(conn *netConn) {
+	pool.mu.Lock()
+	defer pool.mu.Unlock()
+
+	if len(pool.conns) < pool.max {
+		pool.conns = append(pool.conns, conn)
+	} else {
+		_ = conn.close()
+	}
 }

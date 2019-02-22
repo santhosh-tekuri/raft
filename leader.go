@@ -2,20 +2,21 @@ package raft
 
 import (
 	"container/list"
+	"sort"
 	"time"
 )
 
 func (r *Raft) runLeader() {
-	r.ldrState = &leaderState{
+	r.leadership = &leadership{
 		Raft:         r,
 		leaseTimeout: r.heartbeatTimeout, // todo: should it be same as heartbeatTimeout ?
 		newEntries:   list.New(),
 	}
-	r.ldrState.runLoop()
-	r.ldrState = nil
+	r.leadership.runLoop()
+	r.leadership = nil
 }
 
-type leaderState struct {
+type leadership struct {
 	*Raft
 
 	// if quorum of nodes are not reachable for this duration
@@ -30,12 +31,25 @@ type leaderState struct {
 	// committed entries are dequeued and handed over to fsm go-routine
 	newEntries *list.List
 
+	voters map[string]*member
+
 	// holds running replications, key is addr
 	repls map[string]*replication
 }
 
-func (ldr *leaderState) runLoop() {
+func (ldr *leadership) runLoop() {
 	assert(ldr.leaderID == ldr.addr, "%s ldr.leaderID: got %s, want %s", ldr, ldr.leaderID, ldr.addr)
+
+	ldr.voters = make(map[string]*member)
+	for _, node := range ldr.configs.latest.nodes {
+		if node.voter {
+			ldr.voters[node.addr] = &member{
+				addr:       node.addr,
+				connPool:   ldr.getConnPool(node.addr), // todo: if we get connpool in runleader can we remove connpoolsMu in raft ?
+				matchIndex: 0,                          // matchIndex initialized to zero
+			}
+		}
+	}
 
 	ldr.startIndex = ldr.lastLogIndex + 1
 
@@ -43,10 +57,10 @@ func (ldr *leaderState) runLoop() {
 	ApplyEntry(nil).execute(ldr.Raft)
 
 	// to receive new term notifications from replicators
-	newTermCh := make(chan uint64, len(ldr.config.members()))
+	newTermCh := make(chan uint64, len(ldr.voters))
 
 	// to receive matchIndex updates from replicators
-	matchUpdatedCh := make(chan *replication, len(ldr.config.members()))
+	matchUpdatedCh := make(chan *replication, len(ldr.voters))
 
 	// to send stop signal to replicators
 	stopReplsCh := make(chan struct{})
@@ -66,9 +80,7 @@ func (ldr *leaderState) runLoop() {
 
 	// start replication routine for each follower
 	ldr.repls = make(map[string]*replication)
-	for _, m := range ldr.config.members() {
-		// matchIndex initialized to zero
-		m.matchIndex = 0 // todo: should we reset always to zero?
+	for _, m := range ldr.voters {
 		repl := &replication{
 			member:           m,
 			heartbeatTimeout: ldr.heartbeatTimeout,
@@ -148,7 +160,7 @@ func (ldr *leaderState) runLoop() {
 
 		case <-leaseTimer.C:
 			t := time.Now().Add(-ldr.leaseTimeout)
-			if !ldr.config.isQuorumReachable(t) {
+			if !ldr.isQuorumReachable(t) {
 				debug(ldr, "quorumUnreachable")
 				ldr.state = follower
 				ldr.leaderID = ""
@@ -158,10 +170,44 @@ func (ldr *leaderState) runLoop() {
 	}
 }
 
+func (ldr *leadership) quorum() int {
+	return len(ldr.voters)/2 + 1
+}
+
+// is quorum of nodes reachable after time t
+func (ldr *leadership) isQuorumReachable(t time.Time) bool {
+	reachable := 0
+	for _, v := range ldr.voters {
+		if v.contactedAfter(t) {
+			reachable++
+		}
+	}
+	return reachable >= ldr.quorum()
+}
+
+// computes N such that, a majority of matchIndex[i] ≥ N
+func (ldr *leadership) majorityMatchIndex() uint64 {
+	if len(ldr.voters) == 1 {
+		for _, v := range ldr.voters {
+			return v.matchIndex
+		}
+	}
+
+	matched := make(decrUint64Slice, len(ldr.voters))
+	i := 0
+	for _, v := range ldr.voters {
+		matched[i] = v.matchIndex
+		i++
+	}
+	// sort in decrease order
+	sort.Sort(matched)
+	return matched[ldr.quorum()-1]
+}
+
 // If majorityMatchIndex(N) > commitIndex,
 // and log[N].term == currentTerm: set commitIndex = N
-func (ldr *leaderState) commitAndApplyOnMajority() {
-	majorityMatchIndex := ldr.config.majorityMatchIndex()
+func (ldr *leadership) commitAndApplyOnMajority() {
+	majorityMatchIndex := ldr.majorityMatchIndex()
 
 	// note: if majorityMatchIndex >= ldr.startIndex, it also mean
 	// majorityMatchIndex.term == currentTerm
@@ -173,7 +219,7 @@ func (ldr *leaderState) commitAndApplyOnMajority() {
 	}
 }
 
-func (ldr *leaderState) notifyReplicators() {
+func (ldr *leadership) notifyReplicators() {
 	leaderUpdate := leaderUpdate{
 		lastIndex:   ldr.lastLogIndex,
 		commitIndex: ldr.commitIndex,
@@ -186,3 +232,11 @@ func (ldr *leaderState) notifyReplicators() {
 		}
 	}
 }
+
+// -------------------------------------------------------
+
+type decrUint64Slice []uint64
+
+func (s decrUint64Slice) Len() int           { return len(s) }
+func (s decrUint64Slice) Less(i, j int) bool { return s[i] > s[j] }
+func (s decrUint64Slice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }

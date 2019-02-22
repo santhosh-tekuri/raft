@@ -30,16 +30,16 @@ func TestRaft_Voting(t *testing.T) {
 		req.lastLogTerm = r.lastLogTerm
 	})
 
-	var followers []*member
-	for _, m := range ldr.config.members() {
-		if m.addr != ldr.addr {
-			followers = append(followers, m)
+	var followers []string
+	for _, node := range ldr.configs.latest.nodes {
+		if node.voter && node.addr != ldr.addr {
+			followers = append(followers, node.addr)
 		}
 	}
 
 	// a follower that thinks there's a leader should vote for that leader
 	req.candidateID = ldr.addr
-	resp, err := followers[0].requestVote(req)
+	resp, err := ldr.requestVote(followers[0], req)
 	if err != nil {
 		t.Fatalf("requestVote failed: %v", err)
 	}
@@ -48,8 +48,8 @@ func TestRaft_Voting(t *testing.T) {
 	}
 
 	// a follower that thinks there's a leader shouldn't vote for a different candidate
-	req.candidateID = followers[0].addr
-	resp, err = followers[1].requestVote(req)
+	req.candidateID = followers[0]
+	resp, err = ldr.requestVote(followers[1], req)
 	if err != nil {
 		t.Fatalf("requestVote failed: %v", err)
 	}
@@ -401,13 +401,18 @@ func (c *cluster) launch(n int, bootstrap bool) {
 
 	c.rr = make([]*Raft, n)
 	for i := range c.rr {
-		storage := new(inmem.Storage)
-		r := New(addrs[i], &fsmMock{}, storage, storage)
+		inmemStorage := new(inmem.Storage)
 		if bootstrap {
-			_, err := r.storage.bootstrap(addrs, r.dialFn, 10*time.Second) // todo: timeout
+			storage := storage{Stable: inmemStorage, log: inmemStorage}
+			_, err := storage.bootstrap(addrs)
 			if err != nil {
 				c.Fatalf("storage.bootstrap failed: %v", err)
 			}
+		}
+
+		r, err := New(addrs[i], &fsmMock{}, inmemStorage, inmemStorage)
+		if err != nil {
+			c.Fatal(err)
 		}
 
 		r.heartbeatTimeout = c.heartbeatTimeout
@@ -416,9 +421,6 @@ func (c *cluster) launch(n int, bootstrap bool) {
 		// switch to fake transport
 		host := c.network.Host(string('A' + i))
 		r.listenFn, r.dialFn = host.Listen, host.DialTimeout
-		for _, m := range r.config.members() {
-			m.dialFn = host.DialTimeout
-		}
 
 		if err := r.Listen(); err != nil {
 			c.Fatalf("raft.listen failed: %v", err)
@@ -718,6 +720,7 @@ func init() {
 		mu.RLock()
 		f := electionAbortedFn
 		mu.RUnlock()
+		debug(r, "electionAborted", reason)
 		if f != nil {
 			f(r)
 		}

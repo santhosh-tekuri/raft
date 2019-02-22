@@ -1,17 +1,15 @@
 package raft
 
-import "time"
-
 // return if it is validate request
 func (r *Raft) replyRPC(rpc rpc) bool {
 	var resp message
 	var valid bool
 	switch req := rpc.req.(type) {
 	case *voteRequest:
-		reply := r.requestVote(req)
+		reply := r.onVoteRequest(req)
 		resp, valid = reply, reply.granted
 	case *appendEntriesRequest:
-		reply := r.appendEntries(req)
+		reply := r.onAppendEntriesRequest(req)
 		resp, valid = reply, reply.success
 	default:
 		// todo
@@ -20,7 +18,7 @@ func (r *Raft) replyRPC(rpc rpc) bool {
 	return valid
 }
 
-func (r *Raft) requestVote(req *voteRequest) *voteResponse {
+func (r *Raft) onVoteRequest(req *voteRequest) *voteResponse {
 	debug(r, "<< voteRequest", req.term, req.candidateID, req.lastLogIndex, req.lastLogTerm)
 	gotVoteRequest(r, req)
 	resp := &voteResponse{
@@ -62,7 +60,7 @@ func (r *Raft) requestVote(req *voteRequest) *voteResponse {
 	return resp
 }
 
-func (r *Raft) appendEntries(req *appendEntriesRequest) *appendEntriesResponse {
+func (r *Raft) onAppendEntriesRequest(req *appendEntriesRequest) *appendEntriesResponse {
 	resp := &appendEntriesResponse{
 		term:         r.term,
 		success:      false,
@@ -110,11 +108,6 @@ func (r *Raft) appendEntries(req *appendEntriesRequest) *appendEntriesResponse {
 	if len(req.entries) > 0 { // todo: should we check this. what if leader wants us to truncate
 		var newEntries []*entry
 
-		committed, latest, err := r.storage.GetConfig()
-		if err != nil {
-			panic(err)
-		}
-
 		// if new entry conflicts, delete it and all that follow it
 		for i, ne := range req.entries {
 			if ne.index > r.lastLogIndex {
@@ -126,11 +119,9 @@ func (r *Raft) appendEntries(req *appendEntriesRequest) *appendEntriesResponse {
 			if e.term != ne.term { // conflicts
 				debug(r, "log.deleteGTE", ne.index)
 				r.storage.deleteGTE(ne.index)
-				if ne.index <= latest {
-					latest = committed
-					if err := r.storage.SetConfig(committed, latest); err != nil {
-						panic(err)
-					}
+				if ne.index <= r.configs.latest.index {
+					r.configs.latest = r.configs.committed
+					r.storage.setConfigs(r.configs)
 				}
 				newEntries = req.entries[i:]
 				break
@@ -145,18 +136,14 @@ func (r *Raft) appendEntries(req *appendEntriesRequest) *appendEntriesResponse {
 				r.storage.append(e)
 				if e.typ == entryConfig {
 					confEntry = e
-					committed, latest = latest, e.index
+					r.configs.committed = r.configs.latest
 				}
 			}
 			if confEntry != nil {
-				if err := r.storage.SetConfig(committed, latest); err != nil {
+				if err := r.configs.latest.decode(confEntry); err != nil {
 					panic(err)
 				}
-				conf, err := decodeConfig(confEntry.data, r.dialFn, 10*time.Second) // todo
-				if err != nil {
-					panic(err)
-				}
-				r.config = conf
+				r.storage.setConfigs(r.configs)
 			}
 			last := newEntries[len(newEntries)-1]
 			r.lastLogIndex, r.lastLogTerm = last.index, last.term

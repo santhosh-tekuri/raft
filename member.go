@@ -10,13 +10,8 @@ type leaderUpdate struct {
 }
 
 type member struct {
-	dialFn  dialFn
-	addr    string
-	timeout time.Duration
-
-	connPoolMu sync.Mutex
-	connPool   []*netConn
-	maxConns   int
+	addr     string
+	connPool *connPool
 
 	// owned exclusively by raft main goroutine
 	// used to recalculateMatch
@@ -26,45 +21,6 @@ type member struct {
 	// zero value means it is reachable
 	noContactMu sync.RWMutex
 	noContact   time.Time
-}
-
-func (m *member) getConn() (*netConn, error) {
-	m.connPoolMu.Lock()
-	defer m.connPoolMu.Unlock()
-
-	num := len(m.connPool)
-	if num == 0 {
-		return dial(m.dialFn, m.addr, m.timeout)
-	}
-	var conn *netConn
-	conn, m.connPool[num-1] = m.connPool[num-1], nil
-	m.connPool = m.connPool[:num-1]
-	return conn, nil
-}
-
-func (m *member) returnConn(conn *netConn) {
-	m.connPoolMu.Lock()
-	defer m.connPoolMu.Unlock()
-
-	if len(m.connPool) < m.maxConns {
-		m.connPool = append(m.connPool, conn)
-	} else {
-		_ = conn.close()
-	}
-}
-
-func (m *member) requestVote(req *voteRequest) (*voteResponse, error) {
-	conn, err := m.getConn()
-	if err != nil {
-		return nil, err
-	}
-	resp := new(voteResponse)
-	if err = conn.doRPC(rpcVote, req, resp); err != nil {
-		_ = conn.close()
-		return resp, err
-	}
-	m.returnConn(conn)
-	return resp, nil
 }
 
 func (m *member) contactSucceeded(b bool) {

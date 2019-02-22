@@ -6,7 +6,7 @@ func (r *Raft) runCandidate() {
 	assert(r.leaderID == "", "%s r.leaderID: got %s, want ", r, r.leaderID)
 	timeoutCh := afterRandomTimeout(r.heartbeatTimeout)
 	results := r.startElection()
-	votes := make(map[string]struct{})
+	votesNeeded := r.configs.latest.quorum()
 	for r.state == candidate {
 		select {
 		case <-r.shutdownCh:
@@ -20,6 +20,9 @@ func (r *Raft) runCandidate() {
 				debug(r, "<< voteResponse", vote.voterID, vote.granted, vote.term, vote.err)
 			}
 
+			if vote.err != nil {
+				continue
+			}
 			// if response contains term T > currentTerm:
 			// set currentTerm = T, convert to follower
 			if vote.term > r.term {
@@ -32,8 +35,8 @@ func (r *Raft) runCandidate() {
 
 			// if votes received from majority of servers: become leader
 			if vote.granted {
-				votes[vote.voterID] = struct{}{}
-				if r.config.isQuorum(votes) {
+				votesNeeded--
+				if votesNeeded == 0 {
 					debug(r, "candidate -> leader")
 					r.state = leader
 					r.leaderID = r.addr
@@ -58,7 +61,7 @@ type voteResult struct {
 }
 
 func (r *Raft) startElection() <-chan voteResult {
-	results := make(chan voteResult, len(r.config.members()))
+	results := make(chan voteResult, len(r.configs.latest.nodes))
 
 	// increment currentTerm
 	r.setTerm(r.term + 1)
@@ -73,8 +76,11 @@ func (r *Raft) startElection() <-chan voteResult {
 		lastLogIndex: r.lastLogIndex,
 		lastLogTerm:  r.lastLogTerm,
 	}
-	for _, m := range r.config.members() {
-		if m.addr == r.addr {
+	for _, n := range r.configs.latest.nodes {
+		if !n.voter {
+			continue
+		}
+		if n.addr == r.addr {
 			// vote for self
 			r.setVotedFor(r.addr)
 			results <- voteResult{
@@ -86,24 +92,40 @@ func (r *Raft) startElection() <-chan voteResult {
 			}
 			continue
 		}
-		go func(m *member) {
+		go func(n node) {
 			result := voteResult{
 				voteResponse: &voteResponse{
 					term:    req.term,
 					granted: false,
 				},
-				voterID: m.addr,
+				voterID: n.addr,
 			}
 			defer func() {
 				results <- result
 			}()
-			resp, err := m.requestVote(req)
+			resp, err := r.requestVote(n.addr, req)
 			if err != nil {
 				result.err = err
 				return
 			}
 			result.voteResponse = resp
-		}(m)
+		}(n)
 	}
 	return results
+}
+
+func (r *Raft) requestVote(addr string, req *voteRequest) (*voteResponse, error) {
+	debug(r, ">> requestVote", addr)
+	pool := r.getConnPool(addr)
+	conn, err := pool.getConn()
+	if err != nil {
+		return nil, err
+	}
+	resp := new(voteResponse)
+	if err = conn.doRPC(rpcVote, req, resp); err != nil {
+		_ = conn.close()
+		return resp, err
+	}
+	pool.returnConn(conn)
+	return resp, nil
 }

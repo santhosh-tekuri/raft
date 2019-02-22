@@ -24,9 +24,9 @@ type Raft struct {
 	*server
 	dialFn dialFn
 
-	addr   string
-	config config
-	wg     sync.WaitGroup
+	addr    string
+	configs configs
+	wg      sync.WaitGroup
 
 	fsmApplyCh chan newEntry
 	fsm        FSM
@@ -44,28 +44,77 @@ type Raft struct {
 	commitIndex  uint64
 	lastApplied  uint64
 
-	ldrState   *leaderState
+	connPoolsMu sync.Mutex
+	connPools   map[string]*connPool
+
+	leadership *leadership
 	TasksCh    chan Task
 	shutdownCh chan struct{}
 }
 
-func New(addr string, fsm FSM, stable Stable, log Log) *Raft {
-	heartbeatTimeout := 50 * time.Millisecond // todo
+func New(addr string, fsm FSM, stable Stable, log Log) (*Raft, error) {
 	storage := &storage{Stable: stable, log: log}
+	if err := storage.init(); err != nil {
+		return nil, err
+	}
 
+	term, votedFor, err := storage.GetVars()
+	if err != nil {
+		return nil, err
+	}
+
+	var lastLogIndex, lastLogTerm uint64
+	last, err := storage.lastEntry()
+	if err != nil {
+		return nil, err
+	}
+	if last != nil {
+		lastLogIndex, lastLogTerm = last.index, last.term
+	}
+
+	configs := configs{}
+	committed, latest, err := storage.GetConfig()
+	if err != nil {
+		return nil, err
+	}
+	if committed != 0 {
+		e := &entry{}
+		storage.getEntry(committed, e)
+		if err := configs.committed.decode(e); err != nil {
+			return nil, err
+		}
+	}
+	if latest != 0 {
+		e := &entry{}
+		storage.getEntry(latest, e)
+		if err := configs.latest.decode(e); err != nil {
+			return nil, err
+		}
+	}
+
+	heartbeatTimeout := 50 * time.Millisecond // todo,
+	server := &server{
+		listenFn:              net.Listen,
+		shutdownCheckDuration: heartbeatTimeout,
+	}
 	return &Raft{
-		dialFn:           net.DialTimeout,
 		addr:             addr,
-		fsmApplyCh:       make(chan newEntry, 128), // todo configurable capacity
-		fsm:              fsm,
 		storage:          storage,
-		server:           &server{listenFn: net.Listen},
-		config:           &stableConfig{},
+		fsm:              fsm,
+		term:             term,
+		votedFor:         votedFor,
+		lastLogIndex:     lastLogIndex,
+		lastLogTerm:      lastLogTerm,
+		configs:          configs,
 		state:            follower,
 		heartbeatTimeout: heartbeatTimeout,
-		TasksCh:          make(chan Task, 100), // todo configurable capacity
+		dialFn:           net.DialTimeout,
+		server:           server,
+		connPools:        make(map[string]*connPool),
+		fsmApplyCh:       make(chan newEntry, 128), // todo configurable capacity
+		TasksCh:          make(chan Task, 100),     // todo configurable capacity
 		shutdownCh:       make(chan struct{}),
-	}
+	}, nil
 }
 
 func (r *Raft) ListenAndServe() error {
@@ -76,36 +125,7 @@ func (r *Raft) ListenAndServe() error {
 }
 
 func (r *Raft) Listen() error {
-	var err error
-
-	if err = r.storage.init(); err != nil {
-		return err
-	}
-
-	if r.term, r.votedFor, err = r.storage.GetVars(); err != nil {
-		return err
-	}
-
-	last, err := r.storage.lastEntry()
-	if err != nil {
-		return err
-	}
-	if last != nil {
-		r.lastLogIndex, r.lastLogTerm = last.index, last.term
-	}
-
-	_, latest, err := r.storage.GetConfig()
-	if err != nil {
-		return err
-	}
-	if latest != 0 {
-		r.config = r.getConfig(latest)
-	}
-
-	if err = r.server.listen(r.addr); err != nil {
-		return err
-	}
-	return nil
+	return r.server.listen(r.addr)
 }
 
 func (r *Raft) Serve() error {
@@ -164,15 +184,20 @@ func (r *Raft) setVotedFor(v string) {
 	r.votedFor = v
 }
 
-func (r *Raft) getConfig(index uint64) config {
-	e := &entry{}
-	r.storage.getEntry(index, e)
-	assert(e.typ == entryConfig, "Raft.getConfig(%d).type: got %d, want %d", e.typ, entryConfig)
-	conf, err := decodeConfig(e.data, r.dialFn, 10*time.Second) // todo: hardcoded timeout
-	if err != nil {
-		panic(err)
+func (r *Raft) getConnPool(addr string) *connPool {
+	r.connPoolsMu.Lock()
+	defer r.connPoolsMu.Unlock()
+	pool, ok := r.connPools[addr]
+	if !ok {
+		pool = &connPool{
+			addr:    addr,
+			dialFn:  r.dialFn,
+			timeout: 10 * time.Second, // todo
+			max:     3,                //todo
+		}
+		r.connPools[addr] = pool
 	}
-	return conf
+	return pool
 }
 
 type newEntry struct {

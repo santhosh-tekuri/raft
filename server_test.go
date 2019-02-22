@@ -41,7 +41,7 @@ func TestServer(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s := &server{listenFn: earth.Listen}
+			s := &server{listenFn: earth.Listen, shutdownCheckDuration: 3 * time.Second}
 			if err := s.listen(addr); err != nil {
 				t.Fatalf("server.listen failed: %v", err)
 			}

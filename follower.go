@@ -3,6 +3,7 @@ package raft
 func (r *Raft) runFollower() {
 	assert(r.leaderID != r.addr, "%s r.leaderID: got %s, want !=%s", r, r.leaderID, r.addr)
 
+	// todo: use single timer by resetting
 	timeoutCh := afterRandomTimeout(r.heartbeatTimeout)
 	for r.state == follower {
 		select {
@@ -20,34 +21,35 @@ func (r *Raft) runFollower() {
 			// RPC from current leader or granting vote to candidate:
 			// convert to candidate
 		case <-timeoutCh:
-			if !r.config.canStartElection(r.addr) {
-				// todo: abstract log
-				if len(r.config.members()) == 0 {
-					ElectionAborted(r, "no known peers")
-				} else if _, ok := r.config.(*stableConfig); ok {
-					ElectionAborted(r, "not part of cluster")
-				} else {
-					// jointConfig is in use, and i am not part of Cold, thus can not be
-					// elected leader
-				}
-				r.leaderID = ""
-				// timer will be restarted, when we receive rpc request
-				// because config will not be changed without receiving appendEntries
-				// with configChange type
-				continue
-			}
-			debug(r, "heartbeatTimeout follower -> candidate")
-			r.state = candidate
+			debug(r, "heartbeatTimeout leaderID:", r.leaderID)
 			r.leaderID = ""
+
+			if can, reason := r.canStartElection(); !can {
+				ElectionAborted(r, reason)
+				continue // timer will be restarted on configChange
+			}
+
+			debug(r, "follower -> candidate")
+			r.state = candidate
 			StateChanged(r, byte(r.state))
 
 		case t := <-r.TasksCh:
-			before := r.config.canStartElection(r.addr)
+			before, _ := r.canStartElection()
 			t.execute(r)
-			if !before && r.config.canStartElection(r.addr) {
-				// we go config, which allows us to start election
+			if now, _ := r.canStartElection(); !before && now {
+				// we got new config, which allows us to start election
 				timeoutCh = afterRandomTimeout(r.heartbeatTimeout)
 			}
 		}
 	}
+}
+
+func (r *Raft) canStartElection() (can bool, reason string) {
+	if r.configs.isBootstrap() {
+		return false, "no known peers"
+	}
+	if r.configs.isCommitted() && !r.configs.committed.isVoter(r.addr) {
+		return false, "not part of stable cluster"
+	}
+	return true, ""
 }

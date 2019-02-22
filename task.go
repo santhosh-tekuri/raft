@@ -3,7 +3,6 @@ package raft
 import (
 	"errors"
 	"fmt"
-	"time"
 )
 
 type Task interface {
@@ -68,7 +67,7 @@ func applyEntry(t Task, r *Raft, data []byte) {
 		return
 	}
 
-	ldr := r.ldrState
+	ldr := r.leadership
 	typ := entryCommand
 	if ldr.startIndex == ldr.lastLogIndex+1 {
 		typ = entryNoop
@@ -112,6 +111,7 @@ func Bootstrap(addrs []string) Task {
 }
 
 func bootstrap(t Task, r *Raft, addrs []string) {
+	debug(r, "bootstrapping....")
 	// todo: validate addrs
 	addrsMap := make(map[string]struct{})
 	for _, addr := range addrs {
@@ -133,7 +133,7 @@ func bootstrap(t Task, r *Raft, addrs []string) {
 	}
 
 	// persist config change
-	config, err := r.storage.bootstrap(addrs, r.dialFn, 10*time.Second) // todo: timeout
+	configEntry, err := r.storage.bootstrap(addrs)
 	if err != nil {
 		t.reply(err)
 		return
@@ -150,6 +150,6 @@ func bootstrap(t Task, r *Raft, addrs []string) {
 	// everything is ok. bootstrapping now...
 	r.term, r.votedFor = term, votedFor
 	r.lastLogIndex, r.lastLogTerm = e.index, e.term
-	r.config = config
+	r.configs.latest = configEntry
 	t.reply(nil)
 }

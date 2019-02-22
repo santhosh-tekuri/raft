@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"sync"
-	"time"
 )
 
 type Stable interface {
@@ -24,6 +23,8 @@ type Log interface {
 	DeleteLast(n uint64) error
 }
 
+// todo: can we avoid panics on storage error
+
 type storage struct {
 	Stable // todo: cache values
 	log    Log
@@ -31,6 +32,12 @@ type storage struct {
 	mu sync.RWMutex
 	// zero for no entries. note that we never have an entry with index zero
 	first, last uint64
+}
+
+func (s *storage) setConfigs(configs configs) {
+	if err := s.Stable.SetConfig(configs.committed.index, configs.latest.index); err != nil {
+		panic(err)
+	}
 }
 
 func (s *storage) getLast() uint64 {
@@ -91,8 +98,6 @@ func (s *storage) count() uint64 {
 	}
 	return s.last - s.first + 1
 }
-
-// todo: can we avoid panics
 
 func (s *storage) getEntry(index uint64, entry *entry) {
 	s.mu.RLock()
@@ -188,33 +193,24 @@ func (s *storage) fillEntries(req *appendEntriesRequest, nextIndex, lastIndex ui
 	}
 }
 
-func (s *storage) bootstrap(addrs []string, dialFn dialFn, timeout time.Duration) (config, error) {
-	members := make(map[string]*member)
+func (s *storage) bootstrap(addrs []string) (configEntry, error) {
+	nodes := make(map[string]node)
 	for _, addr := range addrs {
-		members[addr] = &member{
-			dialFn:  dialFn,
-			addr:    addr,
-			timeout: timeout,
-		}
-	}
-	config := &stableConfig{members}
-	bytes, err := encodeConfig(config)
-	if err != nil {
-		return nil, err
-	}
-	e := &entry{
-		typ:   entryConfig,
-		index: 1,
-		term:  1,
-		data:  bytes,
+		nodes[addr] = node{addr: addr, voter: true}
 	}
 
-	s.append(e)
+	configEntry := configEntry{
+		nodes: nodes,
+		index: 1,
+		term:  1,
+	}
+	s.append(configEntry.encode())
+
 	if err := s.SetVars(1, ""); err != nil {
-		return nil, err
+		return configEntry, err
 	}
 	if err := s.SetConfig(0, 1); err != nil {
-		return nil, err
+		return configEntry, err
 	}
-	return config, nil
+	return configEntry, nil
 }

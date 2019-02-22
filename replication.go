@@ -28,7 +28,7 @@ const maxAppendEntries = 64 // todo: should be configurable
 func (repl *replication) runLoop(req *appendEntriesRequest) {
 	defer func() {
 		if repl.conn != nil {
-			repl.member.returnConn(repl.conn)
+			repl.member.connPool.returnConn(repl.conn)
 		}
 	}()
 
@@ -162,7 +162,7 @@ func (repl *replication) retryAppendEntries(req *appendEntriesRequest) (*appendE
 
 func (repl *replication) appendEntries(req *appendEntriesRequest) (*appendEntriesResponse, error) {
 	if repl.conn == nil {
-		conn, err := repl.member.getConn()
+		conn, err := repl.member.connPool.getConn()
 		if err != nil {
 			return nil, err
 		}

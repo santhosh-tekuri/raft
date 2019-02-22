@@ -4,6 +4,7 @@ import (
 	"container/list"
 )
 
+// todo: add availability methods
 type FSM interface {
 	Apply(cmd []byte) interface{}
 }
