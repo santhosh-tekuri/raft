@@ -77,7 +77,7 @@ func (r *Raft) startElection() <-chan voteResult {
 		lastLogTerm:  r.lastLogTerm,
 	}
 	for _, n := range r.configs.latest.nodes {
-		if !n.voter {
+		if n.suffrage != voter {
 			continue
 		}
 		if n.addr == r.addr {

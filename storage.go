@@ -215,7 +215,7 @@ func (s *storage) bootstrap(nodes map[nodeID]node) (configEntry, error) {
 		}
 		addrs[node.addr] = true
 
-		if node.voter {
+		if node.suffrage == voter {
 			voters++
 		}
 	}

@@ -7,10 +7,18 @@ import (
 
 type nodeID string
 
+type nodeSuffrage int8
+
+const (
+	voter nodeSuffrage = iota
+	nonVoter
+	staging
+)
+
 type node struct {
-	id    nodeID
-	addr  string
-	voter bool
+	id       nodeID
+	addr     string
+	suffrage nodeSuffrage
 }
 
 // -------------------------------------------------
@@ -23,13 +31,13 @@ type configEntry struct {
 
 func (c configEntry) isVoter(id nodeID) bool {
 	node, ok := c.nodes[id]
-	return ok && node.voter
+	return ok && node.suffrage == voter
 }
 
 func (c configEntry) quorum() int {
 	voters := 0
 	for _, node := range c.nodes {
-		if node.voter {
+		if node.suffrage == voter {
 			voters++
 		}
 	}
@@ -48,7 +56,7 @@ func (c configEntry) encode() *entry {
 		if err := writeString(w, node.addr); err != nil {
 			panic(err)
 		}
-		if err := writeBool(w, node.voter); err != nil {
+		if err := writeUint8(w, uint8(node.suffrage)); err != nil {
 			panic(err)
 		}
 	}
@@ -80,11 +88,11 @@ func (c *configEntry) decode(e *entry) error {
 		if err != nil {
 			return err
 		}
-		voter, err := readBool(r)
+		suffrage, err := readUint8(r)
 		if err != nil {
 			return err
 		}
-		c.nodes[nodeID(id)] = node{id: nodeID(id), addr: addr, voter: voter}
+		c.nodes[nodeID(id)] = node{id: nodeID(id), addr: addr, suffrage: nodeSuffrage(suffrage)}
 	}
 	return nil
 }

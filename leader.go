@@ -41,7 +41,7 @@ func (ldr *leadership) runLoop() {
 
 	ldr.voters = make(map[nodeID]*member)
 	for _, node := range ldr.configs.latest.nodes {
-		if node.voter {
+		if node.suffrage == voter {
 			ldr.voters[node.id] = &member{
 				id:         node.id,
 				addr:       node.addr,

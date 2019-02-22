@@ -33,7 +33,7 @@ func TestRaft_Voting(t *testing.T) {
 
 	var followers []string
 	for _, node := range ldr.configs.latest.nodes {
-		if node.voter && node.addr != ldr.addr {
+		if node.suffrage == voter && node.addr != ldr.addr {
 			followers = append(followers, node.addr)
 		}
 	}
@@ -337,7 +337,7 @@ func TestRaft_Bootstrap(t *testing.T) {
 	// bootstrap one of the nodes
 	nodes := make(map[nodeID]node, 3)
 	for _, r := range c.rr {
-		nodes[r.id] = node{id: r.id, addr: r.addr, voter: true}
+		nodes[r.id] = node{id: r.id, addr: r.addr, suffrage: voter}
 	}
 	if _, err := c.rr[0].waitTask(Bootstrap(nodes), c.longTimeout); err != nil {
 		t.Fatal(err)
@@ -407,7 +407,7 @@ func (c *cluster) launch(n int, bootstrap bool) {
 	nodes := make(map[nodeID]node, n)
 	for i := 1; i <= n; i++ {
 		id := nodeID("M" + strconv.Itoa(i))
-		nodes[id] = node{id: id, addr: string(id) + ":8888", voter: true}
+		nodes[id] = node{id: id, addr: string(id) + ":8888", suffrage: voter}
 	}
 
 	c.rr = make([]*Raft, n)
