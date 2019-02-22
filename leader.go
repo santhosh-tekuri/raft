@@ -37,7 +37,7 @@ type leadership struct {
 }
 
 func (ldr *leadership) runLoop() {
-	assert(ldr.leaderID == ldr.addr, "%s ldr.leaderID: got %s, want %s", ldr, ldr.leaderID, ldr.addr)
+	assert(ldr.leader == ldr.addr, "%s ldr.leader: got %s, want %s", ldr, ldr.leader, ldr.addr)
 
 	ldr.voters = make(map[string]*member)
 	for _, node := range ldr.configs.latest.nodes {
@@ -71,13 +71,13 @@ func (ldr *leadership) runLoop() {
 	defer func() {
 		close(stopReplsCh)
 
-		if ldr.leaderID == ldr.addr {
-			ldr.leaderID = ""
+		if ldr.leader == ldr.addr {
+			ldr.leader = ""
 		}
 
 		// respond to any pending user entries
 		for e := ldr.newEntries.Front(); e != nil; e = e.Next() {
-			e.Value.(newEntry).task.reply(NotLeaderError{ldr.leaderID})
+			e.Value.(newEntry).task.reply(NotLeaderError{ldr.leader})
 		}
 	}()
 
@@ -136,7 +136,7 @@ func (ldr *leadership) runLoop() {
 			debug(ldr, "leader -> follower")
 			ldr.state = follower
 			ldr.setTerm(newTerm)
-			ldr.leaderID = ""
+			ldr.leader = ""
 			StateChanged(ldr.Raft, byte(ldr.state))
 			return
 
@@ -166,7 +166,7 @@ func (ldr *leadership) runLoop() {
 			if !ldr.isQuorumReachable(t) {
 				debug(ldr, "quorumUnreachable")
 				ldr.state = follower
-				ldr.leaderID = ""
+				ldr.leader = ""
 				StateChanged(ldr.Raft, byte(ldr.state))
 			}
 		}

@@ -80,7 +80,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesRequest) *appendEntriesR
 		StateChanged(r, byte(r.state))
 	}
 
-	r.leaderID = req.leaderID
+	r.leader = req.leaderID
 
 	// reply false if log at req.prevLogIndex does not match
 	if req.prevLogIndex > 0 {

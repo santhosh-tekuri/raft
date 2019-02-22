@@ -31,10 +31,10 @@ type Raft struct {
 	fsmApplyCh chan newEntry
 	fsm        FSM
 
-	storage  *storage
-	term     uint64
-	state    state
-	leaderID string
+	storage *storage
+	term    uint64
+	state   state
+	leader  string
 
 	votedFor         string
 	heartbeatTimeout time.Duration

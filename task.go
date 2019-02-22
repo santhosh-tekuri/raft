@@ -145,7 +145,7 @@ func (r *Raft) executeTask(t Task) {
 		t.fn(r)
 		t.reply(nil)
 	default:
-		t.reply(NotLeaderError{r.leaderID})
+		t.reply(NotLeaderError{r.leader})
 	}
 }
 

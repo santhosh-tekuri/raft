@@ -514,7 +514,7 @@ func (c *cluster) ensureLeader(leaderID string) {
 	c.Helper()
 	for _, r := range c.rr {
 		if got := r.getLeaderID(); got != leaderID {
-			c.Fatalf("leaderID of %s: got %s, want %s", r.addr, got, leaderID)
+			c.Fatalf("leader of %s: got %s, want %s", r.addr, got, leaderID)
 		}
 	}
 }
@@ -630,7 +630,7 @@ func (r *Raft) getTerm() uint64 {
 func (r *Raft) getLeaderID() string {
 	var leaderID string
 	r.inspect(func(r *Raft) {
-		leaderID = r.leaderID
+		leaderID = r.leader
 	})
 	return leaderID
 }

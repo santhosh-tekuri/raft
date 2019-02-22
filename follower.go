@@ -1,7 +1,7 @@
 package raft
 
 func (r *Raft) runFollower() {
-	assert(r.leaderID != r.addr, "%s r.leaderID: got %s, want !=%s", r, r.leaderID, r.addr)
+	assert(r.leader != r.addr, "%s r.leader: got %s, want !=%s", r, r.leader, r.addr)
 
 	// todo: use single timer by resetting
 	timeoutCh := afterRandomTimeout(r.heartbeatTimeout)
@@ -21,8 +21,8 @@ func (r *Raft) runFollower() {
 			// RPC from current leader or granting vote to candidate:
 			// convert to candidate
 		case <-timeoutCh:
-			debug(r, "heartbeatTimeout leaderID:", r.leaderID)
-			r.leaderID = ""
+			debug(r, "heartbeatTimeout leader:", r.leader)
+			r.leader = ""
 
 			if can, reason := r.canStartElection(); !can {
 				ElectionAborted(r, reason)

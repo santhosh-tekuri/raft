@@ -3,7 +3,7 @@ package raft
 import "time"
 
 func (r *Raft) runCandidate() {
-	assert(r.leaderID == "", "%s r.leaderID: got %s, want ", r, r.leaderID)
+	assert(r.leader == "", "%s r.leader: got %s, want ", r, r.leader)
 	timeoutCh := afterRandomTimeout(r.heartbeatTimeout)
 	results := r.startElection()
 	votesNeeded := r.configs.latest.quorum()
@@ -39,7 +39,7 @@ func (r *Raft) runCandidate() {
 				if votesNeeded == 0 {
 					debug(r, "candidate -> leader")
 					r.state = leader
-					r.leaderID = r.addr
+					r.leader = r.addr
 					StateChanged(r, byte(r.state))
 					return
 				}
