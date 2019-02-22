@@ -39,22 +39,32 @@ func TestRaft_Voting(t *testing.T) {
 
 	// a follower that thinks there's a leader should vote for that leader
 	req.candidateID = ldr.addr
-	resp, err := ldr.requestVote(followers[0], req)
-	if err != nil {
-		t.Fatalf("requestVote failed: %v", err)
-	}
-	if !resp.granted {
-		t.Fatalf("voteGranted: got %t, want true", resp.granted)
-	}
+	ldr.inspect(func(raft *Raft) {
+		resp, err := ldr.requestVote(ldr.getConnPool(followers[0]), req)
+		if err != nil {
+			t.Logf("requestVote failed: %v", err)
+			t.Fail()
+		}
+		if !resp.granted {
+			t.Logf("voteGranted: got %t, want true", resp.granted)
+			t.Fail()
+		}
+	})
 
 	// a follower that thinks there's a leader shouldn't vote for a different candidate
 	req.candidateID = followers[0]
-	resp, err = ldr.requestVote(followers[1], req)
-	if err != nil {
-		t.Fatalf("requestVote failed: %v", err)
-	}
-	if resp.granted {
-		t.Fatalf("voteGranted: got %t, want false", resp.granted)
+	ldr.inspect(func(raft *Raft) {
+		resp, err := ldr.requestVote(ldr.getConnPool(followers[1]), req)
+		if err != nil {
+			t.Logf("requestVote failed: %v", err)
+			t.Fail()
+		} else if resp.granted {
+			t.Logf("voteGranted: got %t, want false", resp.granted)
+			t.Fail()
+		}
+	})
+	if t.Failed() {
+		t.FailNow()
 	}
 }
 

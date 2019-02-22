@@ -44,8 +44,7 @@ type Raft struct {
 	commitIndex  uint64
 	lastApplied  uint64
 
-	connPoolsMu sync.Mutex
-	connPools   map[string]*connPool
+	connPools map[string]*connPool
 
 	leadership *leadership
 	TasksCh    chan Task
@@ -185,8 +184,6 @@ func (r *Raft) setVotedFor(v string) {
 }
 
 func (r *Raft) getConnPool(addr string) *connPool {
-	r.connPoolsMu.Lock()
-	defer r.connPoolsMu.Unlock()
 	pool, ok := r.connPools[addr]
 	if !ok {
 		pool = &connPool{

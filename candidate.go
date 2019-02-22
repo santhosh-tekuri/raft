@@ -92,31 +92,31 @@ func (r *Raft) startElection() <-chan voteResult {
 			}
 			continue
 		}
-		go func(n node) {
+		connPool := r.getConnPool(n.addr)
+		go func() {
 			result := voteResult{
 				voteResponse: &voteResponse{
 					term:    req.term,
 					granted: false,
 				},
-				voterID: n.addr,
+				voterID: connPool.addr,
 			}
 			defer func() {
 				results <- result
 			}()
-			resp, err := r.requestVote(n.addr, req)
+			resp, err := r.requestVote(connPool, req)
 			if err != nil {
 				result.err = err
 				return
 			}
 			result.voteResponse = resp
-		}(n)
+		}()
 	}
 	return results
 }
 
-func (r *Raft) requestVote(addr string, req *voteRequest) (*voteResponse, error) {
-	debug(r, ">> requestVote", addr)
-	pool := r.getConnPool(addr)
+func (r *Raft) requestVote(pool *connPool, req *voteRequest) (*voteResponse, error) {
+	debug(r, ">> requestVote", pool.addr)
 	conn, err := pool.getConn()
 	if err != nil {
 		return nil, err
