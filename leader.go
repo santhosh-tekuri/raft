@@ -45,8 +45,8 @@ func (ldr *leadership) runLoop() {
 		if node.voter {
 			ldr.voters[node.addr] = &member{
 				addr:       node.addr,
-				connPool:   ldr.getConnPool(node.addr), // todo: if we get connpool in runleader can we remove connpoolsMu in raft ?
-				matchIndex: 0,                          // matchIndex initialized to zero
+				connPool:   ldr.getConnPool(node.addr),
+				matchIndex: 0, // matchIndex initialized to zero
 			}
 		}
 	}
@@ -54,7 +54,11 @@ func (ldr *leadership) runLoop() {
 	ldr.startIndex = ldr.lastLogIndex + 1
 
 	// add a blank no-op entry into log at the start of its term
-	ApplyEntry(nil).execute(ldr.Raft)
+	ldr.applyEntry(newEntry{
+		entry: &entry{
+			typ: entryNoop,
+		},
+	})
 
 	// to receive new term notifications from replicators
 	newTermCh := make(chan uint64, len(ldr.voters))
@@ -168,6 +172,23 @@ func (ldr *leadership) runLoop() {
 			}
 		}
 	}
+}
+
+func (ldr *leadership) applyEntry(ne newEntry) {
+	ne.entry.index, ne.entry.term = ldr.lastLogIndex+1, ldr.term
+
+	// append entry to local log
+	if ne.typ == entryNoop {
+		debug(ldr, "log.append noop", ne.index)
+	} else {
+		debug(ldr, "log.append cmd", ne.index)
+	}
+	ldr.storage.append(ne.entry)
+	ldr.lastLogIndex, ldr.lastLogTerm = ne.index, ne.term
+	ldr.newEntries.PushBack(ne)
+
+	// we updated lastLogIndex, so notify replicators
+	ldr.notifyReplicators()
 }
 
 func (ldr *leadership) quorum() int {

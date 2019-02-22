@@ -66,35 +66,13 @@ func applyEntry(t Task, r *Raft, data []byte) {
 		t.reply(NotLeaderError{r.leaderID})
 		return
 	}
-
-	ldr := r.leadership
-	typ := entryCommand
-	if ldr.startIndex == ldr.lastLogIndex+1 {
-		typ = entryNoop
-	}
-
-	ne := newEntry{
+	r.leadership.applyEntry(newEntry{
 		entry: &entry{
-			typ:   typ,
-			data:  data,
-			index: ldr.lastLogIndex + 1,
-			term:  ldr.term,
+			typ:  entryCommand,
+			data: data,
 		},
 		task: t,
-	}
-
-	// append entry to local log
-	if ne.typ == entryNoop {
-		debug(r, "log.append noop", ne.index)
-	} else {
-		debug(r, "log.append cmd", ne.index)
-	}
-	ldr.storage.append(ne.entry)
-	ldr.lastLogIndex, ldr.lastLogTerm = ne.index, ne.term
-	ldr.newEntries.PushBack(ne)
-
-	// we updated lastLogIndex, so notify replicators
-	ldr.notifyReplicators()
+	})
 }
 
 // ------------------------------------------------------------------------
