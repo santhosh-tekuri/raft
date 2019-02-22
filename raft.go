@@ -24,7 +24,7 @@ type Raft struct {
 	*server
 	dialFn dialFn
 
-	id      nodeID
+	id      NodeID
 	addr    string
 	configs configs
 	wg      sync.WaitGroup
@@ -51,7 +51,7 @@ type Raft struct {
 	shutdownCh chan struct{}
 }
 
-func New(id nodeID, addr string, fsm FSM, stable Stable, log Log) (*Raft, error) {
+func New(id NodeID, addr string, fsm FSM, stable Stable, log Log) (*Raft, error) {
 	storage := &storage{Stable: stable, log: log}
 	if err := storage.init(); err != nil {
 		return nil, err

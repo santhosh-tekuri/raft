@@ -5,39 +5,39 @@ import (
 	"fmt"
 )
 
-type nodeID string
+type NodeID string
 
-type nodeSuffrage int8
+type NodeSuffrage int8
 
 const (
-	voter nodeSuffrage = iota
-	nonVoter
-	staging
+	Voter NodeSuffrage = iota
+	NonVoter
+	Staging
 )
 
-type node struct {
-	id       nodeID
-	addr     string
-	suffrage nodeSuffrage
+type Node struct {
+	ID       NodeID
+	Addr     string
+	Suffrage NodeSuffrage
 }
 
 // -------------------------------------------------
 
 type configEntry struct {
-	nodes map[nodeID]node
+	nodes map[NodeID]Node
 	index uint64
 	term  uint64
 }
 
-func (c configEntry) isVoter(id nodeID) bool {
+func (c configEntry) isVoter(id NodeID) bool {
 	node, ok := c.nodes[id]
-	return ok && node.suffrage == voter
+	return ok && node.Suffrage == Voter
 }
 
 func (c configEntry) quorum() int {
 	voters := 0
 	for _, node := range c.nodes {
-		if node.suffrage == voter {
+		if node.Suffrage == Voter {
 			voters++
 		}
 	}
@@ -50,13 +50,13 @@ func (c configEntry) encode() *entry {
 		panic(err)
 	}
 	for _, node := range c.nodes {
-		if err := writeString(w, string(node.id)); err != nil {
+		if err := writeString(w, string(node.ID)); err != nil {
 			panic(err)
 		}
-		if err := writeString(w, node.addr); err != nil {
+		if err := writeString(w, node.Addr); err != nil {
 			panic(err)
 		}
-		if err := writeUint8(w, uint8(node.suffrage)); err != nil {
+		if err := writeUint8(w, uint8(node.Suffrage)); err != nil {
 			panic(err)
 		}
 	}
@@ -78,7 +78,7 @@ func (c *configEntry) decode(e *entry) error {
 	if err != nil {
 		return err
 	}
-	c.nodes = make(map[nodeID]node)
+	c.nodes = make(map[NodeID]Node)
 	for ; size > 0; size-- {
 		id, err := readString(r)
 		if err != nil {
@@ -92,7 +92,7 @@ func (c *configEntry) decode(e *entry) error {
 		if err != nil {
 			return err
 		}
-		c.nodes[nodeID(id)] = node{id: nodeID(id), addr: addr, suffrage: nodeSuffrage(suffrage)}
+		c.nodes[NodeID(id)] = Node{ID: NodeID(id), Addr: addr, Suffrage: NodeSuffrage(suffrage)}
 	}
 	return nil
 }

@@ -10,7 +10,7 @@ type leaderUpdate struct {
 }
 
 type member struct {
-	id       nodeID
+	id       NodeID
 	addr     string
 	connPool *connPool
 

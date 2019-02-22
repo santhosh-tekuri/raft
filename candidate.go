@@ -77,10 +77,10 @@ func (r *Raft) startElection() <-chan voteResult {
 		lastLogTerm:  r.lastLogTerm,
 	}
 	for _, n := range r.configs.latest.nodes {
-		if n.suffrage != voter {
+		if n.Suffrage != Voter {
 			continue
 		}
-		if n.addr == r.addr {
+		if n.Addr == r.addr {
 			// vote for self
 			r.setVotedFor(r.addr)
 			results <- voteResult{
@@ -92,7 +92,7 @@ func (r *Raft) startElection() <-chan voteResult {
 			}
 			continue
 		}
-		connPool := r.getConnPool(n.addr)
+		connPool := r.getConnPool(n.Addr)
 		go func() {
 			result := voteResult{
 				voteResponse: &voteResponse{

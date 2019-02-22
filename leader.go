@@ -30,22 +30,22 @@ type leadership struct {
 	// committed entries are dequeued and handed over to fsm go-routine
 	newEntries *list.List
 
-	voters map[nodeID]*member
+	voters map[NodeID]*member
 
 	// holds running replications, key is addr
-	repls map[nodeID]*replication
+	repls map[NodeID]*replication
 }
 
 func (ldr *leadership) runLoop() {
 	assert(ldr.leader == ldr.addr, "%s ldr.leader: got %s, want %s", ldr, ldr.leader, ldr.addr)
 
-	ldr.voters = make(map[nodeID]*member)
+	ldr.voters = make(map[NodeID]*member)
 	for _, node := range ldr.configs.latest.nodes {
-		if node.suffrage == voter {
-			ldr.voters[node.id] = &member{
-				id:         node.id,
-				addr:       node.addr,
-				connPool:   ldr.getConnPool(node.addr),
+		if node.Suffrage == Voter {
+			ldr.voters[node.ID] = &member{
+				id:         node.ID,
+				addr:       node.Addr,
+				connPool:   ldr.getConnPool(node.Addr),
 				matchIndex: 0, // matchIndex initialized to zero
 			}
 		}
@@ -83,7 +83,7 @@ func (ldr *leadership) runLoop() {
 	}()
 
 	// start replication routine for each follower
-	ldr.repls = make(map[nodeID]*replication)
+	ldr.repls = make(map[NodeID]*replication)
 	for _, m := range ldr.voters {
 		repl := &replication{
 			member:           m,

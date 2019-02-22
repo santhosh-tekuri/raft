@@ -33,8 +33,8 @@ func TestRaft_Voting(t *testing.T) {
 
 	var followers []string
 	for _, node := range ldr.configs.latest.nodes {
-		if node.suffrage == voter && node.addr != ldr.addr {
-			followers = append(followers, node.addr)
+		if node.Suffrage == Voter && node.Addr != ldr.addr {
+			followers = append(followers, node.Addr)
 		}
 	}
 
@@ -335,9 +335,9 @@ func TestRaft_Bootstrap(t *testing.T) {
 	}
 
 	// bootstrap one of the nodes
-	nodes := make(map[nodeID]node, 3)
+	nodes := make(map[NodeID]Node, 3)
 	for _, r := range c.rr {
-		nodes[r.id] = node{id: r.id, addr: r.addr, suffrage: voter}
+		nodes[r.id] = Node{ID: r.id, Addr: r.addr, Suffrage: Voter}
 	}
 	if _, err := c.rr[0].waitTask(Bootstrap(nodes), c.longTimeout); err != nil {
 		t.Fatal(err)
@@ -404,10 +404,10 @@ func newCluster(t *testing.T) *cluster {
 func (c *cluster) launch(n int, bootstrap bool) {
 	c.Helper()
 	c.network = fnet.New()
-	nodes := make(map[nodeID]node, n)
+	nodes := make(map[NodeID]Node, n)
 	for i := 1; i <= n; i++ {
-		id := nodeID("M" + strconv.Itoa(i))
-		nodes[id] = node{id: id, addr: string(id) + ":8888", suffrage: voter}
+		id := NodeID("M" + strconv.Itoa(i))
+		nodes[id] = Node{ID: id, Addr: string(id) + ":8888", Suffrage: Voter}
 	}
 
 	c.rr = make([]*Raft, n)
@@ -422,7 +422,7 @@ func (c *cluster) launch(n int, bootstrap bool) {
 			}
 		}
 
-		r, err := New(node.id, node.addr, &fsmMock{}, inMemStorage, inMemStorage)
+		r, err := New(node.ID, node.Addr, &fsmMock{}, inMemStorage, inMemStorage)
 		if err != nil {
 			c.Fatal(err)
 		}

@@ -65,10 +65,10 @@ func ApplyEntry(data []byte) Task {
 
 type bootstrap struct {
 	*task
-	nodes map[nodeID]node
+	nodes map[NodeID]Node
 }
 
-func Bootstrap(nodes map[nodeID]node) Task {
+func Bootstrap(nodes map[NodeID]Node) Task {
 	return bootstrap{
 		task:  &task{done: make(chan struct{})},
 		nodes: nodes,
@@ -86,7 +86,7 @@ func (r *Raft) bootstrap(t bootstrap) {
 		t.reply(fmt.Errorf("bootstrap: myself %s must be part of cluster", r.id))
 		return
 	}
-	if self.addr != r.addr { // todo: allow changing advertise address
+	if self.Addr != r.addr { // todo: allow changing advertise address
 		t.reply(fmt.Errorf("bootstrap: my address does not match"))
 		return
 	}
