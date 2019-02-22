@@ -167,7 +167,7 @@ func (r *Raft) loop() {
 }
 
 func (r *Raft) String() string {
-	return fmt.Sprintf("%s %d %s |", r.addr, r.term, r.state)
+	return fmt.Sprintf("%s %d %s |", r.id, r.term, r.state)
 }
 
 func (r *Raft) setTerm(term uint64) {

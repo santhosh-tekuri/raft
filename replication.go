@@ -145,7 +145,6 @@ func (repl *replication) retryAppendEntries(req *appendEntriesRequest) (*appendE
 			case <-repl.stopCh:
 				return resp, true
 			case <-time.After(backoff(failures)):
-				debug(repl, "retry appendEntries")
 				continue
 			}
 		}

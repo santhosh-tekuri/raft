@@ -47,6 +47,7 @@ func (ldr *leadership) runLoop() {
 				addr:       node.Addr,
 				connPool:   ldr.getConnPool(node.Addr),
 				matchIndex: 0, // matchIndex initialized to zero
+				str:        ldr.String() + " " + string(node.ID),
 			}
 		}
 	}
@@ -95,7 +96,7 @@ func (ldr *leadership) runLoop() {
 			matchUpdatedCh:   matchUpdatedCh,
 			newTermCh:        newTermCh,
 			leaderUpdateCh:   make(chan leaderUpdate, 1),
-			str:              ldr.String() + " " + m.addr,
+			str:              ldr.String() + " " + string(m.id),
 		}
 		ldr.repls[m.id] = repl
 
@@ -166,6 +167,7 @@ func (ldr *leadership) runLoop() {
 			t := time.Now().Add(-ldr.leaseTimeout)
 			if !ldr.isQuorumReachable(t) {
 				debug(ldr, "quorumUnreachable")
+				debug(ldr, "leader -> follower")
 				ldr.state = follower
 				ldr.leader = ""
 				StateChanged(ldr.Raft, byte(ldr.state))

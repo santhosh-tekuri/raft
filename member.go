@@ -22,14 +22,24 @@ type member struct {
 	// zero value means it is reachable
 	noContactMu sync.RWMutex
 	noContact   time.Time
+
+	str string
+}
+
+func (m *member) String() string {
+	return m.str
 }
 
 func (m *member) contactSucceeded(b bool) {
 	m.noContactMu.Lock()
 	if b {
-		m.noContact = time.Time{} // zeroing
+		if !m.noContact.IsZero() {
+			m.noContact = time.Time{} // zeroing
+			debug(m, "yesContact")
+		}
 	} else if m.noContact.IsZero() {
 		m.noContact = time.Now()
+		debug(m, "noContact")
 	}
 	m.noContactMu.Unlock()
 }

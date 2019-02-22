@@ -372,6 +372,43 @@ func TestRaft_Bootstrap(t *testing.T) {
 	}
 }
 
+func TestRaft_LeaderLeaseExpire(t *testing.T) {
+	debug("\nTestRaft_LeaderLeaseExpire --------------------------")
+	defer leaktest.Check(t)()
+	c := newCluster(t)
+	c.launch(2, true)
+	defer c.shutdown()
+	ldr := c.ensureHealthy()
+
+	// should agree on leader
+	c.ensureLeader(ldr.addr)
+
+	// #followers must be 1
+	followers := c.followers()
+	if len(followers) != 1 {
+		t.Fatalf("#followers: got %d, want 1", len(followers))
+	}
+
+	// disconnect the follower now
+	c.disconnect(followers[0])
+
+	// the leader should stepDown within leaderLeaseTimeout
+	ldr.waitForState(3*c.heartbeatTimeout, follower, candidate)
+
+	// should be no leaders
+	if n := len(c.getInState(leader)); n != 0 {
+		t.Fatalf("#leaders: got %d, want 0", n)
+	}
+
+	// Ensure both have cleared their leader
+	followers[0].waitForState(2*c.heartbeatTimeout, candidate)
+	for _, r := range c.rr {
+		if ldr := r.getLeader(); ldr != "" {
+			t.Fatalf("%s.leader: got %s want ", r.id, ldr)
+		}
+	}
+}
+
 func TestMain(m *testing.M) {
 	code := m.Run()
 
@@ -516,7 +553,7 @@ func (c *cluster) ensureHealthy() *Raft {
 func (c *cluster) ensureLeader(leaderID string) {
 	c.Helper()
 	for _, r := range c.rr {
-		if got := r.getLeaderID(); got != leaderID {
+		if got := r.getLeader(); got != leaderID {
 			c.Fatalf("leader of %s: got %s, want %s", r.addr, got, leaderID)
 		}
 	}
@@ -597,12 +634,12 @@ func (c *cluster) ensureFSMSame(want []string) {
 
 func (c *cluster) disconnect(r *Raft) {
 	host, _, _ := net.SplitHostPort(r.addr)
-	debug("disconnecting", host)
+	debug("-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<- disconnecting", host)
 	c.network.SetFirewall(fnet.Split([]string{host}, fnet.AllowAll))
 }
 
 func (c *cluster) connect() {
-	debug("reconnecting")
+	debug("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ reconnecting")
 	c.network.SetFirewall(fnet.AllowAll)
 }
 
@@ -630,7 +667,7 @@ func (r *Raft) getTerm() uint64 {
 	return term
 }
 
-func (r *Raft) getLeaderID() string {
+func (r *Raft) getLeader() string {
 	var leaderID string
 	r.inspect(func(r *Raft) {
 		leaderID = r.leader
