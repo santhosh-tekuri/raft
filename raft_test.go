@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"reflect"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -334,11 +335,11 @@ func TestRaft_Bootstrap(t *testing.T) {
 	}
 
 	// bootstrap one of the nodes
-	addrs := make([]string, 3)
-	for i, r := range c.rr {
-		addrs[i] = r.addr
+	nodes := make(map[nodeID]node, 3)
+	for _, r := range c.rr {
+		nodes[r.id] = node{id: r.id, addr: r.addr, voter: true}
 	}
-	if _, err := c.rr[0].waitTask(Bootstrap(addrs), c.longTimeout); err != nil {
+	if _, err := c.rr[0].waitTask(Bootstrap(nodes), c.longTimeout); err != nil {
 		t.Fatal(err)
 	}
 
@@ -355,10 +356,10 @@ func TestRaft_Bootstrap(t *testing.T) {
 	c.ensureFSMSame([]string{"hello"})
 
 	// ensure bootstrap fails if already bootstrapped
-	if _, err := c.rr[0].waitTask(Bootstrap(addrs), c.longTimeout); err != ErrCantBootstrap {
+	if _, err := c.rr[0].waitTask(Bootstrap(nodes), c.longTimeout); err != ErrCantBootstrap {
 		t.Fatalf("got %v, want %v", err, ErrCantBootstrap)
 	}
-	if _, err := c.rr[1].waitTask(Bootstrap(addrs), c.longTimeout); err != ErrCantBootstrap {
+	if _, err := c.rr[1].waitTask(Bootstrap(nodes), c.longTimeout); err != ErrCantBootstrap {
 		t.Fatalf("got %v, want %v", err, ErrCantBootstrap)
 	}
 
@@ -403,33 +404,35 @@ func newCluster(t *testing.T) *cluster {
 func (c *cluster) launch(n int, bootstrap bool) {
 	c.Helper()
 	c.network = fnet.New()
-	addrs := make([]string, n)
-	for i := range addrs {
-		host := string('A' + i)
-		addrs[i] = host + ":8888"
+	nodes := make(map[nodeID]node, n)
+	for i := 1; i <= n; i++ {
+		id := nodeID("M" + strconv.Itoa(i))
+		nodes[id] = node{id: id, addr: string(id) + ":8888", voter: true}
 	}
 
 	c.rr = make([]*Raft, n)
-	for i := range c.rr {
-		inmemStorage := new(inmem.Storage)
+	i := 0
+	for _, node := range nodes {
+		inMemStorage := new(inmem.Storage)
 		if bootstrap {
-			storage := storage{Stable: inmemStorage, log: inmemStorage}
-			_, err := storage.bootstrap(addrs)
+			storage := storage{Stable: inMemStorage, log: inMemStorage}
+			_, err := storage.bootstrap(nodes)
 			if err != nil {
 				c.Fatalf("storage.bootstrap failed: %v", err)
 			}
 		}
 
-		r, err := New(addrs[i], &fsmMock{}, inmemStorage, inmemStorage)
+		r, err := New(node.id, node.addr, &fsmMock{}, inMemStorage, inMemStorage)
 		if err != nil {
 			c.Fatal(err)
 		}
 
 		r.heartbeatTimeout = c.heartbeatTimeout
 		c.rr[i] = r
+		i++
 
 		// switch to fake transport
-		host := c.network.Host(string('A' + i))
+		host := c.network.Host(string(r.id))
 		r.listenFn, r.dialFn = host.Listen, host.DialTimeout
 
 		if err := r.Listen(); err != nil {
@@ -544,7 +547,7 @@ func (c *cluster) waitForLeader(timeout time.Duration) (*Raft, error) {
 	case r := <-leaderCh:
 		return r, nil
 	case <-time.After(timeout):
-		return nil, errors.New("waitForLeader: timedout")
+		return nil, errors.New("waitForLeader: timeout")
 	}
 }
 

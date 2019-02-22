@@ -193,10 +193,34 @@ func (s *storage) fillEntries(req *appendEntriesRequest, nextIndex, lastIndex ui
 	}
 }
 
-func (s *storage) bootstrap(addrs []string) (configEntry, error) {
-	nodes := make(map[string]node)
-	for _, addr := range addrs {
-		nodes[addr] = node{addr: addr, voter: true}
+func (s *storage) bootstrap(nodes map[nodeID]node) (configEntry, error) {
+	// todo: validate
+	ids := make(map[nodeID]bool)
+	addrs := make(map[string]bool)
+	voters := 0
+	for _, node := range nodes {
+		if node.id == "" {
+			return configEntry{}, fmt.Errorf("bootstrap: empty node id")
+		}
+		if ids[node.id] {
+			return configEntry{}, fmt.Errorf("bootstrap: duplicate id %s", node.id)
+		}
+		ids[node.id] = true
+
+		if node.addr == "" {
+			return configEntry{}, fmt.Errorf("bootstrap: empty address")
+		}
+		if addrs[node.addr] {
+			return configEntry{}, fmt.Errorf("bootstrap: duplicate address %s", node.addr)
+		}
+		addrs[node.addr] = true
+
+		if node.voter {
+			voters++
+		}
+	}
+	if voters == 0 {
+		return configEntry{}, fmt.Errorf("bootstrap: no voter")
 	}
 
 	configEntry := configEntry{

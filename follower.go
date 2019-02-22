@@ -48,7 +48,7 @@ func (r *Raft) canStartElection() (can bool, reason string) {
 	if r.configs.isBootstrap() {
 		return false, "no known peers"
 	}
-	if r.configs.isCommitted() && !r.configs.committed.isVoter(r.addr) {
+	if r.configs.isCommitted() && !r.configs.committed.isVoter(r.id) {
 		return false, "not part of stable cluster"
 	}
 	return true, ""

@@ -24,6 +24,7 @@ type Raft struct {
 	*server
 	dialFn dialFn
 
+	id      nodeID
 	addr    string
 	configs configs
 	wg      sync.WaitGroup
@@ -50,7 +51,7 @@ type Raft struct {
 	shutdownCh chan struct{}
 }
 
-func New(addr string, fsm FSM, stable Stable, log Log) (*Raft, error) {
+func New(id nodeID, addr string, fsm FSM, stable Stable, log Log) (*Raft, error) {
 	storage := &storage{Stable: stable, log: log}
 	if err := storage.init(); err != nil {
 		return nil, err
@@ -96,6 +97,7 @@ func New(addr string, fsm FSM, stable Stable, log Log) (*Raft, error) {
 		shutdownCheckDuration: heartbeatTimeout,
 	}
 	return &Raft{
+		id:               id,
 		addr:             addr,
 		storage:          storage,
 		fsm:              fsm,

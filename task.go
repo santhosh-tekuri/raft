@@ -65,13 +65,13 @@ func ApplyEntry(data []byte) Task {
 
 type bootstrap struct {
 	*task
-	addrs []string
+	nodes map[nodeID]node
 }
 
-func Bootstrap(addrs []string) Task {
+func Bootstrap(nodes map[nodeID]node) Task {
 	return bootstrap{
 		task:  &task{done: make(chan struct{})},
-		addrs: addrs,
+		nodes: nodes,
 	}
 }
 
@@ -79,17 +79,15 @@ var ErrCantBootstrap = errors.New("raft: bootstrap only works on new clusters")
 
 func (r *Raft) bootstrap(t bootstrap) {
 	debug(r, "bootstrapping....")
-	// todo: validate addrs
-	addrsMap := make(map[string]struct{})
-	for _, addr := range t.addrs {
-		addrsMap[addr] = struct{}{}
-	}
-	if len(t.addrs) != len(addrsMap) {
-		t.reply("bootstrap: duplicate address")
+
+	// validations
+	self, ok := t.nodes[r.id]
+	if !ok {
+		t.reply(fmt.Errorf("bootstrap: myself %s must be part of cluster", r.id))
 		return
 	}
-	if _, ok := addrsMap[r.addr]; !ok {
-		t.reply(fmt.Errorf("bootstrap: myself %s must be part of cluster", r.addr))
+	if self.addr != r.addr { // todo: allow changing advertise address
+		t.reply(fmt.Errorf("bootstrap: my address does not match"))
 		return
 	}
 
@@ -100,7 +98,7 @@ func (r *Raft) bootstrap(t bootstrap) {
 	}
 
 	// persist config change
-	configEntry, err := r.storage.bootstrap(t.addrs)
+	configEntry, err := r.storage.bootstrap(t.nodes)
 	if err != nil {
 		t.reply(err)
 		return

@@ -30,19 +30,20 @@ type leadership struct {
 	// committed entries are dequeued and handed over to fsm go-routine
 	newEntries *list.List
 
-	voters map[string]*member
+	voters map[nodeID]*member
 
 	// holds running replications, key is addr
-	repls map[string]*replication
+	repls map[nodeID]*replication
 }
 
 func (ldr *leadership) runLoop() {
 	assert(ldr.leader == ldr.addr, "%s ldr.leader: got %s, want %s", ldr, ldr.leader, ldr.addr)
 
-	ldr.voters = make(map[string]*member)
+	ldr.voters = make(map[nodeID]*member)
 	for _, node := range ldr.configs.latest.nodes {
 		if node.voter {
-			ldr.voters[node.addr] = &member{
+			ldr.voters[node.id] = &member{
+				id:         node.id,
 				addr:       node.addr,
 				connPool:   ldr.getConnPool(node.addr),
 				matchIndex: 0, // matchIndex initialized to zero
@@ -82,7 +83,7 @@ func (ldr *leadership) runLoop() {
 	}()
 
 	// start replication routine for each follower
-	ldr.repls = make(map[string]*replication)
+	ldr.repls = make(map[nodeID]*replication)
 	for _, m := range ldr.voters {
 		repl := &replication{
 			member:           m,
@@ -96,7 +97,7 @@ func (ldr *leadership) runLoop() {
 			leaderUpdateCh:   make(chan leaderUpdate, 1),
 			str:              ldr.String() + " " + m.addr,
 		}
-		ldr.repls[m.addr] = repl
+		ldr.repls[m.id] = repl
 
 		// send initial empty AppendEntries RPCs (heartbeat) to each follower
 		req := &appendEntriesRequest{

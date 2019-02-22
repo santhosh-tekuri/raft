@@ -5,7 +5,10 @@ import (
 	"fmt"
 )
 
+type nodeID string
+
 type node struct {
+	id    nodeID
 	addr  string
 	voter bool
 }
@@ -13,13 +16,13 @@ type node struct {
 // -------------------------------------------------
 
 type configEntry struct {
-	nodes map[string]node
+	nodes map[nodeID]node
 	index uint64
 	term  uint64
 }
 
-func (c configEntry) isVoter(addr string) bool {
-	node, ok := c.nodes[addr]
+func (c configEntry) isVoter(id nodeID) bool {
+	node, ok := c.nodes[id]
 	return ok && node.voter
 }
 
@@ -39,6 +42,9 @@ func (c configEntry) encode() *entry {
 		panic(err)
 	}
 	for _, node := range c.nodes {
+		if err := writeString(w, string(node.id)); err != nil {
+			panic(err)
+		}
 		if err := writeString(w, node.addr); err != nil {
 			panic(err)
 		}
@@ -64,8 +70,12 @@ func (c *configEntry) decode(e *entry) error {
 	if err != nil {
 		return err
 	}
-	c.nodes = make(map[string]node)
+	c.nodes = make(map[nodeID]node)
 	for ; size > 0; size-- {
+		id, err := readString(r)
+		if err != nil {
+			return err
+		}
 		addr, err := readString(r)
 		if err != nil {
 			return err
@@ -74,7 +84,7 @@ func (c *configEntry) decode(e *entry) error {
 		if err != nil {
 			return err
 		}
-		c.nodes[addr] = node{addr: addr, voter: voter}
+		c.nodes[nodeID(id)] = node{id: nodeID(id), addr: addr, voter: voter}
 	}
 	return nil
 }
