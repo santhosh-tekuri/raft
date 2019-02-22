@@ -7,13 +7,12 @@ import (
 )
 
 func (r *Raft) runLeader() {
-	r.leadership = &leadership{
+	ldr := leadership{
 		Raft:         r,
 		leaseTimeout: r.heartbeatTimeout, // todo: should it be same as heartbeatTimeout ?
 		newEntries:   list.New(),
 	}
-	r.leadership.runLoop()
-	r.leadership = nil
+	ldr.runLoop()
 }
 
 type leadership struct {
@@ -160,7 +159,7 @@ func (ldr *leadership) runLoop() {
 			ldr.commitAndApplyOnMajority()
 
 		case t := <-ldr.TasksCh:
-			t.execute(ldr.Raft)
+			ldr.executeTask(t)
 
 		case <-leaseTimer.C:
 			t := time.Now().Add(-ldr.leaseTimeout)

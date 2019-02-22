@@ -698,14 +698,7 @@ func (r *Raft) waitApply(cmd string, timeout time.Duration) (fsmReply, error) {
 }
 
 func (r *Raft) inspect(fn func(*Raft)) {
-	t := &task{
-		fn: func(t Task, r *Raft) {
-			fn(r)
-			t.reply(nil)
-		},
-		done: make(chan struct{}),
-	}
-	_, _ = r.waitTask(t, 0)
+	_, _ = r.waitTask(inspect(fn), 0)
 }
 
 // events ----------------------------------------------------------------------

@@ -46,7 +46,6 @@ type Raft struct {
 
 	connPools map[string]*connPool
 
-	leadership *leadership
 	TasksCh    chan Task
 	shutdownCh chan struct{}
 }
@@ -195,11 +194,6 @@ func (r *Raft) getConnPool(addr string) *connPool {
 		r.connPools[addr] = pool
 	}
 	return pool
-}
-
-type newEntry struct {
-	*entry
-	task Task
 }
 
 type NotLeaderError struct {

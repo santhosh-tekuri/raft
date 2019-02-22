@@ -6,7 +6,6 @@ import (
 )
 
 type Task interface {
-	execute(r *Raft)
 	Done() <-chan struct{}
 	Err() error
 	Result() interface{}
@@ -14,13 +13,8 @@ type Task interface {
 }
 
 type task struct {
-	fn     func(t Task, r *Raft)
 	result interface{}
 	done   chan struct{}
-}
-
-func (t *task) execute(r *Raft) {
-	t.fn(t, r)
 }
 
 func (t *task) Done() <-chan struct{} {
@@ -52,55 +46,49 @@ func (t *task) reply(result interface{}) {
 
 // ------------------------------------------------------------------------
 
-func ApplyEntry(data []byte) Task {
-	return &task{
-		fn: func(t Task, r *Raft) {
-			applyEntry(t, r, data)
-		},
-		done: make(chan struct{}),
-	}
+type newEntry struct {
+	*task
+	*entry
 }
 
-func applyEntry(t Task, r *Raft, data []byte) {
-	if r.state != leader {
-		t.reply(NotLeaderError{r.leaderID})
-		return
-	}
-	r.leadership.applyEntry(newEntry{
+func ApplyEntry(data []byte) Task {
+	return newEntry{
+		task: &task{done: make(chan struct{})},
 		entry: &entry{
-			typ:  entryCommand,
 			data: data,
 		},
-		task: t,
-	})
+	}
 }
 
 // ------------------------------------------------------------------------
 
-var ErrCantBootstrap = errors.New("raft: bootstrap only works on new clusters")
+type bootstrap struct {
+	*task
+	addrs []string
+}
 
 func Bootstrap(addrs []string) Task {
-	return &task{
-		fn: func(t Task, r *Raft) {
-			bootstrap(t, r, addrs)
-		},
-		done: make(chan struct{}),
+	return bootstrap{
+		task:  &task{done: make(chan struct{})},
+		addrs: addrs,
 	}
 }
 
-func bootstrap(t Task, r *Raft, addrs []string) {
+var ErrCantBootstrap = errors.New("raft: bootstrap only works on new clusters")
+
+func (r *Raft) bootstrap(t bootstrap) {
 	debug(r, "bootstrapping....")
 	// todo: validate addrs
 	addrsMap := make(map[string]struct{})
-	for _, addr := range addrs {
+	for _, addr := range t.addrs {
 		addrsMap[addr] = struct{}{}
 	}
-	if len(addrs) != len(addrsMap) {
-		t.reply("Raft.bootstrap: duplicate address")
+	if len(t.addrs) != len(addrsMap) {
+		t.reply("bootstrap: duplicate address")
 		return
 	}
 	if _, ok := addrsMap[r.addr]; !ok {
-		t.reply(fmt.Errorf("Raft.bootstrap: myself %s must be part of cluster", r.addr))
+		t.reply(fmt.Errorf("bootstrap: myself %s must be part of cluster", r.addr))
 		return
 	}
 
@@ -111,7 +99,7 @@ func bootstrap(t Task, r *Raft, addrs []string) {
 	}
 
 	// persist config change
-	configEntry, err := r.storage.bootstrap(addrs)
+	configEntry, err := r.storage.bootstrap(t.addrs)
 	if err != nil {
 		t.reply(err)
 		return
@@ -130,4 +118,41 @@ func bootstrap(t Task, r *Raft, addrs []string) {
 	r.lastLogIndex, r.lastLogTerm = e.index, e.term
 	r.configs.latest = configEntry
 	t.reply(nil)
+}
+
+// ------------------------------------------------------------------------
+
+type inspectRaft struct {
+	*task
+	fn func(*Raft)
+}
+
+func inspect(fn func(*Raft)) Task {
+	return inspectRaft{
+		task: &task{done: make(chan struct{})},
+		fn:   fn,
+	}
+}
+
+// ------------------------------------------------------------------------
+
+func (r *Raft) executeTask(t Task) {
+	switch t := t.(type) {
+	case bootstrap:
+		r.bootstrap(t)
+	case inspectRaft:
+		t.fn(r)
+		t.reply(nil)
+	default:
+		t.reply(NotLeaderError{r.leaderID})
+	}
+}
+
+func (ldr *leadership) executeTask(t Task) {
+	switch t := t.(type) {
+	case newEntry:
+		ldr.applyEntry(t)
+	default:
+		ldr.Raft.executeTask(t)
+	}
 }

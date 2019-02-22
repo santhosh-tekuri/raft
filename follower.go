@@ -35,7 +35,7 @@ func (r *Raft) runFollower() {
 
 		case t := <-r.TasksCh:
 			before, _ := r.canStartElection()
-			t.execute(r)
+			r.executeTask(t)
 			if now, _ := r.canStartElection(); !before && now {
 				// we got new config, which allows us to start election
 				timeoutCh = afterRandomTimeout(r.heartbeatTimeout)

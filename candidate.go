@@ -49,7 +49,7 @@ func (r *Raft) runCandidate() {
 			return
 
 		case t := <-r.TasksCh:
-			t.execute(r)
+			r.executeTask(t)
 		}
 	}
 }
