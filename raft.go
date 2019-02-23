@@ -8,15 +8,15 @@ import (
 	"time"
 )
 
-type state byte
+type State byte
 
 const (
-	follower  state = 'F'
-	candidate state = 'C'
-	leader    state = 'L'
+	Follower  State = 'F'
+	Candidate State = 'C'
+	Leader    State = 'L'
 )
 
-func (s state) String() string {
+func (s State) String() string {
 	return string(s)
 }
 
@@ -34,7 +34,7 @@ type Raft struct {
 
 	storage *storage
 	term    uint64
-	state   state
+	state   State
 	leader  string
 
 	votedFor         string
@@ -106,7 +106,7 @@ func New(id NodeID, addr string, fsm FSM, stable Stable, log Log) (*Raft, error)
 		lastLogIndex:     lastLogIndex,
 		lastLogTerm:      lastLogTerm,
 		configs:          configs,
-		state:            follower,
+		state:            Follower,
 		heartbeatTimeout: heartbeatTimeout,
 		dialFn:           net.DialTimeout,
 		server:           server,
@@ -156,11 +156,11 @@ func (r *Raft) loop() {
 		}
 
 		switch r.state {
-		case follower:
+		case Follower:
 			r.runFollower()
-		case candidate:
+		case Candidate:
 			r.runCandidate()
-		case leader:
+		case Leader:
 			r.runLeader()
 		}
 	}

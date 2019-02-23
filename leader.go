@@ -127,7 +127,7 @@ func (ldr *leadership) runLoop() {
 	leaseTimer := time.NewTicker(ldr.leaseTimeout)
 	defer leaseTimer.Stop()
 
-	for ldr.state == leader {
+	for ldr.state == Leader {
 		select {
 		case <-ldr.shutdownCh:
 			return
@@ -136,10 +136,10 @@ func (ldr *leadership) runLoop() {
 			// if response contains term T > currentTerm:
 			// set currentTerm = T, convert to follower
 			debug(ldr, "leader -> follower")
-			ldr.state = follower
+			ldr.state = Follower
 			ldr.setTerm(newTerm)
 			ldr.leader = ""
-			StateChanged(ldr.Raft, byte(ldr.state))
+			StateChanged(ldr.Raft, ldr.state)
 			return
 
 		case rpc := <-ldr.rpcCh:
@@ -168,9 +168,9 @@ func (ldr *leadership) runLoop() {
 			if !ldr.isQuorumReachable(t) {
 				debug(ldr, "quorumUnreachable")
 				debug(ldr, "leader -> follower")
-				ldr.state = follower
+				ldr.state = Follower
 				ldr.leader = ""
-				StateChanged(ldr.Raft, byte(ldr.state))
+				StateChanged(ldr.Raft, ldr.state)
 			}
 		}
 	}

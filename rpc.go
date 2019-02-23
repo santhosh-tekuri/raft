@@ -37,10 +37,10 @@ func (r *Raft) onVoteRequest(req *voteRequest) *voteResponse {
 		debug(r, "rejectVoteTo", req.candidateID, "oldTerm")
 		return resp
 	case req.term > r.term: // convert to follower
-		debug(r, "stateChange", req.term, follower)
-		r.state = follower
+		debug(r, "stateChange", req.term, Follower)
+		r.state = Follower
 		r.setTerm(req.term)
-		StateChanged(r, byte(r.state))
+		StateChanged(r, r.state)
 	}
 
 	if r.votedFor != "" { // we already voted in this election before
@@ -79,11 +79,11 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesRequest) *appendEntriesR
 	}
 
 	// if newer term, convert to follower
-	if req.term > r.term || r.state != follower {
-		debug(r, "stateChange", req.term, follower)
-		r.state = follower
+	if req.term > r.term || r.state != Follower {
+		debug(r, "stateChange", req.term, Follower)
+		r.state = Follower
 		r.setTerm(req.term)
-		StateChanged(r, byte(r.state))
+		StateChanged(r, r.state)
 	}
 
 	r.leader = req.leaderID

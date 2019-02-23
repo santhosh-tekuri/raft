@@ -2,8 +2,8 @@ package raft
 
 import "log"
 
-var StateChanged = func(r *Raft, state byte) {
-	if state == 'L' {
+var StateChanged = func(r *Raft, state State) {
+	if state == Leader {
 		log.Println("[INFO] raft: cluster leadership acquired")
 	}
 }

@@ -147,10 +147,49 @@ func inspect(fn func(*Raft)) Task {
 
 // ------------------------------------------------------------------------
 
+type info struct {
+	*task
+}
+
+type Info struct {
+	ID               NodeID
+	Term             uint64
+	State            State
+	Leader           string
+	LastLogIndex     uint64
+	LastLogTerm      uint64
+	CommitIndex      uint64
+	LastAppliedIndex uint64
+}
+
+func GetInfo() Task {
+	return info{task: &task{done: make(chan struct{})}}
+}
+
+func (r *Raft) Info() Info {
+	t := GetInfo()
+	r.TasksCh <- t
+	<-t.Done()
+	return t.Result().(Info)
+}
+
+// ------------------------------------------------------------------------
+
 func (r *Raft) executeTask(t Task) {
 	switch t := t.(type) {
 	case bootstrap:
 		r.bootstrap(t)
+	case info:
+		t.reply(Info{
+			ID:               r.id,
+			Term:             r.term,
+			State:            r.state,
+			Leader:           r.leader,
+			LastLogIndex:     r.lastLogIndex,
+			LastLogTerm:      r.lastLogTerm,
+			CommitIndex:      r.commitIndex,
+			LastAppliedIndex: r.lastApplied,
+		})
 	case inspectRaft:
 		t.fn(r)
 		t.reply(nil)

@@ -152,11 +152,11 @@ func TestRaft_LeaderFail(t *testing.T) {
 	c.ensureFSMReplicated(1)
 
 	// disconnect leader
-	ldrTerm := ldr.getTerm()
+	ldrTerm := ldr.Info().Term
 	c.disconnect(ldr)
 
 	// leader should stepDown
-	if !ldr.waitForState(c.longTimeout, follower, candidate) {
+	if !ldr.waitForState(c.longTimeout, Follower, Candidate) {
 		t.Fatal("leader should stepDown")
 	}
 
@@ -168,7 +168,7 @@ func TestRaft_LeaderFail(t *testing.T) {
 	}
 
 	// ensure leader term is greater
-	if newLdrTerm := newLdr.getTerm(); newLdrTerm <= ldrTerm {
+	if newLdrTerm := newLdr.Info().Term; newLdrTerm <= ldrTerm {
 		t.Fatalf("expected new leader term: newLdrTerm=%d, ldrTerm=%d", newLdrTerm, ldrTerm)
 	}
 
@@ -393,17 +393,17 @@ func TestRaft_LeaderLeaseExpire(t *testing.T) {
 	c.disconnect(followers[0])
 
 	// the leader should stepDown within leaderLeaseTimeout
-	ldr.waitForState(3*c.heartbeatTimeout, follower, candidate)
+	ldr.waitForState(3*c.heartbeatTimeout, Follower, Candidate)
 
 	// should be no leaders
-	if n := len(c.getInState(leader)); n != 0 {
+	if n := len(c.getInState(Leader)); n != 0 {
 		t.Fatalf("#leaders: got %d, want 0", n)
 	}
 
 	// Ensure both have cleared their leader
-	followers[0].waitForState(2*c.heartbeatTimeout, candidate)
+	followers[0].waitForState(2*c.heartbeatTimeout, Candidate)
 	for _, r := range c.rr {
-		if ldr := r.getLeader(); ldr != "" {
+		if ldr := r.Info().Leader; ldr != "" {
 			t.Fatalf("%s.leader: got %s want ", r.id, ldr)
 		}
 	}
@@ -441,9 +441,9 @@ func TestRaft_Barrier(t *testing.T) {
 	}
 
 	// ensure leader's lastLogIndex matches with at-least one of follower
-	len0 := ldr.getLastLogIndex()
-	len1 := followers[0].getLastLogIndex()
-	len2 := followers[1].getLastLogIndex()
+	len0 := ldr.Info().LastLogIndex
+	len1 := followers[0].Info().LastLogIndex
+	len2 := followers[1].Info().LastLogIndex
 	if len0 != len1 && len0 != len2 {
 		t.Fatalf("len0 %d, len1 %d, len2 %d", len0, len1, len2)
 	}
@@ -554,10 +554,10 @@ func (c *cluster) ensureStability() {
 	}
 }
 
-func (c *cluster) getInState(state state) []*Raft {
+func (c *cluster) getInState(state State) []*Raft {
 	var rr []*Raft
 	for _, r := range c.rr {
-		if r.getState() == state {
+		if r.Info().State == state {
 			rr = append(rr, r)
 		}
 	}
@@ -566,7 +566,7 @@ func (c *cluster) getInState(state state) []*Raft {
 
 func (c *cluster) leader() *Raft {
 	c.Helper()
-	leaders := c.getInState(leader)
+	leaders := c.getInState(Leader)
 	if len(leaders) != 1 {
 		c.Fatalf("got %d leaders, want 1 leader", len(leaders))
 	}
@@ -575,7 +575,7 @@ func (c *cluster) leader() *Raft {
 
 func (c *cluster) followers() []*Raft {
 	c.Helper()
-	followers := c.getInState(follower)
+	followers := c.getInState(Follower)
 	if len(followers) != len(c.rr)-1 {
 		c.Fatalf("got %d followers, want %d followers", len(followers), len(c.rr)-1)
 	}
@@ -590,11 +590,11 @@ func (c *cluster) ensureHealthy() *Raft {
 	return ldr
 }
 
-func (c *cluster) ensureLeader(leaderID string) {
+func (c *cluster) ensureLeader(leader string) {
 	c.Helper()
 	for _, r := range c.rr {
-		if got := r.getLeader(); got != leaderID {
-			c.Fatalf("leader of %s: got %s, want %s", r.addr, got, leaderID)
+		if got := r.Info().Leader; got != leader {
+			c.Fatalf("leader of %s: got %s, want %s", r.addr, got, leader)
 		}
 	}
 }
@@ -603,7 +603,7 @@ func (c *cluster) waitForLeader(timeout time.Duration) (*Raft, error) {
 	c.Helper()
 	leaderCh := make(chan *Raft, 1)
 	onStateChange(func(r *Raft) {
-		if r.state == leader {
+		if r.state == Leader {
 			select {
 			case leaderCh <- r:
 			default:
@@ -614,7 +614,7 @@ func (c *cluster) waitForLeader(timeout time.Duration) (*Raft, error) {
 
 	// check if leader already chosen
 	for _, r := range c.rr {
-		if r.getState() == leader {
+		if r.Info().State == Leader {
 			return r, nil
 		}
 	}
@@ -691,58 +691,22 @@ func (c *cluster) shutdown() {
 
 // ---------------------------------------------
 
-func (r *Raft) getState() state {
-	var s state
-	r.inspect(func(r *Raft) {
-		s = r.state
-	})
-	return s
-}
-
-func (r *Raft) getTerm() uint64 {
-	var term uint64
-	r.inspect(func(r *Raft) {
-		term = r.term
-	})
-	return term
-}
-
-func (r *Raft) getLastLogIndex() uint64 {
-	var lastLogIndex uint64
-	r.inspect(func(r *Raft) {
-		lastLogIndex = r.lastLogIndex
-	})
-	return lastLogIndex
-}
-
-func (r *Raft) getLeader() string {
-	var leaderID string
-	r.inspect(func(r *Raft) {
-		leaderID = r.leader
-	})
-	return leaderID
-}
-
 // wait until state is one of given states
-func (r *Raft) waitForState(timeout time.Duration, states ...state) bool {
-	matchesState := func(curState state) bool {
-		for _, s := range states {
-			if curState == s {
-				return true
-			}
-		}
-		return false
+func (r *Raft) waitForState(timeout time.Duration, states ...State) bool {
+	statesSet := make(map[State]bool)
+	for _, s := range states {
+		statesSet[s] = true
 	}
 
 	ch := make(chan struct{}, 1)
 	onStateChange(func(raft *Raft) {
-		if raft == r && matchesState(r.state) {
+		if raft == r && statesSet[r.state] {
 			close(ch)
 			onStateChange(nil)
 		}
 	})
 	defer onStateChange(nil)
-	if !matchesState(r.getState()) {
+	if !statesSet[r.Info().State] {
 		select {
 		case <-ch:
 			break
@@ -798,7 +762,7 @@ var fsmAppliedFn func(*Raft, uint64)
 var voteRequestFn func(*Raft, *voteRequest)
 
 func init() {
-	StateChanged = func(r *Raft, _ byte) {
+	StateChanged = func(r *Raft, _ State) {
 		mu.RLock()
 		f := stateChangedFn
 		mu.RUnlock()

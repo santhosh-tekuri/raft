@@ -5,7 +5,7 @@ func (r *Raft) runFollower() {
 
 	// todo: use single timer by resetting
 	timeoutCh := afterRandomTimeout(r.heartbeatTimeout)
-	for r.state == follower {
+	for r.state == Follower {
 		select {
 		case <-r.shutdownCh:
 			return
@@ -30,8 +30,8 @@ func (r *Raft) runFollower() {
 			}
 
 			debug(r, "follower -> candidate")
-			r.state = candidate
-			StateChanged(r, byte(r.state))
+			r.state = Candidate
+			StateChanged(r, r.state)
 
 		case t := <-r.TasksCh:
 			before, _ := r.canStartElection()

@@ -7,7 +7,7 @@ func (r *Raft) runCandidate() {
 	timeoutCh := afterRandomTimeout(r.heartbeatTimeout)
 	results := r.startElection()
 	votesNeeded := r.configs.latest.quorum()
-	for r.state == candidate {
+	for r.state == Candidate {
 		select {
 		case <-r.shutdownCh:
 			return
@@ -27,9 +27,9 @@ func (r *Raft) runCandidate() {
 			// set currentTerm = T, convert to follower
 			if vote.term > r.term {
 				debug(r, "candidate -> follower")
-				r.state = follower
+				r.state = Follower
 				r.setTerm(vote.term)
-				StateChanged(r, byte(r.state))
+				StateChanged(r, r.state)
 				return
 			}
 
@@ -38,9 +38,9 @@ func (r *Raft) runCandidate() {
 				votesNeeded--
 				if votesNeeded == 0 {
 					debug(r, "candidate -> leader")
-					r.state = leader
+					r.state = Leader
 					r.leader = r.addr
-					StateChanged(r, byte(r.state))
+					StateChanged(r, r.state)
 					return
 				}
 			}
