@@ -5,6 +5,10 @@ import (
 	"time"
 )
 
+type leaderUpdate struct {
+	lastIndex, commitIndex uint64
+}
+
 type replication struct {
 	member           *member
 	storage          *storage

@@ -5,10 +5,6 @@ import (
 	"time"
 )
 
-type leaderUpdate struct {
-	lastIndex, commitIndex uint64
-}
-
 type member struct {
 	id       NodeID
 	addr     string

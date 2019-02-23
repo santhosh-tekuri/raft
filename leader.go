@@ -145,13 +145,15 @@ func (ldr *leadership) runLoop() {
 		case rpc := <-ldr.rpcCh:
 			ldr.replyRPC(rpc)
 
-		case m := <-matchUpdatedCh:
+		case repl := <-matchUpdatedCh:
 		loop:
 			// get latest matchIndex from all notified members
 			for {
-				m.member.matchIndex = m.getMatchIndex()
+				repl.member.matchIndex = repl.getMatchIndex()
 				select {
-				case m = <-matchUpdatedCh:
+				case <-ldr.shutdownCh:
+					return
+				case repl = <-matchUpdatedCh:
 					break
 				default:
 					break loop

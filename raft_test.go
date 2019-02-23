@@ -720,10 +720,7 @@ var electionAbortedCh = make(chan NodeID, 10)
 
 func init() {
 	StateChanged = func(r *Raft, state State) {
-		select {
-		case stateChangedCh <- struct{}{}:
-		default:
-		}
+		notify(stateChangedCh)
 	}
 
 	ElectionAborted = func(r *Raft, reason string) {
