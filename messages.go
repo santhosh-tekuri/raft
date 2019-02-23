@@ -20,9 +20,10 @@ type message interface {
 type entryType uint8
 
 const (
-	entryCommand entryType = iota // note: command type must be default value
+	entryCommand entryType = iota
 	entryNoop
 	entryConfig
+	entryBarrier
 )
 
 type entry struct {

@@ -13,13 +13,11 @@ func (r *Raft) fsmLoop() {
 	defer r.wg.Done()
 	for ne := range r.fsmApplyCh {
 		debug(r.addr, "fsm.apply", ne.index)
-		resp := r.fsm.Apply(ne.entry.data)
-
-		// ne.task is nil for follower's newEntry
-		if ne.task != nil {
-			ne.task.reply(resp)
+		var resp interface{}
+		if ne.entry.typ == entryCommand {
+			resp = r.fsm.Apply(ne.entry.data)
 		}
-
+		ne.task.reply(resp)
 		fsmApplied(r, ne.index) // generate event
 	}
 	debug(r, "fsmLoop shutdown")
@@ -51,11 +49,9 @@ func (r *Raft) fsmApply(newEntries *list.List) {
 		}
 
 		debug(r, "lastApplied", ne.index)
-		if ne.entry.typ == entryCommand {
-			select {
-			case <-r.shutdownCh:
-			case r.fsmApplyCh <- ne:
-			}
+		select {
+		case <-r.shutdownCh:
+		case r.fsmApplyCh <- ne:
 		}
 	}
 }

@@ -51,12 +51,24 @@ type newEntry struct {
 	*entry
 }
 
-func ApplyEntry(data []byte) Task {
+func ApplyCommand(data []byte) Task {
 	return newEntry{
 		task: &task{done: make(chan struct{})},
 		entry: &entry{
 			typ:  entryCommand,
 			data: data,
+		},
+	}
+}
+
+// Barrier is used to issue a command that blocks until all preceding
+// commands have been applied to the FSM. It can be used to ensure the
+// FSM reflects all queued commands.
+func Barrier() Task {
+	return newEntry{
+		task: &task{done: make(chan struct{})},
+		entry: &entry{
+			typ: entryBarrier,
 		},
 	}
 }

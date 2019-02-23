@@ -213,7 +213,7 @@ func TestRaft_BehindFollower(t *testing.T) {
 
 	// commit a lot of things
 	for i := 0; i < 100; i++ {
-		ldr.TasksCh <- ApplyEntry([]byte(fmt.Sprintf("test%d", i)))
+		ldr.TasksCh <- ApplyCommand([]byte(fmt.Sprintf("test%d", i)))
 	}
 	if _, err := ldr.waitApply("test100", c.longTimeout); err != nil {
 		t.Fatal(err)
@@ -406,6 +406,46 @@ func TestRaft_LeaderLeaseExpire(t *testing.T) {
 		if ldr := r.getLeader(); ldr != "" {
 			t.Fatalf("%s.leader: got %s want ", r.id, ldr)
 		}
+	}
+}
+
+func TestRaft_Barrier(t *testing.T) {
+	debug("\nTestRaft_Barrier --------------------------")
+	defer leaktest.Check(t)()
+	c := newCluster(t)
+	c.launch(3, true)
+	defer c.shutdown()
+	ldr := c.ensureHealthy()
+	followers := c.followers()
+
+	// should agree on leader
+	c.ensureLeader(ldr.addr)
+
+	// commit a lot of things
+	n := 100000
+	for i := 0; i < n; i++ {
+		ldr.TasksCh <- ApplyCommand([]byte(fmt.Sprintf("test%d", i)))
+	}
+
+	// wait for a barrier complete
+	b := Barrier()
+	ldr.TasksCh <- b
+	<-b.Done()
+	if b.Err() != nil {
+		t.Fatalf("barrier failed: %v", b.Err())
+	}
+
+	// ensure leader fsm got all commands
+	if got := ldr.fsmMock().len(); int(got) != n {
+		t.Fatalf("#entries: got %d, want %d", got, n)
+	}
+
+	// ensure leader's lastLogIndex matches with at-least one of follower
+	len0 := ldr.getLastLogIndex()
+	len1 := followers[0].getLastLogIndex()
+	len2 := followers[1].getLastLogIndex()
+	if len0 != len1 && len0 != len2 {
+		t.Fatalf("len0 %d, len1 %d, len2 %d", len0, len1, len2)
 	}
 }
 
@@ -627,7 +667,7 @@ func (c *cluster) ensureFSMSame(want []string) {
 	}
 	for _, r := range c.rr {
 		if got := r.fsmMock().commands(); !reflect.DeepEqual(got, want) {
-			c.Fatalf("got %v, want %v", got, want)
+			c.Fatalf("\n got %v\n want %v", got, want)
 		}
 	}
 }
@@ -665,6 +705,14 @@ func (r *Raft) getTerm() uint64 {
 		term = r.term
 	})
 	return term
+}
+
+func (r *Raft) getLastLogIndex() uint64 {
+	var lastLogIndex uint64
+	r.inspect(func(r *Raft) {
+		lastLogIndex = r.lastLogIndex
+	})
+	return lastLogIndex
 }
 
 func (r *Raft) getLeader() string {
@@ -730,7 +778,7 @@ func (r *Raft) waitTask(t Task, timeout time.Duration) (interface{}, error) {
 
 // use zero timeout, to wait till reply received
 func (r *Raft) waitApply(cmd string, timeout time.Duration) (fsmReply, error) {
-	result, err := r.waitTask(ApplyEntry([]byte(cmd)), timeout)
+	result, err := r.waitTask(ApplyCommand([]byte(cmd)), timeout)
 	if err != nil {
 		return fsmReply{}, err
 	}
