@@ -18,7 +18,6 @@ func (r *Raft) fsmLoop() {
 			resp = r.fsm.Apply(ne.entry.data)
 		}
 		ne.task.reply(resp)
-		fsmApplied(r, ne.index) // generate event
 	}
 	debug(r, "fsmLoop shutdown")
 }

@@ -467,6 +467,7 @@ type cluster struct {
 	heartbeatTimeout time.Duration
 	longTimeout      time.Duration
 	commitTimeout    time.Duration
+	fsmChangedCh     chan struct{}
 }
 
 func newCluster(t *testing.T) *cluster {
@@ -475,6 +476,7 @@ func newCluster(t *testing.T) *cluster {
 		heartbeatTimeout: 50 * time.Millisecond,
 		longTimeout:      5 * time.Second,
 		commitTimeout:    5 * time.Millisecond,
+		fsmChangedCh:     make(chan struct{}, 1),
 	}
 }
 
@@ -498,8 +500,8 @@ func (c *cluster) launch(n int, bootstrap bool) {
 				c.Fatalf("storage.bootstrap failed: %v", err)
 			}
 		}
-
-		r, err := New(node.ID, node.Addr, &fsmMock{}, inMemStorage, inMemStorage)
+		fsm := &fsmMock{changedCh: c.fsmChangedCh}
+		r, err := New(node.ID, node.Addr, fsm, inMemStorage, inMemStorage)
 		if err != nil {
 			c.Fatal(err)
 		}
@@ -628,33 +630,22 @@ func (c *cluster) waitForLeader(timeout time.Duration) (*Raft, error) {
 	}
 }
 
+func (c *cluster) fsmReplicated(len uint64) bool {
+	for _, r := range c.rr {
+		if got := r.fsmMock().len(); got != len {
+			return false
+		}
+	}
+	return true
+}
+
 func (c *cluster) ensureFSMReplicated(len uint64) {
 	c.Helper()
-	limitCh := time.After(c.longTimeout)
-
-	eventCh := make(chan struct{}, 1)
-	eventCh <- struct{}{}
-	onFSMApplied(func(*Raft, uint64) {
-		select {
-		case eventCh <- struct{}{}:
-		default:
-		}
-	})
-	defer onFSMApplied(nil)
-
-loop:
-	for {
-		select {
-		case <-eventCh:
-			for _, r := range c.rr {
-				if r.fsmMock().len() != len {
-					continue loop
-				}
-			}
-			return
-		case <-limitCh:
-			c.Fatal("timeout waiting for replication")
-		}
+	cond := func() bool {
+		return c.fsmReplicated(len)
+	}
+	if !ensureTimeout(cond, c.fsmChangedCh, c.longTimeout) {
+		c.Fatalf("ensure fsmReplicated(%d): timeout after %s", len, c.longTimeout)
 	}
 }
 
@@ -758,7 +749,6 @@ func (r *Raft) inspect(fn func(*Raft)) {
 var mu sync.RWMutex
 var stateChangedFn func(*Raft)
 var electionAbortedFn func(*Raft)
-var fsmAppliedFn func(*Raft, uint64)
 var voteRequestFn func(*Raft, *voteRequest)
 
 func init() {
@@ -778,15 +768,6 @@ func init() {
 		debug(r, "electionAborted", reason)
 		if f != nil {
 			f(r)
-		}
-	}
-
-	fsmApplied = func(r *Raft, index uint64) {
-		mu.RLock()
-		f := fsmAppliedFn
-		mu.RUnlock()
-		if f != nil {
-			f(r, index)
 		}
 	}
 
@@ -812,12 +793,6 @@ func onElectionAborted(f func(*Raft)) {
 	mu.Unlock()
 }
 
-func onFSMApplied(f func(*Raft, uint64)) {
-	mu.Lock()
-	fsmAppliedFn = f
-	mu.Unlock()
-}
-
 func onVoteRequest(f func(*Raft, *voteRequest)) {
 	mu.Lock()
 	voteRequestFn = f
@@ -827,8 +802,9 @@ func onVoteRequest(f func(*Raft, *voteRequest)) {
 // ---------------------------------------------
 
 type fsmMock struct {
-	mu   sync.RWMutex
-	cmds []string
+	mu        sync.RWMutex
+	cmds      []string
+	changedCh chan<- struct{}
 }
 
 type fsmReply struct {
@@ -840,6 +816,7 @@ func (fsm *fsmMock) Apply(cmd []byte) interface{} {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
 	fsm.cmds = append(fsm.cmds, string(cmd))
+	notify(fsm.changedCh)
 	return fsmReply{string(cmd), len(fsm.cmds)}
 }
 
@@ -862,4 +839,40 @@ func (fsm *fsmMock) commands() []string {
 	fsm.mu.RLock()
 	defer fsm.mu.RUnlock()
 	return append([]string(nil), fsm.cmds...)
+}
+
+// ------------------------------------------------------------------
+
+func notify(ch chan<- struct{}) {
+	select {
+	case ch <- struct{}{}:
+	default:
+	}
+}
+
+func ensureTimeout(condition func() bool, ch <-chan struct{}, timeout time.Duration) bool {
+	var timeoutCh <-chan time.Time
+	if timeout <= 0 {
+		timeoutCh = make(chan time.Time)
+	}
+	timeoutCh = time.After(timeout)
+
+	select {
+	case <-ch:
+	default:
+	}
+
+	if condition() {
+		return true
+	}
+	for {
+		select {
+		case <-ch:
+			if condition() {
+				return false
+			}
+		case <-timeoutCh:
+			return false
+		}
+	}
 }
