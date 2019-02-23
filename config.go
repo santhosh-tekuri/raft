@@ -7,78 +7,87 @@ import (
 
 type NodeID string
 
-type NodeSuffrage int8
+type NodeType int8
 
 const (
-	Voter NodeSuffrage = iota
+	Voter NodeType = iota
 	NonVoter
 	Staging
 )
 
 type Node struct {
-	ID       NodeID
-	Addr     string
-	Suffrage NodeSuffrage
+	ID   NodeID
+	Addr string
+	Type NodeType
 }
 
 // -------------------------------------------------
 
-type configEntry struct {
-	nodes map[NodeID]Node
-	index uint64
-	term  uint64
+type Config struct {
+	Nodes map[NodeID]Node
+	Index uint64
+	Term  uint64
 }
 
-func (c configEntry) isVoter(id NodeID) bool {
-	node, ok := c.nodes[id]
-	return ok && node.Suffrage == Voter
+func (c Config) isVoter(id NodeID) bool {
+	node, ok := c.Nodes[id]
+	return ok && node.Type == Voter
 }
 
-func (c configEntry) quorum() int {
+func (c Config) quorum() int {
 	voters := 0
-	for _, node := range c.nodes {
-		if node.Suffrage == Voter {
+	for _, node := range c.Nodes {
+		if node.Type == Voter {
 			voters++
 		}
 	}
 	return voters/2 + 1
 }
 
-func (c configEntry) encode() *entry {
+func (c Config) clone() Config {
+	nodes := make(map[NodeID]Node)
+	for id, node := range c.Nodes {
+		nodes[id] = node
+	}
+	c.Nodes = nodes
+	return c
+}
+
+func (c Config) encode() *entry {
 	w := new(bytes.Buffer)
-	if err := writeUint32(w, uint32(len(c.nodes))); err != nil {
+	if err := writeUint32(w, uint32(len(c.Nodes))); err != nil {
 		panic(err)
 	}
-	for _, node := range c.nodes {
+	for _, node := range c.Nodes {
 		if err := writeString(w, string(node.ID)); err != nil {
 			panic(err)
 		}
 		if err := writeString(w, node.Addr); err != nil {
 			panic(err)
 		}
-		if err := writeUint8(w, uint8(node.Suffrage)); err != nil {
+		if err := writeUint8(w, uint8(node.Type)); err != nil {
 			panic(err)
 		}
 	}
 	return &entry{
 		typ:   entryConfig,
-		index: c.index,
-		term:  c.term,
+		index: c.Index,
+		term:  c.Term,
 		data:  w.Bytes(),
 	}
 }
 
-func (c *configEntry) decode(e *entry) error {
+func (c *Config) decode(e *entry) error {
 	if e.typ != entryConfig {
-		return fmt.Errorf("configEntry.decode: entry type is not config")
+		return fmt.Errorf("raft: expected entryConfig in Config.decode")
 	}
-	c.index, c.term = e.index, e.term
+	c.Index, c.Term = e.index, e.term
 	r := bytes.NewBuffer(e.data)
 	size, err := readUint32(r)
 	if err != nil {
 		return err
 	}
-	c.nodes = make(map[NodeID]Node)
+	c.Nodes = make(map[NodeID]Node)
 	for ; size > 0; size-- {
 		id, err := readString(r)
 		if err != nil {
@@ -92,21 +101,27 @@ func (c *configEntry) decode(e *entry) error {
 		if err != nil {
 			return err
 		}
-		c.nodes[NodeID(id)] = Node{ID: NodeID(id), Addr: addr, Suffrage: NodeSuffrage(suffrage)}
+		c.Nodes[NodeID(id)] = Node{ID: NodeID(id), Addr: addr, Type: NodeType(suffrage)}
 	}
 	return nil
 }
 
 // ---------------------------------------------------------
 
-type configs struct {
-	committed, latest configEntry
+type Configs struct {
+	Committed, Latest Config
 }
 
-func (c configs) isBootstrap() bool {
-	return c.latest.index == 0
+func (c Configs) clone() Configs {
+	c.Committed = c.Committed.clone()
+	c.Latest = c.Latest.clone()
+	return c
 }
 
-func (c configs) isCommitted() bool {
-	return c.latest.index == c.committed.index
+func (c Configs) IsBootstrap() bool {
+	return c.Latest.Index == 0
+}
+
+func (c Configs) IsCommitted() bool {
+	return c.Latest.Index == c.Committed.Index
 }

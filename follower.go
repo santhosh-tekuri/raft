@@ -45,10 +45,10 @@ func (r *Raft) runFollower() {
 }
 
 func (r *Raft) canStartElection() (can bool, reason string) {
-	if r.configs.isBootstrap() {
+	if r.configs.IsBootstrap() {
 		return false, "no known peers"
 	}
-	if r.configs.isCommitted() && !r.configs.committed.isVoter(r.id) {
+	if r.configs.IsCommitted() && !r.configs.Committed.isVoter(r.id) {
 		return false, "not part of stable cluster"
 	}
 	return true, ""

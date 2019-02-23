@@ -6,7 +6,7 @@ func (r *Raft) runCandidate() {
 	assert(r.leader == "", "%s r.leader: got %s, want ", r, r.leader)
 	timeoutCh := afterRandomTimeout(r.heartbeatTimeout)
 	results := r.startElection()
-	votesNeeded := r.configs.latest.quorum()
+	votesNeeded := r.configs.Latest.quorum()
 	for r.state == Candidate {
 		select {
 		case <-r.shutdownCh:
@@ -61,7 +61,7 @@ type voteResult struct {
 }
 
 func (r *Raft) startElection() <-chan voteResult {
-	results := make(chan voteResult, len(r.configs.latest.nodes))
+	results := make(chan voteResult, len(r.configs.Latest.Nodes))
 
 	// increment currentTerm
 	r.setTerm(r.term + 1)
@@ -76,8 +76,8 @@ func (r *Raft) startElection() <-chan voteResult {
 		lastLogIndex: r.lastLogIndex,
 		lastLogTerm:  r.lastLogTerm,
 	}
-	for _, n := range r.configs.latest.nodes {
-		if n.Suffrage != Voter {
+	for _, n := range r.configs.Latest.Nodes {
+		if n.Type != Voter {
 			continue
 		}
 		if n.Addr == r.addr {

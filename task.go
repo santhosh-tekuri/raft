@@ -127,7 +127,7 @@ func (r *Raft) bootstrap(t bootstrap) {
 	// everything is ok. bootstrapping now...
 	r.term, r.votedFor = term, votedFor
 	r.lastLogIndex, r.lastLogTerm = e.index, e.term
-	r.configs.latest = configEntry
+	r.configs.Latest = configEntry
 	t.reply(nil)
 }
 
@@ -153,6 +153,7 @@ type info struct {
 
 type Info struct {
 	ID               NodeID
+	Addr             string
 	Term             uint64
 	State            State
 	Leader           string
@@ -160,6 +161,7 @@ type Info struct {
 	LastLogTerm      uint64
 	CommitIndex      uint64
 	LastAppliedIndex uint64
+	Configs          Configs
 }
 
 func GetInfo() Task {
@@ -182,6 +184,7 @@ func (r *Raft) executeTask(t Task) {
 	case info:
 		t.reply(Info{
 			ID:               r.id,
+			Addr:             r.addr,
 			Term:             r.term,
 			State:            r.state,
 			Leader:           r.leader,
@@ -189,6 +192,7 @@ func (r *Raft) executeTask(t Task) {
 			LastLogTerm:      r.lastLogTerm,
 			CommitIndex:      r.commitIndex,
 			LastAppliedIndex: r.lastApplied,
+			Configs:          r.configs.clone(),
 		})
 	case inspectRaft:
 		t.fn(r)

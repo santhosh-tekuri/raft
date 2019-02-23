@@ -125,8 +125,8 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesRequest) *appendEntriesR
 			if e.term != ne.term { // conflicts
 				debug(r, "log.deleteGTE", ne.index)
 				r.storage.deleteGTE(ne.index)
-				if ne.index <= r.configs.latest.index {
-					r.configs.latest = r.configs.committed
+				if ne.index <= r.configs.Latest.Index {
+					r.configs.Latest = r.configs.Committed
 					r.storage.setConfigs(r.configs)
 				}
 				newEntries = req.entries[i:]
@@ -142,11 +142,11 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesRequest) *appendEntriesR
 				r.storage.append(e)
 				if e.typ == entryConfig {
 					confEntry = e
-					r.configs.committed = r.configs.latest
+					r.configs.Committed = r.configs.Latest
 				}
 			}
 			if confEntry != nil {
-				if err := r.configs.latest.decode(confEntry); err != nil {
+				if err := r.configs.Latest.decode(confEntry); err != nil {
 					panic(err)
 				}
 				r.storage.setConfigs(r.configs)

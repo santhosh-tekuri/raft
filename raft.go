@@ -26,7 +26,7 @@ type Raft struct {
 
 	id      NodeID
 	addr    string
-	configs configs
+	configs Configs
 	wg      sync.WaitGroup
 
 	fsmApplyCh chan newEntry
@@ -71,7 +71,7 @@ func New(id NodeID, addr string, fsm FSM, stable Stable, log Log) (*Raft, error)
 		lastLogIndex, lastLogTerm = last.index, last.term
 	}
 
-	configs := configs{}
+	configs := Configs{}
 	committed, latest, err := storage.GetConfig()
 	if err != nil {
 		return nil, err
@@ -79,14 +79,14 @@ func New(id NodeID, addr string, fsm FSM, stable Stable, log Log) (*Raft, error)
 	if committed != 0 {
 		e := &entry{}
 		storage.getEntry(committed, e)
-		if err := configs.committed.decode(e); err != nil {
+		if err := configs.Committed.decode(e); err != nil {
 			return nil, err
 		}
 	}
 	if latest != 0 {
 		e := &entry{}
 		storage.getEntry(latest, e)
-		if err := configs.latest.decode(e); err != nil {
+		if err := configs.Latest.decode(e); err != nil {
 			return nil, err
 		}
 	}

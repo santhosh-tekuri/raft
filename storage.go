@@ -34,8 +34,8 @@ type storage struct {
 	first, last uint64
 }
 
-func (s *storage) setConfigs(configs configs) {
-	if err := s.Stable.SetConfig(configs.committed.index, configs.latest.index); err != nil {
+func (s *storage) setConfigs(configs Configs) {
+	if err := s.Stable.SetConfig(configs.Committed.Index, configs.Latest.Index); err != nil {
 		panic(err)
 	}
 }
@@ -193,40 +193,40 @@ func (s *storage) fillEntries(req *appendEntriesRequest, nextIndex, lastIndex ui
 	}
 }
 
-func (s *storage) bootstrap(nodes map[NodeID]Node) (configEntry, error) {
+func (s *storage) bootstrap(nodes map[NodeID]Node) (Config, error) {
 	// todo: validate
 	ids := make(map[NodeID]bool)
 	addrs := make(map[string]bool)
 	voters := 0
 	for _, node := range nodes {
 		if node.ID == "" {
-			return configEntry{}, fmt.Errorf("bootstrap: empty node id")
+			return Config{}, fmt.Errorf("bootstrap: empty node id")
 		}
 		if ids[node.ID] {
-			return configEntry{}, fmt.Errorf("bootstrap: duplicate id %s", node.ID)
+			return Config{}, fmt.Errorf("bootstrap: duplicate id %s", node.ID)
 		}
 		ids[node.ID] = true
 
 		if node.Addr == "" {
-			return configEntry{}, fmt.Errorf("bootstrap: empty address")
+			return Config{}, fmt.Errorf("bootstrap: empty address")
 		}
 		if addrs[node.Addr] {
-			return configEntry{}, fmt.Errorf("bootstrap: duplicate address %s", node.Addr)
+			return Config{}, fmt.Errorf("bootstrap: duplicate address %s", node.Addr)
 		}
 		addrs[node.Addr] = true
 
-		if node.Suffrage == Voter {
+		if node.Type == Voter {
 			voters++
 		}
 	}
 	if voters == 0 {
-		return configEntry{}, fmt.Errorf("bootstrap: no voter")
+		return Config{}, fmt.Errorf("bootstrap: no voter")
 	}
 
-	configEntry := configEntry{
-		nodes: nodes,
-		index: 1,
-		term:  1,
+	configEntry := Config{
+		Nodes: nodes,
+		Index: 1,
+		Term:  1,
 	}
 	s.append(configEntry.encode())
 

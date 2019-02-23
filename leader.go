@@ -40,8 +40,8 @@ func (ldr *leadership) runLoop() {
 	assert(ldr.leader == ldr.addr, "%s ldr.leader: got %s, want %s", ldr, ldr.leader, ldr.addr)
 
 	ldr.voters = make(map[NodeID]*member)
-	for _, node := range ldr.configs.latest.nodes {
-		if node.Suffrage == Voter {
+	for _, node := range ldr.configs.Latest.Nodes {
+		if node.Type == Voter {
 			ldr.voters[node.ID] = &member{
 				id:         node.ID,
 				addr:       node.Addr,
