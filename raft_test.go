@@ -422,7 +422,7 @@ func TestRaft_Barrier(t *testing.T) {
 	c.ensureLeader(ldr.addr)
 
 	// commit a lot of things
-	n := 100000
+	n := 100
 	for i := 0; i < n; i++ {
 		ldr.TasksCh <- ApplyCommand([]byte(fmt.Sprintf("test%d", i)))
 	}
@@ -536,13 +536,13 @@ func (c *cluster) ensureStability() {
 	})
 	defer onStateChange(nil)
 
-	onVoteRequest(func(r *Raft, req *voteRequest) {
-		select {
-		case stateChanged <- struct{}{}:
-		default:
-		}
-	})
-	defer onStateChange(nil)
+	//onVoteRequest(func(r *Raft, req *voteRequest) {
+	//	select {
+	//	case stateChanged <- struct{}{}:
+	//	default:
+	//	}
+	//})
+	//defer onVoteRequest(nil)
 
 	for {
 		select {
@@ -869,7 +869,7 @@ func ensureTimeout(condition func() bool, ch <-chan struct{}, timeout time.Durat
 		select {
 		case <-ch:
 			if condition() {
-				return false
+				return true
 			}
 		case <-timeoutCh:
 			return false
