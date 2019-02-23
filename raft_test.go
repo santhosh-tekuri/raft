@@ -1,7 +1,6 @@
 package raft
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -395,7 +394,9 @@ func TestRaft_LeaderLeaseExpire(t *testing.T) {
 	c.disconnect(followers[0])
 
 	// the leader should stepDown within leaderLeaseTimeout
-	ldr.waitForState(3*c.heartbeatTimeout, Follower, Candidate)
+	if !ldr.waitForState(3*c.heartbeatTimeout, Follower, Candidate) {
+		t.Fatal("leader did not stepDown")
+	}
 
 	// should be no leaders
 	if n := len(c.getInState(Leader)); n != 0 {
@@ -403,7 +404,9 @@ func TestRaft_LeaderLeaseExpire(t *testing.T) {
 	}
 
 	// Ensure both have cleared their leader
-	followers[0].waitForState(2*c.heartbeatTimeout, Candidate)
+	if !followers[0].waitForState(2*c.heartbeatTimeout, Candidate) {
+		t.Fatal("follower should have become candidate")
+	}
 	for _, r := range c.rr {
 		if ldr := r.Info().Leader; ldr != "" {
 			t.Fatalf("%s.leader: got %s want ", r.id, ldr)
@@ -529,20 +532,16 @@ func (c *cluster) ensureStability() {
 	startupTimeout := c.heartbeatTimeout
 	electionTimer := time.NewTimer(startupTimeout + 2*c.heartbeatTimeout)
 
-	stateChanged := make(chan struct{}, 10)
-	onStateChange(func(r *Raft) {
-		select {
-		case stateChanged <- struct{}{}:
-		default:
-		}
-	})
-	defer onStateChange(nil)
+	select {
+	case <-stateChangedCh:
+	default:
+	}
 
 	for {
 		select {
 		case <-limitTimer.C:
 			c.Fatal("cluster is not stable")
-		case <-stateChanged:
+		case <-stateChangedCh:
 			electionTimer.Reset(2 * c.heartbeatTimeout)
 		case <-electionTimer.C:
 			return
@@ -595,32 +594,20 @@ func (c *cluster) ensureLeader(leader string) {
 	}
 }
 
-func (c *cluster) waitForLeader(timeout time.Duration) (*Raft, error) {
+func (c *cluster) waitForLeader(timeout time.Duration) {
 	c.Helper()
-	leaderCh := make(chan *Raft, 1)
-	onStateChange(func(r *Raft) {
-		if r.state == Leader {
-			select {
-			case leaderCh <- r:
-			default:
+
+	cond := func() bool {
+		for _, r := range c.rr {
+			if r.Info().State == Leader {
+				return true
 			}
 		}
-	})
-	defer onStateChange(nil)
-
-	// check if leader already chosen
-	for _, r := range c.rr {
-		if r.Info().State == Leader {
-			return r, nil
-		}
+		return false
 	}
 
-	// wait until leader chosen
-	select {
-	case r := <-leaderCh:
-		return r, nil
-	case <-time.After(timeout):
-		return nil, errors.New("waitForLeader: timeout")
+	if !ensureTimeout(cond, stateChangedCh, timeout) {
+		c.Fatalf("waitForLeader timeout")
 	}
 }
 
@@ -678,28 +665,16 @@ func (c *cluster) shutdown() {
 
 // wait until state is one of given states
 func (r *Raft) waitForState(timeout time.Duration, states ...State) bool {
-	statesSet := make(map[State]bool)
-	for _, s := range states {
-		statesSet[s] = true
-	}
-
-	ch := make(chan struct{}, 1)
-	onStateChange(func(raft *Raft) {
-		if raft == r && statesSet[r.state] {
-			close(ch)
-			onStateChange(nil)
+	cond := func() bool {
+		rstate := r.Info().State
+		for _, s := range states {
+			if rstate == s {
+				return true
+			}
 		}
-	})
-	defer onStateChange(nil)
-	if !statesSet[r.Info().State] {
-		select {
-		case <-ch:
-			break
-		case <-time.After(timeout):
-			return false
-		}
+		return false
 	}
-	return true
+	return ensureTimeout(cond, stateChangedCh, timeout)
 }
 
 func (r *Raft) fsmMock() *fsmMock {
@@ -740,17 +715,14 @@ func (r *Raft) inspect(fn func(*Raft)) {
 
 // events ----------------------------------------------------------------------
 
-var mu sync.RWMutex
-var stateChangedFn func(*Raft)
+var stateChangedCh = make(chan struct{}, 1)
 var electionAbortedCh = make(chan NodeID, 10)
 
 func init() {
-	StateChanged = func(r *Raft, _ State) {
-		mu.RLock()
-		f := stateChangedFn
-		mu.RUnlock()
-		if f != nil {
-			f(r)
+	StateChanged = func(r *Raft, state State) {
+		select {
+		case stateChangedCh <- struct{}{}:
+		default:
 		}
 	}
 
@@ -761,12 +733,6 @@ func init() {
 		default:
 		}
 	}
-}
-
-func onStateChange(f func(*Raft)) {
-	mu.Lock()
-	stateChangedFn = f
-	mu.Unlock()
 }
 
 // ---------------------------------------------
