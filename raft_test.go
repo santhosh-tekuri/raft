@@ -307,31 +307,33 @@ func TestRaft_Bootstrap(t *testing.T) {
 	defer leaktest.Check(t)()
 	c := newCluster(t)
 
-	// launch cluster without bootstrapping
-	addrCh := make(chan string, 3)
-	onElectionAborted(func(raft *Raft) {
+loop:
+	// drain electionAbortCh
+	for {
 		select {
-		case addrCh <- raft.addr:
+		case <-electionAbortedCh:
 		default:
+			break loop
 		}
-	})
-	defer onElectionAborted(nil)
+	}
+
+	// launch cluster without bootstrapping
 	c.launch(3, false)
 	defer c.shutdown()
 
 	// all nodes should must abort election
 	timeout := time.After(c.longTimeout)
-	aborted := make(map[string]struct{})
+	aborted := make(map[NodeID]bool)
 	for i := 0; i < 3; i++ {
 		select {
-		case addr := <-addrCh:
-			aborted[addr] = struct{}{}
+		case id := <-electionAbortedCh:
+			if aborted[id] {
+				t.Fatalf("aborted twice")
+			}
+			aborted[id] = true
 		case <-timeout:
 			t.Fatal("timout in waiting for abort election")
 		}
-	}
-	if len(aborted) != 3 {
-		t.Fatalf("got %d, want 3", len(aborted))
 	}
 
 	// bootstrap one of the nodes
@@ -535,14 +537,6 @@ func (c *cluster) ensureStability() {
 		}
 	})
 	defer onStateChange(nil)
-
-	//onVoteRequest(func(r *Raft, req *voteRequest) {
-	//	select {
-	//	case stateChanged <- struct{}{}:
-	//	default:
-	//	}
-	//})
-	//defer onVoteRequest(nil)
 
 	for {
 		select {
@@ -748,8 +742,7 @@ func (r *Raft) inspect(fn func(*Raft)) {
 
 var mu sync.RWMutex
 var stateChangedFn func(*Raft)
-var electionAbortedFn func(*Raft)
-var voteRequestFn func(*Raft, *voteRequest)
+var electionAbortedCh = make(chan NodeID, 10)
 
 func init() {
 	StateChanged = func(r *Raft, _ State) {
@@ -762,21 +755,10 @@ func init() {
 	}
 
 	ElectionAborted = func(r *Raft, reason string) {
-		mu.RLock()
-		f := electionAbortedFn
-		mu.RUnlock()
 		debug(r, "electionAborted", reason)
-		if f != nil {
-			f(r)
-		}
-	}
-
-	gotVoteRequest = func(r *Raft, req *voteRequest) {
-		mu.RLock()
-		f := voteRequestFn
-		mu.RUnlock()
-		if f != nil {
-			f(r, req)
+		select {
+		case electionAbortedCh <- r.id:
+		default:
 		}
 	}
 }
@@ -784,18 +766,6 @@ func init() {
 func onStateChange(f func(*Raft)) {
 	mu.Lock()
 	stateChangedFn = f
-	mu.Unlock()
-}
-
-func onElectionAborted(f func(*Raft)) {
-	mu.Lock()
-	electionAbortedFn = f
-	mu.Unlock()
-}
-
-func onVoteRequest(f func(*Raft, *voteRequest)) {
-	mu.Lock()
-	voteRequestFn = f
 	mu.Unlock()
 }
 

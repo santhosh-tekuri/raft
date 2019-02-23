@@ -26,7 +26,6 @@ func (r *Raft) replyRPC(rpc rpc) bool {
 
 func (r *Raft) onVoteRequest(req *voteRequest) *voteResponse {
 	debug(r, "onVoteRequest", req.term, req.candidateID, req.lastLogIndex, req.lastLogTerm)
-	gotVoteRequest(r, req)
 	resp := &voteResponse{
 		term:    r.term,
 		granted: false,

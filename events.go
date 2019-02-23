@@ -10,5 +10,3 @@ var StateChanged = func(r *Raft, state State) {
 var ElectionAborted = func(r *Raft, reason string) {
 	log.Printf("[INFO] raft: %s, aborting election", reason)
 }
-
-var gotVoteRequest = func(r *Raft, req *voteRequest) {}
