@@ -34,14 +34,18 @@ func (c Config) isVoter(id NodeID) bool {
 	return ok && node.Type == Voter
 }
 
-func (c Config) quorum() int {
+func (c Config) numVoters() int {
 	voters := 0
 	for _, node := range c.Nodes {
 		if node.Type == Voter {
 			voters++
 		}
 	}
-	return voters/2 + 1
+	return voters
+}
+
+func (c Config) quorum() int {
+	return c.numVoters()/2 + 1
 }
 
 func (c Config) clone() Config {
@@ -103,6 +107,7 @@ func (c *Config) decode(e *entry) error {
 		}
 		c.Nodes[NodeID(id)] = Node{ID: NodeID(id), Addr: addr, Type: NodeType(suffrage)}
 	}
+	c.Index, c.Term = e.index, e.term
 	return nil
 }
 

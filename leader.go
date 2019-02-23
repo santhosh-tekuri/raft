@@ -2,6 +2,8 @@ package raft
 
 import (
 	"container/list"
+	"errors"
+	"fmt"
 	"sort"
 	"time"
 )
@@ -11,6 +13,7 @@ func (r *Raft) runLeader() {
 		Raft:         r,
 		leaseTimeout: r.heartbeatTimeout, // todo: should it be same as heartbeatTimeout ?
 		newEntries:   list.New(),
+		repls:        make(map[NodeID]*replication),
 	}
 	ldr.runLoop()
 }
@@ -30,27 +33,18 @@ type leadership struct {
 	// committed entries are dequeued and handed over to fsm go-routine
 	newEntries *list.List
 
-	voters map[NodeID]*member
-
 	// holds running replications, key is addr
 	repls map[NodeID]*replication
+
+	// to receive new term notifications from replicators
+	newTermCh chan uint64
+
+	// to receive matchIndex updates from replicators
+	matchUpdatedCh chan *replication
 }
 
 func (ldr *leadership) runLoop() {
 	assert(ldr.leader == ldr.addr, "%s ldr.leader: got %s, want %s", ldr, ldr.leader, ldr.addr)
-
-	ldr.voters = make(map[NodeID]*member)
-	for _, node := range ldr.configs.Latest.Nodes {
-		if node.Type == Voter {
-			ldr.voters[node.ID] = &member{
-				id:         node.ID,
-				addr:       node.Addr,
-				connPool:   ldr.getConnPool(node.Addr),
-				matchIndex: 0, // matchIndex initialized to zero
-				str:        ldr.String() + " " + string(node.ID),
-			}
-		}
-	}
 
 	ldr.startIndex = ldr.lastLogIndex + 1
 
@@ -61,17 +55,13 @@ func (ldr *leadership) runLoop() {
 		},
 	})
 
-	// to receive new term notifications from replicators
-	newTermCh := make(chan uint64, len(ldr.voters))
-
-	// to receive matchIndex updates from replicators
-	matchUpdatedCh := make(chan *replication, len(ldr.voters))
-
-	// to send stop signal to replicators
-	stopReplsCh := make(chan struct{})
+	ldr.newTermCh = make(chan uint64, len(ldr.configs.Latest.Nodes))
+	ldr.matchUpdatedCh = make(chan *replication, len(ldr.configs.Latest.Nodes))
 
 	defer func() {
-		close(stopReplsCh)
+		for _, repl := range ldr.repls {
+			close(repl.stopCh)
+		}
 
 		if ldr.leader == ldr.addr {
 			ldr.leader = ""
@@ -84,44 +74,9 @@ func (ldr *leadership) runLoop() {
 	}()
 
 	// start replication routine for each follower
-	ldr.repls = make(map[NodeID]*replication)
-	for _, m := range ldr.voters {
-		repl := &replication{
-			member:           m,
-			heartbeatTimeout: ldr.heartbeatTimeout,
-			storage:          ldr.storage,
-			nextIndex:        ldr.lastLogIndex + 1, // nextIndex initialized to leader last log index + 1
-			matchIndex:       m.matchIndex,
-			stopCh:           stopReplsCh,
-			matchUpdatedCh:   matchUpdatedCh,
-			newTermCh:        newTermCh,
-			leaderUpdateCh:   make(chan leaderUpdate, 1),
-			str:              ldr.String() + " " + string(m.id),
-		}
-		ldr.repls[m.id] = repl
 
-		// send initial empty AppendEntries RPCs (heartbeat) to each follower
-		req := &appendEntriesRequest{
-			term:              ldr.term,
-			leaderID:          ldr.addr,
-			leaderCommitIndex: ldr.commitIndex,
-			prevLogIndex:      ldr.lastLogIndex,
-			prevLogTerm:       ldr.lastLogTerm,
-		}
-
-		if m.addr != ldr.addr {
-			// don't retry on failure. so that we can respond to apply/inspect
-			debug(repl, ">> firstHeartbeat")
-			_, _ = repl.appendEntries(req)
-		}
-
-		// todo: should runLeader wait for repls to stop ?
-		ldr.wg.Add(1)
-		go func() {
-			defer ldr.wg.Done()
-			repl.runLoop(req)
-			debug(repl, "replication closed")
-		}()
+	for _, node := range ldr.configs.Latest.Nodes {
+		ldr.startReplication(node)
 	}
 
 	leaseTimer := time.NewTicker(ldr.leaseTimeout)
@@ -132,7 +87,7 @@ func (ldr *leadership) runLoop() {
 		case <-ldr.shutdownCh:
 			return
 
-		case newTerm := <-newTermCh:
+		case newTerm := <-ldr.newTermCh:
 			// if response contains term T > currentTerm:
 			// set currentTerm = T, convert to follower
 			debug(ldr, "leader -> follower")
@@ -145,7 +100,7 @@ func (ldr *leadership) runLoop() {
 		case rpc := <-ldr.rpcCh:
 			ldr.replyRPC(rpc)
 
-		case repl := <-matchUpdatedCh:
+		case repl := <-ldr.matchUpdatedCh:
 		loop:
 			// get latest matchIndex from all notified members
 			for {
@@ -153,7 +108,7 @@ func (ldr *leadership) runLoop() {
 				select {
 				case <-ldr.shutdownCh:
 					return
-				case repl = <-matchUpdatedCh:
+				case repl = <-ldr.matchUpdatedCh:
 					break
 				default:
 					break loop
@@ -178,6 +133,53 @@ func (ldr *leadership) runLoop() {
 	}
 }
 
+func (ldr *leadership) startReplication(node Node) {
+	m := &member{
+		id:         node.ID,
+		addr:       node.Addr,
+		connPool:   ldr.getConnPool(node.Addr),
+		matchIndex: 0, // matchIndex initialized to zero
+		str:        ldr.String() + " " + string(node.ID),
+	}
+
+	repl := &replication{
+		member:           m,
+		heartbeatTimeout: ldr.heartbeatTimeout,
+		storage:          ldr.storage,
+		nextIndex:        ldr.lastLogIndex + 1, // nextIndex initialized to leader last log index + 1
+		matchIndex:       m.matchIndex,
+		stopCh:           make(chan struct{}),
+		matchUpdatedCh:   ldr.matchUpdatedCh,
+		newTermCh:        ldr.newTermCh,
+		leaderUpdateCh:   make(chan leaderUpdate, 1),
+		str:              ldr.String() + " " + string(m.id),
+	}
+	ldr.repls[m.id] = repl
+
+	// send initial empty AppendEntries RPCs (heartbeat) to each follower
+	req := &appendEntriesRequest{
+		term:              ldr.term,
+		leaderID:          ldr.addr,
+		leaderCommitIndex: ldr.commitIndex,
+		prevLogIndex:      ldr.lastLogIndex,
+		prevLogTerm:       ldr.lastLogTerm,
+	}
+
+	if m.addr != ldr.addr {
+		// don't retry on failure. so that we can respond to apply/inspect
+		debug(repl, ">> firstHeartbeat")
+		_, _ = repl.appendEntries(req)
+	}
+
+	// todo: should runLeader wait for repls to stop ?
+	ldr.wg.Add(1)
+	go func() {
+		defer ldr.wg.Done()
+		repl.runLoop(req)
+		debug(repl, "replication closed")
+	}()
+}
+
 func (ldr *leadership) applyEntry(ne newEntry) {
 	ne.entry.index, ne.entry.term = ldr.lastLogIndex+1, ldr.term
 
@@ -195,38 +197,44 @@ func (ldr *leadership) applyEntry(ne newEntry) {
 	ldr.notifyReplicators()
 }
 
-func (ldr *leadership) quorum() int {
-	return len(ldr.voters)/2 + 1
-}
-
 // is quorum of nodes reachable after time t
 func (ldr *leadership) isQuorumReachable(t time.Time) bool {
-	reachable := 0
-	for _, v := range ldr.voters {
-		if v.contactedAfter(t) {
-			reachable++
+	voters, reachable := 0, 0
+	for _, node := range ldr.configs.Latest.Nodes {
+		if node.Type == Voter {
+			voters++
+			repl := ldr.repls[node.ID]
+			if repl.member.contactedAfter(t) {
+				reachable++
+			}
 		}
 	}
-	return reachable >= ldr.quorum()
+	return reachable >= voters/2+1
 }
 
 // computes N such that, a majority of matchIndex[i] ≥ N
 func (ldr *leadership) majorityMatchIndex() uint64 {
-	if len(ldr.voters) == 1 {
-		for _, v := range ldr.voters {
-			return v.matchIndex
+	numVoters := ldr.configs.Latest.numVoters()
+	if numVoters == 1 {
+		for _, node := range ldr.configs.Latest.Nodes {
+			if node.Type == Voter {
+				return ldr.repls[node.ID].member.matchIndex
+			}
 		}
 	}
 
-	matched := make(decrUint64Slice, len(ldr.voters))
+	matched := make(decrUint64Slice, numVoters)
 	i := 0
-	for _, v := range ldr.voters {
-		matched[i] = v.matchIndex
-		i++
+	for _, node := range ldr.configs.Latest.Nodes {
+		if node.Type == Voter {
+			matched[i] = ldr.repls[node.ID].member.matchIndex
+			i++
+		}
 	}
 	// sort in decrease order
 	sort.Sort(matched)
-	return matched[ldr.quorum()-1]
+	quorum := numVoters/2 + 1
+	return matched[quorum-1]
 }
 
 // If majorityMatchIndex(N) > commitIndex,
@@ -256,6 +264,35 @@ func (ldr *leadership) notifyReplicators() {
 			repl.leaderUpdateCh <- leaderUpdate
 		}
 	}
+}
+
+// -------------------------------------------------------
+
+func (ldr *leadership) addNode(t addNode) {
+	if !ldr.configs.IsCommitted() {
+		t.reply(errors.New("raft: configChange is in progress"))
+	}
+	if ldr.commitIndex < ldr.startIndex {
+		t.reply(errors.New("raft: noop entry is not yet committed"))
+	}
+	if _, ok := ldr.configs.Latest.Nodes[t.node.ID]; ok {
+		t.reply(fmt.Errorf("raft: node %s already exists", t.node.ID))
+	}
+	newConfig := ldr.configs.Latest.clone()
+	newConfig.Nodes[t.node.ID] = t.node
+	ldr.applyConfig(newConfig)
+	t.reply(nil)
+}
+
+func (ldr *leadership) applyConfig(newConfig Config) {
+	ne := newEntry{
+		entry: newConfig.encode(),
+	}
+	ldr.applyEntry(ne)
+	debug(ldr, "XXXXXXXXXXXXXXXXxx", ne.index, ne.term)
+	newConfig.Index, newConfig.Term = ne.index, ne.term
+	ldr.configs.Latest = newConfig
+	ldr.storage.setConfigs(ldr.configs)
 }
 
 // -------------------------------------------------------

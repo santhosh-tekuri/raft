@@ -177,6 +177,20 @@ func (r *Raft) Info() Info {
 
 // ------------------------------------------------------------------------
 
+type addNode struct {
+	*task
+	node Node
+}
+
+func AddNode(node Node) Task {
+	return addNode{
+		task: &task{done: make(chan struct{})},
+		node: node,
+	}
+}
+
+// ------------------------------------------------------------------------
+
 func (r *Raft) executeTask(t Task) {
 	switch t := t.(type) {
 	case bootstrap:
@@ -206,6 +220,8 @@ func (ldr *leadership) executeTask(t Task) {
 	switch t := t.(type) {
 	case newEntry:
 		ldr.applyEntry(t)
+	case addNode:
+		ldr.addNode(t)
 	default:
 		ldr.Raft.executeTask(t)
 	}

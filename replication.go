@@ -22,7 +22,7 @@ type replication struct {
 
 	matchUpdatedCh chan<- *replication
 	newTermCh      chan<- uint64
-	stopCh         <-chan struct{}
+	stopCh         chan struct{}
 
 	str string // used for debug() calls
 }
