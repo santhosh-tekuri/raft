@@ -21,7 +21,7 @@ type entryType uint8
 
 const (
 	entryCommand entryType = iota
-	entryNoop
+	entryNop
 	entryConfig
 	entryBarrier
 )

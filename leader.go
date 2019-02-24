@@ -85,7 +85,7 @@ func (ldr *leadership) runLoop() {
 	// add a blank no-op entry into log at the start of its term
 	ldr.applyEntry(newEntry{
 		entry: &entry{
-			typ: entryNoop,
+			typ: entryNop,
 		},
 	})
 
@@ -230,7 +230,7 @@ func (ldr *leadership) applyEntry(ne newEntry) {
 	ne.entry.index, ne.entry.term = ldr.lastLogIndex+1, ldr.term
 
 	// append entry to local log
-	if ne.typ == entryNoop {
+	if ne.typ == entryNop {
 		debug(ldr, "log.append noop", ne.index)
 	} else {
 		debug(ldr, "log.append cmd", ne.index)
