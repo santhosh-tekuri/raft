@@ -27,6 +27,8 @@ type replUpdate struct {
 }
 
 type replStatus struct {
+	id NodeID
+
 	// owned exclusively by raft main goroutine
 	// used to recalculateMatch
 	matchIndex uint64
@@ -161,7 +163,7 @@ func (ldr *leadership) runLoop() {
 
 func (ldr *leadership) startReplication(node Node) {
 	repl := &replication{
-		status:           replStatus{},
+		status:           replStatus{id: node.ID},
 		connPool:         ldr.getConnPool(node.Addr),
 		heartbeatTimeout: ldr.heartbeatTimeout,
 		storage:          ldr.storage,

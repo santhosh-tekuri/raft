@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -47,13 +48,6 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 
 	for {
 		// prepare request ----------------------------
-		var n uint64 // number of entries to be sent
-		if matchIndex+1 == nextIndex {
-			n = ldrLastIndex - matchIndex // number of entries to be sent
-			if n > maxAppendEntries {
-				n = maxAppendEntries
-			}
-		}
 		if nextIndex == 1 {
 			req.prevLogIndex, req.prevLogTerm = 0, 0
 		} else if nextIndex-1 == ldrLastIndex {
@@ -63,7 +57,10 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 			repl.storage.getEntry(nextIndex-1, prevEntry)
 			req.prevLogIndex, req.prevLogTerm = prevEntry.index, prevEntry.term
 		}
-
+		var n uint64 // number of entries to be sent
+		if matchIndex+1 == nextIndex {
+			n = min(ldrLastIndex-matchIndex, maxAppendEntries) // number of entries to be sent
+		}
 		if n == 0 {
 			req.entries = nil
 		} else {
@@ -75,9 +72,11 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 		}
 
 		// send request ----------------------------------
+		var resp *appendEntriesResponse
+		var err error
 		var failures uint64
 		for {
-			resp, err := repl.appendEntries(req)
+			resp, err = repl.appendEntries(req)
 			if err != nil {
 				if noContact.IsZero() {
 					noContact = time.Now()
@@ -92,41 +91,42 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 					continue
 				}
 			}
+			break
+		}
 
-			// process response ------------------------------
-			if !noContact.IsZero() {
-				noContact = time.Time{} // zeroing
-				debug(repl, "yesContact")
+		// process response ------------------------------
+		if !noContact.IsZero() {
+			noContact = time.Time{} // zeroing
+			debug(repl, "yesContact")
+			repl.notifyLdr(matchIndex, noContact)
+		}
+		if resp.term > req.term {
+			select {
+			case <-repl.stopCh:
+			case repl.newTermCh <- resp.term:
+			}
+			return
+		}
+		if resp.success {
+			old := matchIndex
+			if len(req.entries) == 0 {
+				matchIndex = req.prevLogIndex
+			} else {
+				matchIndex = resp.lastLogIndex
+				nextIndex = matchIndex + 1
+			}
+			if matchIndex != old {
+				debug(repl, "matchIndex:", matchIndex)
 				repl.notifyLdr(matchIndex, noContact)
 			}
-			if resp.term > req.term {
-				select {
-				case <-repl.stopCh:
-				case repl.newTermCh <- resp.term:
-				}
-				return
-			}
-			if resp.success {
-				old := matchIndex
-				if len(req.entries) == 0 {
-					matchIndex = req.prevLogIndex
-				} else {
-					matchIndex = resp.lastLogIndex
-					nextIndex = resp.lastLogIndex + 1
-				}
-				if matchIndex != old {
-					debug(repl, "matchIndex:", matchIndex)
-					repl.notifyLdr(matchIndex, noContact)
-				}
+		} else {
+			if matchIndex+1 != nextIndex {
+				nextIndex = max(min(nextIndex-1, resp.lastLogIndex+1), 1)
+				debug(repl, "nextIndex:", nextIndex)
 			} else {
-				if matchIndex+1 != nextIndex {
-					nextIndex = max(min(nextIndex-1, resp.lastLogIndex+1), 1)
-					debug(repl, "nextIndex:", nextIndex)
-				} else {
-					panic("faulty raft node") // todo: notify leader, that we stopped and dont panic
-				}
+				// todo: notify leader, that we stopped and dont panic
+				panic(fmt.Sprintf("Raft: faulty follower %s. remove it from cluster", repl.status.id))
 			}
-			break
 		}
 
 		if matchIndex == ldrLastIndex {
