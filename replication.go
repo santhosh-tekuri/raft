@@ -15,10 +15,6 @@ type replication struct {
 	heartbeatTimeout time.Duration
 	conn             *netConn
 
-	// index of the next log entry to send to that server
-	// initialized to leader last log index + 1
-	nextIndex uint64
-
 	// leader notifies replication with update
 	leaderUpdateCh chan leaderUpdate
 
@@ -38,25 +34,27 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 		}
 	}()
 
-	ldrLastIndex, matchIndex := req.prevLogIndex, uint64(0)
-	debug(repl, "repl.start ldrLastIndex:", ldrLastIndex, "matchIndex:", matchIndex, "nextIndex:", repl.nextIndex)
+	ldrLastIndex := req.prevLogIndex
+	matchIndex, nextIndex := uint64(0), ldrLastIndex+1
+
+	debug(repl, "repl.start ldrLastIndex:", ldrLastIndex, "matchIndex:", matchIndex, "nextIndex:", nextIndex)
 
 	for {
 		// prepare request ----------------------------
 		var n uint64 // number of entries to be sent
-		if matchIndex+1 == repl.nextIndex {
+		if matchIndex+1 == nextIndex {
 			n = ldrLastIndex - matchIndex // number of entries to be sent
 			if n > maxAppendEntries {
 				n = maxAppendEntries
 			}
 		}
-		if repl.nextIndex == 1 {
+		if nextIndex == 1 {
 			req.prevLogIndex, req.prevLogTerm = 0, 0
-		} else if repl.nextIndex-1 == ldrLastIndex {
+		} else if nextIndex-1 == ldrLastIndex {
 			req.prevLogIndex, req.prevLogTerm = ldrLastIndex, req.term
 		} else {
 			prevEntry := &entry{}
-			repl.storage.getEntry(repl.nextIndex-1, prevEntry)
+			repl.storage.getEntry(nextIndex-1, prevEntry)
 			req.prevLogIndex, req.prevLogTerm = prevEntry.index, prevEntry.term
 		}
 
@@ -66,7 +64,7 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 			req.entries = make([]*entry, n)
 			for i := range req.entries {
 				req.entries[i] = &entry{}
-				repl.storage.getEntry(repl.nextIndex+uint64(i), req.entries[i])
+				repl.storage.getEntry(nextIndex+uint64(i), req.entries[i])
 			}
 		}
 
@@ -98,16 +96,16 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 					matchIndex = req.prevLogIndex
 				} else {
 					matchIndex = resp.lastLogIndex
-					repl.nextIndex = resp.lastLogIndex + 1
+					nextIndex = resp.lastLogIndex + 1
 				}
 				if matchIndex != old {
 					debug(repl, "matchIndex:", matchIndex)
 					repl.sendUpdate(matchIndex)
 				}
 			} else {
-				if matchIndex+1 != repl.nextIndex {
-					repl.nextIndex = max(min(repl.nextIndex-1, resp.lastLogIndex+1), 1)
-					debug(repl, "nextIndex:", repl.nextIndex)
+				if matchIndex+1 != nextIndex {
+					nextIndex = max(min(nextIndex-1, resp.lastLogIndex+1), 1)
+					debug(repl, "nextIndex:", nextIndex)
 				} else {
 					panic("faulty raft node") // todo: notify leader, that we stopped and dont panic
 				}

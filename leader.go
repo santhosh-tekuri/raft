@@ -150,7 +150,6 @@ func (ldr *leadership) startReplication(node Node) {
 		connPool:         ldr.getConnPool(node.Addr),
 		heartbeatTimeout: ldr.heartbeatTimeout,
 		storage:          ldr.storage,
-		nextIndex:        ldr.lastLogIndex + 1, // nextIndex initialized to leader last log index + 1
 		stopCh:           make(chan struct{}),
 		matchUpdatedCh:   ldr.matchUpdatedCh,
 		newTermCh:        ldr.newTermCh,
