@@ -137,13 +137,13 @@ func (ldr *leadership) startReplication(node Node) {
 	m := &member{
 		id:         node.ID,
 		addr:       node.Addr,
-		connPool:   ldr.getConnPool(node.Addr),
 		matchIndex: 0, // matchIndex initialized to zero
 		str:        ldr.String() + " " + string(node.ID),
 	}
 
 	repl := &replication{
 		member:           m,
+		connPool:         ldr.getConnPool(node.Addr),
 		heartbeatTimeout: ldr.heartbeatTimeout,
 		storage:          ldr.storage,
 		nextIndex:        ldr.lastLogIndex + 1, // nextIndex initialized to leader last log index + 1

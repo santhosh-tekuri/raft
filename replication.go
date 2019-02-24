@@ -11,6 +11,7 @@ type leaderUpdate struct {
 
 type replication struct {
 	member           *member
+	connPool         *connPool
 	storage          *storage
 	heartbeatTimeout time.Duration
 	conn             *netConn
@@ -38,7 +39,7 @@ const maxAppendEntries = 64 // todo: should be configurable
 func (repl *replication) runLoop(req *appendEntriesRequest) {
 	defer func() {
 		if repl.conn != nil {
-			repl.member.connPool.returnConn(repl.conn)
+			repl.connPool.returnConn(repl.conn)
 		}
 	}()
 
@@ -171,7 +172,7 @@ func (repl *replication) setMatchIndex(v uint64) {
 
 func (repl *replication) appendEntries(req *appendEntriesRequest) (*appendEntriesResponse, error) {
 	if repl.conn == nil {
-		conn, err := repl.member.connPool.getConn()
+		conn, err := repl.connPool.getConn()
 		if err != nil {
 			return nil, err
 		}
