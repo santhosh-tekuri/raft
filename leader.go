@@ -18,6 +18,11 @@ func (r *Raft) runLeader() {
 	ldr.runLoop()
 }
 
+type replUpdate struct {
+	repl       *replication
+	matchIndex uint64
+}
+
 type leadership struct {
 	*Raft
 
@@ -40,7 +45,7 @@ type leadership struct {
 	newTermCh chan uint64
 
 	// to receive matchIndex updates from replicators
-	matchUpdatedCh chan *replication
+	matchUpdatedCh chan replUpdate
 }
 
 func (ldr *leadership) runLoop() {
@@ -56,7 +61,7 @@ func (ldr *leadership) runLoop() {
 	})
 
 	ldr.newTermCh = make(chan uint64, len(ldr.configs.Latest.Nodes))
-	ldr.matchUpdatedCh = make(chan *replication, len(ldr.configs.Latest.Nodes))
+	ldr.matchUpdatedCh = make(chan replUpdate, len(ldr.configs.Latest.Nodes))
 
 	defer func() {
 		for _, repl := range ldr.repls {
@@ -100,15 +105,15 @@ func (ldr *leadership) runLoop() {
 		case rpc := <-ldr.rpcCh:
 			ldr.replyRPC(rpc)
 
-		case repl := <-ldr.matchUpdatedCh:
+		case replUpdate := <-ldr.matchUpdatedCh:
 		loop:
 			// get latest matchIndex from all notified members
 			for {
-				repl.member.matchIndex = repl.getMatchIndex()
+				replUpdate.repl.member.matchIndex = replUpdate.matchIndex
 				select {
 				case <-ldr.shutdownCh:
 					return
-				case repl = <-ldr.matchUpdatedCh:
+				case replUpdate = <-ldr.matchUpdatedCh:
 					break
 				default:
 					break loop
@@ -146,7 +151,6 @@ func (ldr *leadership) startReplication(node Node) {
 		heartbeatTimeout: ldr.heartbeatTimeout,
 		storage:          ldr.storage,
 		nextIndex:        ldr.lastLogIndex + 1, // nextIndex initialized to leader last log index + 1
-		matchIndex:       m.matchIndex,
 		stopCh:           make(chan struct{}),
 		matchUpdatedCh:   ldr.matchUpdatedCh,
 		newTermCh:        ldr.newTermCh,
@@ -175,13 +179,13 @@ func (ldr *leadership) startReplication(node Node) {
 			// todo: is this really needed? we can optimize it
 			//       by avoiding this extra goroutine
 			defer ldr.wg.Done()
-			repl.setMatchIndex(req.prevLogIndex)
+			repl.sendUpdate(req.prevLogIndex)
 			for {
 				select {
 				case <-repl.stopCh:
 					return
 				case update := <-repl.leaderUpdateCh:
-					repl.setMatchIndex(update.lastIndex)
+					repl.sendUpdate(update.lastIndex)
 				}
 			}
 		}()

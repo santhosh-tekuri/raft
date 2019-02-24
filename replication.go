@@ -1,7 +1,6 @@
 package raft
 
 import (
-	"sync/atomic"
 	"time"
 )
 
@@ -20,14 +19,10 @@ type replication struct {
 	// initialized to leader last log index + 1
 	nextIndex uint64
 
-	// index of highest log entry known to be replicated on server
-	// initialized to 0, increases monotonically
-	matchIndex uint64
-
 	// leader notifies replication with update
 	leaderUpdateCh chan leaderUpdate
 
-	matchUpdatedCh chan<- *replication
+	matchUpdatedCh chan<- replUpdate
 	newTermCh      chan<- uint64
 	stopCh         chan struct{}
 
@@ -43,7 +38,7 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 		}
 	}()
 
-	ldrLastIndex, matchIndex := req.prevLogIndex, repl.getMatchIndex()
+	ldrLastIndex, matchIndex := req.prevLogIndex, uint64(0)
 	debug(repl, "repl.start ldrLastIndex:", ldrLastIndex, "matchIndex:", matchIndex, "nextIndex:", repl.nextIndex)
 
 	for {
@@ -107,7 +102,7 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 				}
 				if matchIndex != old {
 					debug(repl, "matchIndex:", matchIndex)
-					repl.setMatchIndex(matchIndex)
+					repl.sendUpdate(matchIndex)
 				}
 			} else {
 				if matchIndex+1 != repl.nextIndex {
@@ -144,15 +139,10 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 	}
 }
 
-func (repl *replication) getMatchIndex() uint64 {
-	return atomic.LoadUint64(&repl.matchIndex)
-}
-
-func (repl *replication) setMatchIndex(v uint64) {
-	atomic.StoreUint64(&repl.matchIndex, v)
+func (repl *replication) sendUpdate(matchIndex uint64) {
 	select {
 	case <-repl.stopCh:
-	case repl.matchUpdatedCh <- repl:
+	case repl.matchUpdatedCh <- replUpdate{repl: repl, matchIndex: matchIndex}:
 	}
 }
 
