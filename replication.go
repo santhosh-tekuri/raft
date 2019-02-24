@@ -14,8 +14,14 @@ type replication struct {
 	storage          *storage
 	heartbeatTimeout time.Duration
 	conn             *netConn
-	nextIndex        uint64
-	matchIndex       uint64
+
+	// index of the next log entry to send to that server
+	// initialized to leader last log index + 1
+	nextIndex uint64
+
+	// index of highest log entry known to be replicated on server
+	// initialized to 0, increases monotonically
+	matchIndex uint64
 
 	// leader notifies replication with update
 	leaderUpdateCh chan leaderUpdate
@@ -50,77 +56,103 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 		}
 	}
 
-	lastIndex, matchIndex := req.prevLogIndex, repl.getMatchIndex()
-
-	// know which entries to replicate: fixes repl.nextIndex and repl.matchIndex
-	// after loop: repl.matchIndex + 1 == repl.nextIndex
-	for matchIndex+1 != repl.nextIndex {
-		repl.storage.fillEntries(req, repl.nextIndex, repl.nextIndex-1) // zero entries
-		resp, stop := repl.retryAppendEntries(req)
-		if stop {
-			return
-		} else if resp.success {
-			matchIndex = req.prevLogIndex
-			repl.setMatchIndex(matchIndex)
-			break
-		} else {
-			repl.nextIndex = max(min(repl.nextIndex-1, resp.lastLogIndex+1), 1)
-		}
-		select {
-		case <-repl.stopCh:
-			return
-		default:
-		}
-	}
-
-	closedCh := func() <-chan time.Time {
-		ch := make(chan time.Time)
-		close(ch)
-		return ch
-	}()
-	timerCh := closedCh
+	ldrLastIndex, matchIndex := req.prevLogIndex, repl.getMatchIndex()
+	debug(repl, "repl.start ldrLastIndex:", ldrLastIndex, "matchIndex:", matchIndex, "nextIndex:", repl.nextIndex)
 
 	for {
-		select {
-		case <-repl.stopCh:
-			return
-		case update := <-repl.leaderUpdateCh:
-			lastIndex, req.leaderCommitIndex = update.lastIndex, update.commitIndex
-			debug(repl, "{last:", lastIndex, "commit:", req.leaderCommitIndex, "} <-leaderUpdateCh")
-			timerCh = closedCh
-		case <-timerCh:
+		// prepare request ----------------------------
+		var n uint64 // number of entries to be sent
+		if matchIndex+1 == repl.nextIndex {
+			n = ldrLastIndex - matchIndex // number of entries to be sent
+			if n > maxAppendEntries {
+				n = maxAppendEntries
+			}
 		}
-
-		// setup request
-		if matchIndex < lastIndex {
-			// replication of entries [repl.nextIndex, lastIndex] is pending
-			maxIndex := min(lastIndex, repl.nextIndex+uint64(maxAppendEntries)-1)
-			repl.storage.fillEntries(req, repl.nextIndex, maxIndex)
-			debug(repl, ">> appendEntriesRequest", len(req.entries))
+		if repl.nextIndex == 1 {
+			req.prevLogIndex, req.prevLogTerm = 0, 0
+		} else if repl.nextIndex-1 == ldrLastIndex {
+			req.prevLogIndex, req.prevLogTerm = ldrLastIndex, req.term
 		} else {
-			// send heartbeat
-			req.prevLogIndex, req.prevLogTerm, req.entries = lastIndex, req.term, nil // zero entries
-			debug(repl, ">> heartbeat")
+			prevEntry := &entry{}
+			repl.storage.getEntry(repl.nextIndex-1, prevEntry)
+			req.prevLogIndex, req.prevLogTerm = prevEntry.index, prevEntry.term
 		}
 
-		resp, stop := repl.retryAppendEntries(req)
-		if stop {
-			return
-		} else if !resp.success {
-			// follower have transitioned to candidate and started election
-			assert(resp.term > req.term, "%s follower must have started election", repl)
-			return
-		}
-
-		repl.nextIndex = resp.lastLogIndex + 1
-		matchIndex = resp.lastLogIndex
-		repl.setMatchIndex(matchIndex)
-
-		if matchIndex < lastIndex {
-			// replication of entries [repl.nextIndex, lastIndex] is still pending: no more sleeping!!!
-			timerCh = closedCh
+		if n == 0 {
+			req.entries = nil
 		} else {
-			timerCh = afterRandomTimeout(repl.heartbeatTimeout / 10)
+			req.entries = make([]*entry, n)
+			for i := range req.entries {
+				req.entries[i] = &entry{}
+				repl.storage.getEntry(repl.nextIndex+uint64(i), req.entries[i])
+			}
+		}
+
+		// send request ----------------------------------
+		var failures uint64
+		for {
+			resp, err := repl.appendEntries(req)
+			if err != nil {
+				failures++
+				select {
+				case <-repl.stopCh:
+					return
+				case <-time.After(backoff(failures)):
+					continue
+				}
+			}
+
+			// process response ------------------------------
+			if resp.term > req.term {
+				select {
+				case <-repl.stopCh:
+				case repl.newTermCh <- resp.term:
+				}
+				return
+			}
+			if resp.success {
+				old := matchIndex
+				if len(req.entries) == 0 {
+					matchIndex = req.prevLogIndex
+				} else {
+					matchIndex = resp.lastLogIndex
+					repl.nextIndex = resp.lastLogIndex + 1
+				}
+				if matchIndex != old {
+					debug(repl, "matchIndex:", matchIndex)
+					repl.setMatchIndex(matchIndex)
+				}
+			} else {
+				if matchIndex+1 != repl.nextIndex {
+					repl.nextIndex = max(min(repl.nextIndex-1, resp.lastLogIndex+1), 1)
+					debug(repl, "nextIndex:", repl.nextIndex)
+				} else {
+					panic("faulty raft node") // todo: notify leader, that we stopped and dont panic
+				}
+			}
+			break
+		}
+
+		if matchIndex == ldrLastIndex {
+			// nothing to replicate. start heartbeat timer
+			select {
+			case <-repl.stopCh:
+				return
+			case update := <-repl.leaderUpdateCh:
+				ldrLastIndex, req.leaderCommitIndex = update.lastIndex, update.commitIndex
+				debug(repl, "{last:", ldrLastIndex, "commit:", req.leaderCommitIndex, "} <-leaderUpdateCh")
+			case <-afterRandomTimeout(repl.heartbeatTimeout / 10):
+			}
+		} else {
+			// check signal if any, without blocking
+			select {
+			case <-repl.stopCh:
+				return
+			case update := <-repl.leaderUpdateCh:
+				ldrLastIndex, req.leaderCommitIndex = update.lastIndex, update.commitIndex
+				debug(repl, "{last:", ldrLastIndex, "commit:", req.leaderCommitIndex, "} <-leaderUpdateCh")
+			default:
+			}
 		}
 	}
 }
@@ -134,32 +166,6 @@ func (repl *replication) setMatchIndex(v uint64) {
 	select {
 	case <-repl.stopCh:
 	case repl.matchUpdatedCh <- repl:
-	}
-}
-
-// retries request until success or got stop signal
-// last return value is true in case of stop signal
-func (repl *replication) retryAppendEntries(req *appendEntriesRequest) (*appendEntriesResponse, bool) {
-	var failures uint64
-	for {
-		resp, err := repl.appendEntries(req)
-		if err != nil {
-			failures++
-			select {
-			case <-repl.stopCh:
-				return resp, true
-			case <-time.After(backoff(failures)):
-				continue
-			}
-		}
-		if resp.term > req.term {
-			select {
-			case <-repl.stopCh:
-			case repl.newTermCh <- resp.term:
-			}
-			return resp, true
-		}
-		return resp, false
 	}
 }
 

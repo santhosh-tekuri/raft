@@ -176,7 +176,7 @@ func (ldr *leadership) startReplication(node Node) {
 	go func() {
 		defer ldr.wg.Done()
 		repl.runLoop(req)
-		debug(repl, "replication closed")
+		debug(repl, "repl.end")
 	}()
 }
 

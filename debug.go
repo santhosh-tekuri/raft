@@ -27,13 +27,10 @@ var messages = func() chan string {
 				continue
 			}
 			switch {
+			case strings.Index(msg, " L | M") != -1:
+				colorR.Print(msg)
 			case strings.Index(msg, " L | ") != -1:
-				i := strings.Index(msg, " L | ")
-				if strings.HasPrefix(msg[i+6:], ":8888") {
-					colorR.Print(msg)
-				} else {
-					colorL.Print(msg)
-				}
+				colorL.Print(msg)
 			case strings.Index(msg, " C | ") != -1:
 				colorC.Print(msg)
 			case strings.Index(msg, " F | ") != -1:
