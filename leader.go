@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 )
 
@@ -67,6 +68,7 @@ type leadership struct {
 
 	// holds running replications, key is addr
 	repls map[NodeID]*replication
+	wg    sync.WaitGroup
 
 	// to receive new term notifications from replicators
 	newTermCh chan uint64
@@ -104,6 +106,7 @@ func (ldr *leadership) runLoop() {
 		for e := ldr.newEntries.Front(); e != nil; e = e.Next() {
 			e.Value.(newEntry).task.reply(NotLeaderError{ldr.leader})
 		}
+		ldr.wg.Wait()
 	}()
 
 	// start replication routine for each follower
@@ -191,7 +194,6 @@ func (ldr *leadership) startReplication(node Node) {
 		prevLogTerm:       ldr.lastLogTerm,
 	}
 
-	// todo: should runLeader wait for repls to stop ?
 	ldr.wg.Add(1)
 	if node.ID == ldr.id {
 		go func() {
