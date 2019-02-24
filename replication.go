@@ -10,7 +10,7 @@ type leaderUpdate struct {
 
 type replication struct {
 	// this is owned by ldr goroutine
-	status *replStatus
+	status replStatus
 
 	connPool         *connPool
 	storage          *storage
@@ -154,7 +154,7 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 }
 
 func (repl *replication) notifyLdr(matchIndex uint64, noContact time.Time) {
-	update := replUpdate{status: repl.status, matchIndex: matchIndex, noContact: noContact}
+	update := replUpdate{status: &repl.status, matchIndex: matchIndex, noContact: noContact}
 	select {
 	case <-repl.stopCh:
 	case repl.matchUpdatedCh <- update:

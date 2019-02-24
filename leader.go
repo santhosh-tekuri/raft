@@ -160,12 +160,8 @@ func (ldr *leadership) runLoop() {
 }
 
 func (ldr *leadership) startReplication(node Node) {
-	m := &replStatus{
-		matchIndex: 0, // matchIndex initialized to zero
-	}
-
 	repl := &replication{
-		status:           m,
+		status:           replStatus{},
 		connPool:         ldr.getConnPool(node.Addr),
 		heartbeatTimeout: ldr.heartbeatTimeout,
 		storage:          ldr.storage,
