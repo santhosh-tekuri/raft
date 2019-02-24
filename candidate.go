@@ -16,6 +16,7 @@ func (r *Raft) runCandidate() {
 			r.replyRPC(rpc)
 
 		case vote := <-results:
+			// todo: if quorum unreachable raise alert
 			if vote.voterID != r.addr {
 				debug(r, "<< voteResponse", vote.voterID, vote.granted, vote.term, vote.err)
 			}

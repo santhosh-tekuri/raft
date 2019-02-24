@@ -209,6 +209,7 @@ func (ldr *leadership) isQuorumReachable(t time.Time) bool {
 			}
 		}
 	}
+	// todo: if quorum unreachable raise alert
 	return reachable >= voters/2+1
 }
 
