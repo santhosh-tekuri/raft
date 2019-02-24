@@ -64,8 +64,8 @@ type leadership struct {
 	// to receive new term notifications from replicators
 	newTermCh chan uint64
 
-	// to receive matchIndex updates from replicators
-	matchUpdatedCh chan replUpdate
+	// to receive updates from replicators
+	replUpdatedCh chan replUpdate
 }
 
 func (ldr *leadership) runLoop() {
@@ -81,7 +81,7 @@ func (ldr *leadership) runLoop() {
 	})
 
 	ldr.newTermCh = make(chan uint64, len(ldr.configs.Latest.Nodes))
-	ldr.matchUpdatedCh = make(chan replUpdate, len(ldr.configs.Latest.Nodes))
+	ldr.replUpdatedCh = make(chan replUpdate, len(ldr.configs.Latest.Nodes))
 
 	defer func() {
 		for _, repl := range ldr.repls {
@@ -125,7 +125,7 @@ func (ldr *leadership) runLoop() {
 		case rpc := <-ldr.rpcCh:
 			ldr.replyRPC(rpc)
 
-		case replUpdate := <-ldr.matchUpdatedCh:
+		case replUpdate := <-ldr.replUpdatedCh:
 		loop:
 			// get pending repl updates
 			for {
@@ -134,7 +134,7 @@ func (ldr *leadership) runLoop() {
 				select {
 				case <-ldr.shutdownCh:
 					return
-				case replUpdate = <-ldr.matchUpdatedCh:
+				case replUpdate = <-ldr.replUpdatedCh:
 					break
 				default:
 					break loop
@@ -170,7 +170,7 @@ func (ldr *leadership) startReplication(node Node) {
 		heartbeatTimeout: ldr.heartbeatTimeout,
 		storage:          ldr.storage,
 		stopCh:           make(chan struct{}),
-		matchUpdatedCh:   ldr.matchUpdatedCh,
+		matchUpdatedCh:   ldr.replUpdatedCh,
 		newTermCh:        ldr.newTermCh,
 		leaderUpdateCh:   make(chan leaderUpdate, 1),
 		str:              ldr.String() + " " + string(node.ID),
