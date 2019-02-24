@@ -21,9 +21,10 @@ type replication struct {
 	// leader notifies replication with update
 	leaderUpdateCh chan leaderUpdate
 
-	matchUpdatedCh chan<- replUpdate
-	newTermCh      chan<- uint64
-	stopCh         chan struct{}
+	// replication notifies leader about our progress
+	replUpdatedCh chan<- replUpdate
+	newTermCh     chan<- uint64
+	stopCh        chan struct{}
 
 	str string // used for debug() calls
 }
@@ -157,7 +158,7 @@ func (repl *replication) notifyLdr(matchIndex uint64, noContact time.Time) {
 	update := replUpdate{status: &repl.status, matchIndex: matchIndex, noContact: noContact}
 	select {
 	case <-repl.stopCh:
-	case repl.matchUpdatedCh <- update:
+	case repl.replUpdatedCh <- update:
 	}
 }
 

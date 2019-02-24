@@ -34,8 +34,8 @@ type replUpdate struct {
 type replStatus struct {
 	id NodeID
 
-	// owned exclusively by raft main goroutine
-	// used to recalculateMatch
+	// owned exclusively by leader goroutine
+	// used to compute majorityMatchIndex
 	matchIndex uint64
 
 	// from what time the replication unable to reach this node
@@ -178,7 +178,7 @@ func (ldr *leadership) startReplication(node Node) {
 		heartbeatTimeout: ldr.heartbeatTimeout,
 		storage:          ldr.storage,
 		stopCh:           make(chan struct{}),
-		matchUpdatedCh:   ldr.replUpdatedCh,
+		replUpdatedCh:    ldr.replUpdatedCh,
 		newTermCh:        ldr.newTermCh,
 		leaderUpdateCh:   make(chan leaderUpdate, 1),
 		str:              ldr.String() + " " + string(node.ID),
