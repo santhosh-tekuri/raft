@@ -23,6 +23,8 @@ func TestRaft_Voting(t *testing.T) {
 	defer c.shutdown()
 	ldr := c.ensureHealthy()
 
+	c.ensureLeader(c.leader().addr)
+
 	req := &voteRequest{}
 	ldr.inspect(func(r *Raft) {
 		req.term = r.term
