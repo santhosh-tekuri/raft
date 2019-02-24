@@ -15,8 +15,15 @@ type Stable interface {
 
 type Log interface {
 	Empty() (bool, error)
+
+	// First returns first entry.
+	// This is never called on empty log.
 	First() ([]byte, error)
+
+	// Last returns last entry.
+	// This is never called on empty log.
 	Last() ([]byte, error)
+
 	Get(offset uint64) ([]byte, error)
 	Append(entry []byte) error
 	DeleteFirst(n uint64) error
@@ -32,31 +39,6 @@ type storage struct {
 	mu sync.RWMutex
 	// zero for no entries. note that we never have an entry with index zero
 	first, last uint64
-}
-
-func (s *storage) setConfigs(configs Configs) {
-	if err := s.Stable.SetConfig(configs.Committed.Index, configs.Latest.Index); err != nil {
-		panic(err)
-	}
-}
-
-func (s *storage) getLast() uint64 {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.last
-}
-
-func (s *storage) lastEntry() (*entry, error) {
-	if s.count() == 0 {
-		return nil, nil
-	}
-	b, err := s.log.Last()
-	if err != nil {
-		return nil, err
-	}
-	entry := &entry{}
-	err = entry.decode(bytes.NewReader(b))
-	return entry, nil
 }
 
 func (s *storage) init() error {
@@ -90,6 +72,12 @@ func (s *storage) init() error {
 	return nil
 }
 
+func (s *storage) setConfigs(configs Configs) {
+	if err := s.Stable.SetConfig(configs.Committed.Index, configs.Latest.Index); err != nil {
+		panic(err)
+	}
+}
+
 func (s *storage) count() uint64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -99,27 +87,52 @@ func (s *storage) count() uint64 {
 	return s.last - s.first + 1
 }
 
+// if empty, returns 0
+func (s *storage) getLast() uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.last
+}
+
+// if empty returns nil
+func (s *storage) lastEntry() (*entry, error) {
+	if s.count() == 0 {
+		return nil, nil
+	}
+	b, err := s.log.Last()
+	if err != nil {
+		return nil, err
+	}
+	entry := &entry{}
+	err = entry.decode(bytes.NewReader(b))
+	return entry, err
+}
+
+// index must be valid. panic if empty
 func (s *storage) getEntry(index uint64, entry *entry) {
+	if s.count() == 0 {
+		panic("raft: [BUG] storage.getEntry on empty log")
+	}
 	s.mu.RLock()
 	offset := index - s.first
 	s.mu.RUnlock()
 
 	b, err := s.log.Get(offset)
 	if err != nil {
-		panic(fmt.Sprintf("failed to get entry: %v", err))
+		panic(fmt.Sprintf("raft: log.get(%d) failed: %v", index, err))
 	}
 	if err = entry.decode(bytes.NewReader(b)); err != nil {
-		panic(fmt.Sprintf("failed to decode stored entry: %v", err))
+		panic(fmt.Sprintf("raft: entry.decode(%d) failed: %v", index, err))
 	}
 }
 
 func (s *storage) append(entry *entry) {
 	w := new(bytes.Buffer)
 	if err := entry.encode(w); err != nil {
-		panic(fmt.Sprintf("failed to encode entry: %v", err))
+		panic(fmt.Sprintf("raft: entry.encode(%d) failed: %v", entry.index, err))
 	}
 	if err := s.log.Append(w.Bytes()); err != nil {
-		panic(fmt.Sprintf("failed to append entry: %v", err))
+		panic(fmt.Sprintf("raft: log.append(%d): %v", entry.index, err))
 	}
 
 	s.mu.Lock()
@@ -132,14 +145,14 @@ func (s *storage) append(entry *entry) {
 
 func (s *storage) deleteLTE(index uint64) {
 	if s.count() == 0 {
-		panic("[BUG] deleteLTE on empty log")
+		panic("raft: [BUG] storage.deleteLTE on empty log")
 	}
 	n := index - s.first + 1
 	if n > s.count() {
-		panic("[BUG] deleteLTE: not enough entries")
+		panic(fmt.Sprintf("raft: [BUG] storage.deleteLTE(%d) failed: not enough entries", index))
 	}
 	if err := s.log.DeleteFirst(n); err != nil {
-		panic(fmt.Sprintf("deleteFirst failed: %v", err))
+		panic(fmt.Sprintf("raft: log.deleteFirst(%d) failed: %v", n, err))
 	}
 
 	s.mu.Lock()
@@ -153,14 +166,14 @@ func (s *storage) deleteLTE(index uint64) {
 
 func (s *storage) deleteGTE(index uint64) {
 	if s.count() == 0 {
-		panic("[BUG] deleteGTE on empty log")
+		panic("raft: [BUG] storage.deleteGTE on empty log")
 	}
 	n := s.last - index + 1
 	if n > s.count() {
-		panic("[BUG] deleteGTE: not enough entries")
+		panic(fmt.Sprintf("raft: [BUG] storage.deleteGTE(%d) failed: not enough entries", index))
 	}
 	if err := s.log.DeleteLast(n); err != nil {
-		panic(fmt.Sprintf("deleteLast failed: %v", err))
+		panic(fmt.Sprintf("raft: log.deleteLast(%d) failed: %v", n, err))
 	}
 
 	s.mu.Lock()
@@ -172,27 +185,6 @@ func (s *storage) deleteGTE(index uint64) {
 	s.mu.Unlock()
 }
 
-// fills entries in range [nextIndex, lastIndex] inclusive into given request
-func (s *storage) fillEntries(req *appendEntriesRequest, nextIndex, lastIndex uint64) {
-	if nextIndex == 1 {
-		req.prevLogIndex, req.prevLogTerm = 0, 0
-	} else {
-		prevEntry := &entry{}
-		s.getEntry(nextIndex-1, prevEntry)
-		req.prevLogIndex, req.prevLogTerm = prevEntry.index, prevEntry.term
-	}
-
-	if lastIndex-nextIndex+1 == 0 {
-		req.entries = nil
-	} else {
-		req.entries = make([]*entry, lastIndex-nextIndex+1)
-		for i := range req.entries {
-			req.entries[i] = &entry{}
-			s.getEntry(nextIndex+uint64(i), req.entries[i])
-		}
-	}
-}
-
 func (s *storage) bootstrap(nodes map[NodeID]Node) (Config, error) {
 	// todo: validate
 	ids := make(map[NodeID]bool)
@@ -200,18 +192,18 @@ func (s *storage) bootstrap(nodes map[NodeID]Node) (Config, error) {
 	voters := 0
 	for _, node := range nodes {
 		if node.ID == "" {
-			return Config{}, fmt.Errorf("bootstrap: empty node id")
+			return Config{}, fmt.Errorf("raft.bootstrap: empty node id")
 		}
 		if ids[node.ID] {
-			return Config{}, fmt.Errorf("bootstrap: duplicate id %s", node.ID)
+			return Config{}, fmt.Errorf("raft.bootstrap: duplicate id %s", node.ID)
 		}
 		ids[node.ID] = true
 
 		if node.Addr == "" {
-			return Config{}, fmt.Errorf("bootstrap: empty address")
+			return Config{}, fmt.Errorf("raft.bootstrap: empty address")
 		}
 		if addrs[node.Addr] {
-			return Config{}, fmt.Errorf("bootstrap: duplicate address %s", node.Addr)
+			return Config{}, fmt.Errorf("raft.bootstrap: duplicate address %s", node.Addr)
 		}
 		addrs[node.Addr] = true
 
@@ -220,7 +212,7 @@ func (s *storage) bootstrap(nodes map[NodeID]Node) (Config, error) {
 		}
 	}
 	if voters == 0 {
-		return Config{}, fmt.Errorf("bootstrap: no voter")
+		return Config{}, fmt.Errorf("raft.bootstrap: no voter")
 	}
 
 	configEntry := Config{
