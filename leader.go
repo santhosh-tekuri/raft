@@ -21,6 +21,7 @@ func (r *Raft) runLeader() {
 type replUpdate struct {
 	repl       *replication
 	matchIndex uint64
+	noContact  time.Time
 }
 
 type leadership struct {
@@ -107,9 +108,10 @@ func (ldr *leadership) runLoop() {
 
 		case replUpdate := <-ldr.matchUpdatedCh:
 		loop:
-			// get latest matchIndex from all notified members
+			// get pending repl updates
 			for {
 				replUpdate.repl.member.matchIndex = replUpdate.matchIndex
+				replUpdate.repl.member.noContact = replUpdate.noContact
 				select {
 				case <-ldr.shutdownCh:
 					return
@@ -178,13 +180,13 @@ func (ldr *leadership) startReplication(node Node) {
 			// todo: is this really needed? we can optimize it
 			//       by avoiding this extra goroutine
 			defer ldr.wg.Done()
-			repl.sendUpdate(req.prevLogIndex)
+			repl.notifyLdr(req.prevLogIndex, time.Time{})
 			for {
 				select {
 				case <-repl.stopCh:
 					return
 				case update := <-repl.leaderUpdateCh:
-					repl.sendUpdate(update.lastIndex)
+					repl.notifyLdr(update.lastIndex, time.Time{})
 				}
 			}
 		}()

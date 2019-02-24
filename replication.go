@@ -37,6 +37,10 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 	ldrLastIndex := req.prevLogIndex
 	matchIndex, nextIndex := uint64(0), ldrLastIndex+1
 
+	// from this time node is unreachable
+	// zero value means node is reachable
+	var noContact time.Time
+
 	debug(repl, "repl.start ldrLastIndex:", ldrLastIndex, "matchIndex:", matchIndex, "nextIndex:", nextIndex)
 
 	for {
@@ -73,6 +77,11 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 		for {
 			resp, err := repl.appendEntries(req)
 			if err != nil {
+				if noContact.IsZero() {
+					noContact = time.Now()
+					debug(repl, "noContact")
+					repl.notifyLdr(matchIndex, noContact)
+				}
 				failures++
 				select {
 				case <-repl.stopCh:
@@ -83,6 +92,11 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 			}
 
 			// process response ------------------------------
+			if !noContact.IsZero() {
+				noContact = time.Time{} // zeroing
+				debug(repl, "yesContact")
+				repl.notifyLdr(matchIndex, noContact)
+			}
 			if resp.term > req.term {
 				select {
 				case <-repl.stopCh:
@@ -100,7 +114,7 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 				}
 				if matchIndex != old {
 					debug(repl, "matchIndex:", matchIndex)
-					repl.sendUpdate(matchIndex)
+					repl.notifyLdr(matchIndex, noContact)
 				}
 			} else {
 				if matchIndex+1 != nextIndex {
@@ -137,10 +151,11 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 	}
 }
 
-func (repl *replication) sendUpdate(matchIndex uint64) {
+func (repl *replication) notifyLdr(matchIndex uint64, noContact time.Time) {
+	update := replUpdate{repl: repl, matchIndex: matchIndex, noContact: noContact}
 	select {
 	case <-repl.stopCh:
-	case repl.matchUpdatedCh <- replUpdate{repl: repl, matchIndex: matchIndex}:
+	case repl.matchUpdatedCh <- update:
 	}
 }
 
@@ -154,7 +169,6 @@ func (repl *replication) appendEntries(req *appendEntriesRequest) (*appendEntrie
 	}
 	resp := new(appendEntriesResponse)
 	err := repl.conn.doRPC(rpcAppendEntries, req, resp)
-	repl.member.contactSucceeded(err == nil)
 	if err != nil {
 		_ = repl.conn.close()
 		repl.conn = nil
