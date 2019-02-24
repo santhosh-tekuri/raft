@@ -43,20 +43,6 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 		}
 	}()
 
-	if repl.member.addr == req.leaderID {
-		// self replication: when leaderUpdate comes
-		// just notify that it is replicated
-		repl.setMatchIndex(req.prevLogIndex)
-		for {
-			select {
-			case <-repl.stopCh:
-				return
-			case update := <-repl.leaderUpdateCh:
-				repl.setMatchIndex(update.lastIndex)
-			}
-		}
-	}
-
 	ldrLastIndex, matchIndex := req.prevLogIndex, repl.getMatchIndex()
 	debug(repl, "repl.start ldrLastIndex:", ldrLastIndex, "matchIndex:", matchIndex, "nextIndex:", repl.nextIndex)
 

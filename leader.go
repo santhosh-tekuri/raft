@@ -136,7 +136,6 @@ func (ldr *leadership) runLoop() {
 func (ldr *leadership) startReplication(node Node) {
 	m := &member{
 		id:         node.ID,
-		addr:       node.Addr,
 		matchIndex: 0, // matchIndex initialized to zero
 		str:        ldr.String() + " " + string(node.ID),
 	}
@@ -165,19 +164,37 @@ func (ldr *leadership) startReplication(node Node) {
 		prevLogTerm:       ldr.lastLogTerm,
 	}
 
-	if m.addr != ldr.addr {
+	// todo: should runLeader wait for repls to stop ?
+	ldr.wg.Add(1)
+	if m.id == ldr.id {
+		go func() {
+			// self replication: when leaderUpdate comes
+			// just notify that it is replicated
+			// we are doing this, so that the it is easier
+			// to handle the case of single node cluster
+			// todo: is this really needed? we can optimize it
+			//       by avoiding this extra goroutine
+			defer ldr.wg.Done()
+			repl.setMatchIndex(req.prevLogIndex)
+			for {
+				select {
+				case <-repl.stopCh:
+					return
+				case update := <-repl.leaderUpdateCh:
+					repl.setMatchIndex(update.lastIndex)
+				}
+			}
+		}()
+	} else {
 		// don't retry on failure. so that we can respond to apply/inspect
 		debug(repl, ">> firstHeartbeat")
 		_, _ = repl.appendEntries(req)
+		go func() {
+			defer ldr.wg.Done()
+			repl.runLoop(req)
+			debug(repl, "repl.end")
+		}()
 	}
-
-	// todo: should runLeader wait for repls to stop ?
-	ldr.wg.Add(1)
-	go func() {
-		defer ldr.wg.Done()
-		repl.runLoop(req)
-		debug(repl, "repl.end")
-	}()
 }
 
 func (ldr *leadership) applyEntry(ne newEntry) {

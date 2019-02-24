@@ -6,8 +6,7 @@ import (
 )
 
 type member struct {
-	id   NodeID
-	addr string
+	id NodeID
 
 	// owned exclusively by raft main goroutine
 	// used to recalculateMatch
