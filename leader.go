@@ -8,13 +8,17 @@ import (
 	"time"
 )
 
+const minCheckInterval = 10 * time.Millisecond
+
 func (r *Raft) runLeader() {
 	ldr := leadership{
 		Raft:         r,
-		leaseTimeout: r.heartbeatTimeout, // todo: should it be same as heartbeatTimeout ?
+		leaseTimeout: r.heartbeatTimeout, // todo: should it be same as heartbeatTimeout ? make configurable
+		leaseTimer:   time.NewTimer(time.Hour),
 		newEntries:   list.New(),
 		repls:        make(map[NodeID]*replication),
 	}
+	ldr.leaseTimer.Stop() // we start it on detecting failures
 	ldr.runLoop()
 }
 
@@ -51,6 +55,7 @@ type leadership struct {
 	// if quorum of nodes are not reachable for this duration
 	// leader steps down to follower
 	leaseTimeout time.Duration
+	leaseTimer   *time.Timer
 
 	// leader term starts from this index.
 	// this index refers to noop entry
@@ -86,6 +91,7 @@ func (ldr *leadership) runLoop() {
 	ldr.replUpdatedCh = make(chan replUpdate, len(ldr.configs.Latest.Nodes))
 
 	defer func() {
+		ldr.leaseTimer.Stop()
 		for _, repl := range ldr.repls {
 			close(repl.stopCh)
 		}
@@ -106,9 +112,6 @@ func (ldr *leadership) runLoop() {
 		ldr.startReplication(node)
 	}
 
-	leaseTimer := time.NewTicker(ldr.leaseTimeout)
-	defer leaseTimer.Stop()
-
 	for ldr.state == Leader {
 		select {
 		case <-ldr.shutdownCh:
@@ -128,11 +131,18 @@ func (ldr *leadership) runLoop() {
 			ldr.replyRPC(rpc)
 
 		case replUpdate := <-ldr.replUpdatedCh:
+			matchUpdated, noContactUpdated := false, false
 		loop:
 			// get pending repl updates
 			for {
-				replUpdate.status.matchIndex = replUpdate.matchIndex
-				replUpdate.status.noContact = replUpdate.noContact
+				if replUpdate.status.matchIndex != replUpdate.matchIndex {
+					matchUpdated = true
+					replUpdate.status.matchIndex = replUpdate.matchIndex
+				}
+				if !replUpdate.status.noContact.Equal(replUpdate.noContact) {
+					noContactUpdated = true
+					replUpdate.status.noContact = replUpdate.noContact
+				}
 				select {
 				case <-ldr.shutdownCh:
 					return
@@ -142,21 +152,18 @@ func (ldr *leadership) runLoop() {
 					break loop
 				}
 			}
-
-			ldr.commitAndApplyOnMajority()
+			if matchUpdated {
+				ldr.commitAndApplyOnMajority()
+			}
+			if noContactUpdated {
+				ldr.checkLeaderLease()
+			}
 
 		case t := <-ldr.TasksCh:
 			ldr.executeTask(t)
 
-		case <-leaseTimer.C:
-			t := time.Now().Add(-ldr.leaseTimeout)
-			if !ldr.isQuorumReachable(t) {
-				debug(ldr, "quorumUnreachable")
-				debug(ldr, "leader -> follower")
-				ldr.state = Follower
-				ldr.leader = ""
-				StateChanged(ldr.Raft, ldr.state)
-			}
+		case <-ldr.leaseTimer.C:
+			ldr.checkLeaderLease()
 		}
 	}
 }
@@ -234,20 +241,48 @@ func (ldr *leadership) applyEntry(ne newEntry) {
 	ldr.notifyReplicators()
 }
 
-// is quorum of nodes reachable after time t
-func (ldr *leadership) isQuorumReachable(t time.Time) bool {
+func (ldr *leadership) checkLeaderLease() {
 	voters, reachable := 0, 0
+	now, firstFailure := time.Now(), time.Time{}
 	for _, node := range ldr.configs.Latest.Nodes {
 		if node.Type == Voter {
 			voters++
 			repl := ldr.repls[node.ID]
-			if repl.status.contactedAfter(t) {
+			noContact := repl.status.noContact
+			if noContact.IsZero() {
 				reachable++
+			} else if now.Sub(noContact) <= ldr.leaseTimeout {
+				reachable++
+				if firstFailure.IsZero() || noContact.Before(firstFailure) {
+					firstFailure = noContact
+				}
 			}
 		}
 	}
+
 	// todo: if quorum unreachable raise alert
-	return reachable >= voters/2+1
+	if reachable < voters/2+1 {
+		debug(ldr, "leader -> follower quorumUnreachable")
+		ldr.state = Follower
+		ldr.leader = ""
+		StateChanged(ldr.Raft, ldr.state)
+		return
+	}
+
+	if !ldr.leaseTimer.Stop() {
+		select {
+		case <-ldr.leaseTimer.C:
+		default:
+		}
+	}
+
+	if !firstFailure.IsZero() {
+		d := ldr.leaseTimeout - now.Sub(firstFailure)
+		if d < minCheckInterval {
+			d = minCheckInterval
+		}
+		ldr.leaseTimer.Reset(d)
+	}
 }
 
 // computes N such that, a majority of matchIndex[i] ≥ N

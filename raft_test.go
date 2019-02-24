@@ -396,7 +396,7 @@ func TestRaft_LeaderLeaseExpire(t *testing.T) {
 	c.disconnect(followers[0])
 
 	// the leader should stepDown within leaderLeaseTimeout
-	if !ldr.waitForState(3*c.heartbeatTimeout, Follower, Candidate) {
+	if !ldr.waitForState(2*c.heartbeatTimeout, Follower, Candidate) {
 		t.Fatal("leader did not stepDown")
 	}
 

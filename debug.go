@@ -50,6 +50,13 @@ func isBarrier(msg string) bool {
 }
 
 func debug(args ...interface{}) {
+	// uncomment this to print only debug lines with first argument "xxx"
+	// this is useful for to print only specific debug lines
+
+	//if args[0] != "xxx" {
+	//	return
+	//}
+
 	ms := time.Now().Sub(boot).Nanoseconds() / 1e6
 	msg := fmt.Sprintln(append([]interface{}{ms}, args...)...)
 	messages <- msg
