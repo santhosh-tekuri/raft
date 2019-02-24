@@ -18,11 +18,30 @@ func (r *Raft) runLeader() {
 	ldr.runLoop()
 }
 
+// ----------------------------------------------
+
 type replUpdate struct {
-	repl       *replication
+	status     *replStatus
 	matchIndex uint64
 	noContact  time.Time
 }
+
+type replStatus struct {
+	// owned exclusively by raft main goroutine
+	// used to recalculateMatch
+	matchIndex uint64
+
+	// from what time the replication unable to reach this node
+	// zero value means it is reachable
+	noContact time.Time
+}
+
+// did we have success full contact after time t
+func (rs *replStatus) contactedAfter(t time.Time) bool {
+	return rs.noContact.IsZero() || rs.noContact.After(t)
+}
+
+// -------------------------------------------------------
 
 type leadership struct {
 	*Raft
@@ -110,8 +129,8 @@ func (ldr *leadership) runLoop() {
 		loop:
 			// get pending repl updates
 			for {
-				replUpdate.repl.member.matchIndex = replUpdate.matchIndex
-				replUpdate.repl.member.noContact = replUpdate.noContact
+				replUpdate.status.matchIndex = replUpdate.matchIndex
+				replUpdate.status.noContact = replUpdate.noContact
 				select {
 				case <-ldr.shutdownCh:
 					return
@@ -141,14 +160,12 @@ func (ldr *leadership) runLoop() {
 }
 
 func (ldr *leadership) startReplication(node Node) {
-	m := &member{
-		id:         node.ID,
+	m := &replStatus{
 		matchIndex: 0, // matchIndex initialized to zero
-		str:        ldr.String() + " " + string(node.ID),
 	}
 
 	repl := &replication{
-		member:           m,
+		status:           m,
 		connPool:         ldr.getConnPool(node.Addr),
 		heartbeatTimeout: ldr.heartbeatTimeout,
 		storage:          ldr.storage,
@@ -156,9 +173,9 @@ func (ldr *leadership) startReplication(node Node) {
 		matchUpdatedCh:   ldr.matchUpdatedCh,
 		newTermCh:        ldr.newTermCh,
 		leaderUpdateCh:   make(chan leaderUpdate, 1),
-		str:              ldr.String() + " " + string(m.id),
+		str:              ldr.String() + " " + string(node.ID),
 	}
-	ldr.repls[m.id] = repl
+	ldr.repls[node.ID] = repl
 
 	// send initial empty AppendEntries RPCs (heartbeat) to each follower
 	req := &appendEntriesRequest{
@@ -171,7 +188,7 @@ func (ldr *leadership) startReplication(node Node) {
 
 	// todo: should runLeader wait for repls to stop ?
 	ldr.wg.Add(1)
-	if m.id == ldr.id {
+	if node.ID == ldr.id {
 		go func() {
 			// self replication: when leaderUpdate comes
 			// just notify that it is replicated
@@ -226,7 +243,7 @@ func (ldr *leadership) isQuorumReachable(t time.Time) bool {
 		if node.Type == Voter {
 			voters++
 			repl := ldr.repls[node.ID]
-			if repl.member.contactedAfter(t) {
+			if repl.status.contactedAfter(t) {
 				reachable++
 			}
 		}
@@ -241,7 +258,7 @@ func (ldr *leadership) majorityMatchIndex() uint64 {
 	if numVoters == 1 {
 		for _, node := range ldr.configs.Latest.Nodes {
 			if node.Type == Voter {
-				return ldr.repls[node.ID].member.matchIndex
+				return ldr.repls[node.ID].status.matchIndex
 			}
 		}
 	}
@@ -250,7 +267,7 @@ func (ldr *leadership) majorityMatchIndex() uint64 {
 	i := 0
 	for _, node := range ldr.configs.Latest.Nodes {
 		if node.Type == Voter {
-			matched[i] = ldr.repls[node.ID].member.matchIndex
+			matched[i] = ldr.repls[node.ID].status.matchIndex
 			i++
 		}
 	}
