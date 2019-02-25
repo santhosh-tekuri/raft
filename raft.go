@@ -47,7 +47,7 @@ type Raft struct {
 
 	connPools map[string]*connPool
 
-	TasksCh    chan Task
+	taskCh     chan Task
 	shutdownCh chan struct{}
 }
 
@@ -112,7 +112,7 @@ func New(id NodeID, addr string, fsm FSM, stable Stable, log Log) (*Raft, error)
 		server:           server,
 		connPools:        make(map[string]*connPool),
 		fsmApplyCh:       make(chan newEntry, 128), // todo configurable capacity
-		TasksCh:          make(chan Task, 100),     // todo configurable capacity
+		taskCh:           make(chan Task, 100),     // todo configurable capacity
 		shutdownCh:       make(chan struct{}),
 	}, nil
 }

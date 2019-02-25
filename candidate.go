@@ -58,7 +58,7 @@ func (r *Raft) runCandidate() {
 		case <-timeoutCh:
 			startElection = true
 
-		case t := <-r.TasksCh:
+		case t := <-r.taskCh:
 			r.executeTask(t)
 		}
 	}

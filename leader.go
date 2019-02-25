@@ -162,7 +162,7 @@ func (ldr *leadership) runLoop() {
 				ldr.checkLeaderLease()
 			}
 
-		case t := <-ldr.TasksCh:
+		case t := <-ldr.taskCh:
 			ldr.executeTask(t)
 
 		case <-ldr.leaseTimer.C:

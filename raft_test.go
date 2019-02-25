@@ -214,7 +214,7 @@ func TestRaft_BehindFollower(t *testing.T) {
 
 	// commit a lot of things
 	for i := 0; i < 100; i++ {
-		ldr.TasksCh <- ApplyCommand([]byte(fmt.Sprintf("test%d", i)))
+		ldr.taskCh <- ApplyCommand([]byte(fmt.Sprintf("test%d", i)))
 	}
 	if _, err := ldr.waitApply("test100", c.longTimeout); err != nil {
 		t.Fatal(err)
@@ -431,12 +431,12 @@ func TestRaft_Barrier(t *testing.T) {
 	// commit a lot of things
 	n := 100
 	for i := 0; i < n; i++ {
-		ldr.TasksCh <- ApplyCommand([]byte(fmt.Sprintf("test%d", i)))
+		ldr.taskCh <- ApplyCommand([]byte(fmt.Sprintf("test%d", i)))
 	}
 
 	// wait for a barrier complete
 	b := Barrier()
-	ldr.TasksCh <- b
+	ldr.taskCh <- b
 	<-b.Done()
 	if b.Err() != nil {
 		t.Fatalf("barrier failed: %v", b.Err())
@@ -689,7 +689,7 @@ func (r *Raft) waitTask(t Task, timeout time.Duration) (interface{}, error) {
 		timer = time.After(timeout)
 	}
 	select {
-	case r.TasksCh <- t:
+	case r.taskCh <- t:
 		break
 	case <-timer:
 		return nil, fmt.Errorf("waitApply(%v): submit timedout", t)

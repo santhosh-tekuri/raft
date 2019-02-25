@@ -33,7 +33,7 @@ func (r *Raft) runFollower() {
 			r.state = Candidate
 			StateChanged(r, r.state)
 
-		case t := <-r.TasksCh:
+		case t := <-r.taskCh:
 			before, _ := r.canStartElection()
 			r.executeTask(t)
 			if now, _ := r.canStartElection(); !before && now {

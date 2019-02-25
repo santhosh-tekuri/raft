@@ -5,12 +5,18 @@ import (
 	"fmt"
 )
 
+func (r *Raft) Tasks() chan<- Task {
+	return r.taskCh
+}
+
 type Task interface {
 	Done() <-chan struct{}
 	Err() error
 	Result() interface{}
 	reply(interface{})
 }
+
+// ---------------------------------------
 
 type task struct {
 	result interface{}
@@ -240,7 +246,7 @@ func GetInfo() Task {
 
 func (r *Raft) Info() Info {
 	t := GetInfo()
-	r.TasksCh <- t
+	r.taskCh <- t
 	<-t.Done()
 	return t.Result().(Info)
 }
