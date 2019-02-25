@@ -58,6 +58,9 @@ func (r *Raft) runCandidate() {
 		case <-timeoutCh:
 			startElection = true
 
+		case ne := <-r.newEntryCh:
+			ne.reply(NotLeaderError{r.leader})
+
 		case t := <-r.taskCh:
 			r.executeTask(t)
 		}

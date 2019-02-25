@@ -214,7 +214,7 @@ func TestRaft_BehindFollower(t *testing.T) {
 
 	// commit a lot of things
 	for i := 0; i < 100; i++ {
-		ldr.taskCh <- ApplyCommand([]byte(fmt.Sprintf("test%d", i)))
+		ldr.NewEntries() <- Command([]byte(fmt.Sprintf("test%d", i)))
 	}
 	if _, err := ldr.waitApply("test100", c.longTimeout); err != nil {
 		t.Fatal(err)
@@ -431,12 +431,12 @@ func TestRaft_Barrier(t *testing.T) {
 	// commit a lot of things
 	n := 100
 	for i := 0; i < n; i++ {
-		ldr.taskCh <- ApplyCommand([]byte(fmt.Sprintf("test%d", i)))
+		ldr.NewEntries() <- Command([]byte(fmt.Sprintf("test%d", i)))
 	}
 
 	// wait for a barrier complete
 	b := Barrier()
-	ldr.taskCh <- b
+	ldr.NewEntries() <- b
 	<-b.Done()
 	if b.Err() != nil {
 		t.Fatalf("barrier failed: %v", b.Err())
@@ -689,26 +689,41 @@ func (r *Raft) waitTask(t Task, timeout time.Duration) (interface{}, error) {
 		timer = time.After(timeout)
 	}
 	select {
-	case r.taskCh <- t:
+	case r.Tasks() <- t:
 		break
 	case <-timer:
-		return nil, fmt.Errorf("waitApply(%v): submit timedout", t)
+		return nil, fmt.Errorf("waitTask(%v): submit timedout", t)
 	}
 	select {
 	case <-t.Done():
 		return t.Result(), t.Err()
 	case <-timer:
-		return nil, fmt.Errorf("waitApply(%v): result timedout", t)
+		return nil, fmt.Errorf("waitTask(%v): result timedout", t)
 	}
 }
 
 // use zero timeout, to wait till reply received
 func (r *Raft) waitApply(cmd string, timeout time.Duration) (fsmReply, error) {
-	result, err := r.waitTask(ApplyCommand([]byte(cmd)), timeout)
-	if err != nil {
-		return fsmReply{}, err
+	var timer <-chan time.Time
+	if timeout > 0 {
+		timer = time.After(timeout)
 	}
-	return result.(fsmReply), nil
+	ne := Command([]byte(cmd))
+	select {
+	case r.NewEntries() <- ne:
+		break
+	case <-timer:
+		return fsmReply{}, fmt.Errorf("waitApply(%v): submit timedout", cmd)
+	}
+	select {
+	case <-ne.Done():
+		if ne.Err() != nil {
+			return fsmReply{}, ne.Err()
+		}
+		return ne.Result().(fsmReply), nil
+	case <-timer:
+		return fsmReply{}, fmt.Errorf("waitApply(%v): result timedout", cmd)
+	}
 }
 
 func (r *Raft) inspect(fn func(Info)) {

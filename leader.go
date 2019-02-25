@@ -83,7 +83,7 @@ func (ldr *leadership) runLoop() {
 	ldr.startIndex = ldr.lastLogIndex + 1
 
 	// add a blank no-op entry into log at the start of its term
-	ldr.applyEntry(newEntry{
+	ldr.applyEntry(NewEntry{
 		entry: &entry{
 			typ: entryNop,
 		},
@@ -104,7 +104,7 @@ func (ldr *leadership) runLoop() {
 
 		// respond to any pending user entries
 		for e := ldr.newEntries.Front(); e != nil; e = e.Next() {
-			e.Value.(newEntry).task.reply(NotLeaderError{ldr.leader})
+			e.Value.(NewEntry).task.reply(NotLeaderError{ldr.leader})
 		}
 		ldr.wg.Wait()
 	}()
@@ -162,11 +162,14 @@ func (ldr *leadership) runLoop() {
 				ldr.checkLeaderLease()
 			}
 
-		case t := <-ldr.taskCh:
-			ldr.executeTask(t)
-
 		case <-ldr.leaseTimer.C:
 			ldr.checkLeaderLease()
+
+		case ne := <-ldr.Raft.newEntryCh:
+			ldr.applyEntry(ne)
+
+		case t := <-ldr.taskCh:
+			ldr.executeTask(t)
 		}
 	}
 }
@@ -226,7 +229,7 @@ func (ldr *leadership) startReplication(node Node) {
 	}
 }
 
-func (ldr *leadership) applyEntry(ne newEntry) {
+func (ldr *leadership) applyEntry(ne NewEntry) {
 	ne.entry.index, ne.entry.term = ldr.lastLogIndex+1, ldr.term
 
 	// append entry to local log
@@ -360,7 +363,7 @@ func (ldr *leadership) addNode(t addNode) {
 }
 
 func (ldr *leadership) applyConfig(newConfig Config) {
-	ne := newEntry{
+	ne := NewEntry{
 		entry: newConfig.encode(),
 	}
 	ldr.applyEntry(ne)

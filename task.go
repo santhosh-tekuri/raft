@@ -53,13 +53,17 @@ func (t *task) reply(result interface{}) {
 
 // ------------------------------------------------------------------------
 
-type newEntry struct {
+type NewEntry struct {
 	*task
 	*entry
 }
 
-func ApplyCommand(data []byte) Task {
-	return newEntry{
+func (r *Raft) NewEntries() chan<- NewEntry {
+	return r.newEntryCh
+}
+
+func Command(data []byte) NewEntry {
+	return NewEntry{
 		task: &task{done: make(chan struct{})},
 		entry: &entry{
 			typ:  entryCommand,
@@ -71,8 +75,8 @@ func ApplyCommand(data []byte) Task {
 // Barrier is used to issue a command that blocks until all preceding
 // commands have been applied to the FSM. It can be used to ensure the
 // FSM reflects all queued commands.
-func Barrier() Task {
-	return newEntry{
+func Barrier() NewEntry {
+	return NewEntry{
 		task: &task{done: make(chan struct{})},
 		entry: &entry{
 			typ: entryBarrier,
@@ -312,8 +316,8 @@ func (r *Raft) executeTask(t Task) {
 
 func (ldr *leadership) executeTask(t Task) {
 	switch t := t.(type) {
-	case newEntry:
-		ldr.applyEntry(t)
+	case NewEntry:
+		t.reply(errors.New("raft: use Raft.NewEntries() for NewEntry"))
 	case addNode:
 		ldr.addNode(t)
 	case inspect:

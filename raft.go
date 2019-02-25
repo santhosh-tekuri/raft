@@ -37,7 +37,7 @@ type Raft struct {
 	configs Configs
 	wg      sync.WaitGroup
 
-	fsmApplyCh chan newEntry
+	fsmApplyCh chan NewEntry
 	fsm        FSM
 
 	storage *storage
@@ -56,6 +56,7 @@ type Raft struct {
 	connPools map[string]*connPool
 
 	taskCh     chan Task
+	newEntryCh chan NewEntry
 	shutdownCh chan struct{}
 }
 
@@ -119,7 +120,8 @@ func New(id NodeID, addr string, fsm FSM, stable Stable, log Log) (*Raft, error)
 		dialFn:           net.DialTimeout,
 		server:           server,
 		connPools:        make(map[string]*connPool),
-		fsmApplyCh:       make(chan newEntry, 128), // todo configurable capacity
+		fsmApplyCh:       make(chan NewEntry, 128), // todo configurable capacity
+		newEntryCh:       make(chan NewEntry, 100), // todo configurable capacity
 		taskCh:           make(chan Task, 100),     // todo configurable capacity
 		shutdownCh:       make(chan struct{}),
 	}, nil

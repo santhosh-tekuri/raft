@@ -30,14 +30,14 @@ func (r *Raft) fsmLoop() {
 //      - reply end user with response
 func (r *Raft) fsmApply(newEntries *list.List) {
 	for ; r.commitIndex > r.lastApplied; r.lastApplied++ {
-		var ne newEntry
+		var ne NewEntry
 
 		// check if entry to be applied is user submitted
 		// or we are applying old entry from storage
 		if newEntries != nil {
 			elem := newEntries.Front()
-			if elem.Value.(newEntry).index == r.lastApplied+1 {
-				ne = elem.Value.(newEntry)
+			if elem.Value.(NewEntry).index == r.lastApplied+1 {
+				ne = elem.Value.(NewEntry)
 				newEntries.Remove(elem)
 			}
 		}
