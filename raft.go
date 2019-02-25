@@ -28,6 +28,16 @@ func (s State) String() string {
 	return string(s)
 }
 
+type Options struct {
+	HeartbeatTimeout time.Duration
+}
+
+func DefaultOptions() Options {
+	return Options{
+		HeartbeatTimeout: 1000 * time.Millisecond,
+	}
+}
+
 type Raft struct {
 	*server
 	dialFn dialFn
@@ -60,7 +70,7 @@ type Raft struct {
 	shutdownCh chan struct{}
 }
 
-func New(id NodeID, addr string, fsm FSM, stable Stable, log Log) (*Raft, error) {
+func New(id NodeID, addr string, opt Options, fsm FSM, stable Stable, log Log) (*Raft, error) {
 	storage := &storage{Stable: stable, log: log}
 	if err := storage.init(); err != nil {
 		return nil, err
@@ -100,10 +110,9 @@ func New(id NodeID, addr string, fsm FSM, stable Stable, log Log) (*Raft, error)
 		}
 	}
 
-	heartbeatTimeout := 50 * time.Millisecond // todo,
 	server := &server{
 		listenFn:              net.Listen,
-		shutdownCheckDuration: heartbeatTimeout,
+		shutdownCheckDuration: opt.HeartbeatTimeout,
 	}
 	return &Raft{
 		id:               id,
@@ -116,7 +125,7 @@ func New(id NodeID, addr string, fsm FSM, stable Stable, log Log) (*Raft, error)
 		lastLogTerm:      lastLogTerm,
 		configs:          configs,
 		state:            Follower,
-		heartbeatTimeout: heartbeatTimeout,
+		heartbeatTimeout: opt.HeartbeatTimeout,
 		dialFn:           net.DialTimeout,
 		server:           server,
 		connPools:        make(map[string]*connPool),

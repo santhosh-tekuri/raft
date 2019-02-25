@@ -497,6 +497,9 @@ func (c *cluster) launch(n int, bootstrap bool) {
 	}
 
 	c.rr = make([]*Raft, n)
+	opt := Options{
+		HeartbeatTimeout: c.heartbeatTimeout,
+	}
 	i := 0
 	for _, node := range nodes {
 		inMemStorage := new(inmem.Storage)
@@ -508,12 +511,11 @@ func (c *cluster) launch(n int, bootstrap bool) {
 			}
 		}
 		fsm := &fsmMock{changedCh: c.fsmChangedCh}
-		r, err := New(node.ID, node.Addr, fsm, inMemStorage, inMemStorage)
+		r, err := New(node.ID, node.Addr, opt, fsm, inMemStorage, inMemStorage)
 		if err != nil {
 			c.Fatal(err)
 		}
 
-		r.heartbeatTimeout = c.heartbeatTimeout
 		c.rr[i] = r
 		i++
 
