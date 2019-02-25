@@ -3,6 +3,7 @@ package raft
 import (
 	"errors"
 	"fmt"
+	"time"
 )
 
 func (r *Raft) Tasks() chan<- Task {
@@ -152,6 +153,7 @@ type Info interface {
 	LastApplied() uint64
 	Configs() Configs
 	MatchIndexes() map[NodeID]uint64
+	Unreachable() map[NodeID]time.Time
 }
 
 type liveInfo struct {
@@ -190,6 +192,19 @@ func (info liveInfo) MatchIndexes() map[NodeID]uint64 {
 	return m
 }
 
+func (info liveInfo) Unreachable() map[NodeID]time.Time {
+	if info.ldr == nil {
+		return nil
+	}
+	m := make(map[NodeID]time.Time)
+	for id, repl := range info.ldr.repls {
+		if !repl.status.noContact.IsZero() {
+			m[id] = repl.status.noContact
+		}
+	}
+	return m
+}
+
 type cachedInfo struct {
 	id           NodeID
 	addr         string
@@ -203,20 +218,22 @@ type cachedInfo struct {
 	lastApplied  uint64
 	configs      Configs
 	matchIndexes map[NodeID]uint64
+	unreachable  map[NodeID]time.Time
 }
 
-func (info cachedInfo) ID() NodeID                      { return info.id }
-func (info cachedInfo) Addr() string                    { return info.addr }
-func (info cachedInfo) Term() uint64                    { return info.term }
-func (info cachedInfo) State() State                    { return info.state }
-func (info cachedInfo) LeaderID() NodeID                { return info.leaderID }
-func (info cachedInfo) LeaderAddr() string              { return info.leaderAddr }
-func (info cachedInfo) LastLogIndex() uint64            { return info.lastLogIndex }
-func (info cachedInfo) LastLogTerm() uint64             { return info.lastLogTerm }
-func (info cachedInfo) Committed() uint64               { return info.committed }
-func (info cachedInfo) LastApplied() uint64             { return info.lastApplied }
-func (info cachedInfo) Configs() Configs                { return info.configs }
-func (info cachedInfo) MatchIndexes() map[NodeID]uint64 { return info.matchIndexes }
+func (info cachedInfo) ID() NodeID                        { return info.id }
+func (info cachedInfo) Addr() string                      { return info.addr }
+func (info cachedInfo) Term() uint64                      { return info.term }
+func (info cachedInfo) State() State                      { return info.state }
+func (info cachedInfo) LeaderID() NodeID                  { return info.leaderID }
+func (info cachedInfo) LeaderAddr() string                { return info.leaderAddr }
+func (info cachedInfo) LastLogIndex() uint64              { return info.lastLogIndex }
+func (info cachedInfo) LastLogTerm() uint64               { return info.lastLogTerm }
+func (info cachedInfo) Committed() uint64                 { return info.committed }
+func (info cachedInfo) LastApplied() uint64               { return info.lastApplied }
+func (info cachedInfo) Configs() Configs                  { return info.configs }
+func (info cachedInfo) MatchIndexes() map[NodeID]uint64   { return info.matchIndexes }
+func (info cachedInfo) Unreachable() map[NodeID]time.Time { return info.unreachable }
 
 type inspect struct {
 	*task

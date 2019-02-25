@@ -166,10 +166,6 @@ func (r *Raft) loop() {
 	}
 }
 
-func (r *Raft) String() string {
-	return fmt.Sprintf("%s %d %s |", r.id, r.term, r.state)
-}
-
 func (r *Raft) setTerm(term uint64) {
 	if err := r.storage.SetVars(term, ""); err != nil {
 		panic(fmt.Sprintf("stable.Set failed: %v", err))

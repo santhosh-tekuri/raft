@@ -73,3 +73,9 @@ func assert(b bool, format string, args ...interface{}) {
 		panic(fmt.Errorf(format, args...))
 	}
 }
+
+// ----------------------------------------------------------
+
+func (r *Raft) String() string {
+	return fmt.Sprintf("%s %d %s |", r.id, r.term, r.state)
+}
