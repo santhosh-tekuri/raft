@@ -20,7 +20,6 @@ type rpc struct {
 }
 
 type server struct {
-	listenFn func(network, address string) (net.Listener, error)
 	listener net.Listener
 	rpcCh    chan rpc
 
@@ -32,19 +31,18 @@ type server struct {
 	wg         sync.WaitGroup
 }
 
-func (s *server) listen(address string) error {
-	listener, err := s.listenFn("tcp", address)
-	if err != nil {
-		return err
+func newServer(shutdownCheckDuration time.Duration) *server {
+	return &server{
+		rpcCh:                 make(chan rpc),
+		shutdownCh:            make(chan struct{}),
+		shutdownCheckDuration: shutdownCheckDuration,
 	}
-	s.listener = listener
-	s.rpcCh = make(chan rpc)
-	s.shutdownCh = make(chan struct{})
-	s.wg.Add(1) // The first increment must be synchronized with Wait
-	return nil
 }
 
-func (s *server) serve() error {
+// todo: note that we dont support multiple listeners
+func (s *server) serve(l net.Listener) error {
+	s.listener = l
+	s.wg.Add(1) // The first increment must be synchronized with Wait
 	defer s.wg.Done()
 	for {
 		conn, err := s.listener.Accept()

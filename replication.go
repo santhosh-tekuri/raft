@@ -60,7 +60,7 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 		}
 		var n uint64 // number of entries to be sent
 		if matchIndex+1 == nextIndex {
-			n = min(ldrLastIndex-matchIndex, maxAppendEntries) // number of entries to be sent
+			n = min(ldrLastIndex-matchIndex, maxAppendEntries)
 		}
 		if n == 0 {
 			req.entries = nil

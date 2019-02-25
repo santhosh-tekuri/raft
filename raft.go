@@ -94,10 +94,7 @@ func New(id NodeID, addr string, opt Options, fsm FSM, storage *Storage) (*Raft,
 		return nil, err
 	}
 
-	server := &server{
-		listenFn:              net.Listen,
-		shutdownCheckDuration: opt.HeartbeatTimeout,
-	}
+	server := newServer(opt.HeartbeatTimeout)
 	return &Raft{
 		id:               id,
 		addr:             addr,
@@ -120,22 +117,12 @@ func New(id NodeID, addr string, opt Options, fsm FSM, storage *Storage) (*Raft,
 	}, nil
 }
 
-func (r *Raft) ListenAndServe() error {
-	if err := r.Listen(); err != nil {
-		return err
-	}
-	return r.Serve()
-}
-
-func (r *Raft) Listen() error {
-	return r.server.listen(r.addr)
-}
-
-func (r *Raft) Serve() error {
+// todo: note that we dont support multiple listeners
+func (r *Raft) Serve(l net.Listener) error {
 	r.wg.Add(2)
 	go r.loop()
 	go r.fsmLoop()
-	return r.server.serve()
+	return r.server.serve(l)
 }
 
 func (r *Raft) Shutdown() {

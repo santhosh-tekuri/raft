@@ -41,11 +41,12 @@ func TestServer(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s := &server{listenFn: earth.Listen, shutdownCheckDuration: 3 * time.Second}
-			if err := s.listen(addr); err != nil {
+			s := newServer(3 * time.Second)
+			l, err := earth.Listen("tcp", addr)
+			if err != nil {
 				t.Fatalf("server.listen failed: %v", err)
 			}
-			go s.serve()
+			go s.serve(l)
 			defer s.shutdown()
 
 			go func() {

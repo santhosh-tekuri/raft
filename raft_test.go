@@ -521,12 +521,13 @@ func (c *cluster) launch(n int, bootstrap bool) {
 
 		// switch to fake transport
 		host := c.network.Host(string(r.id))
-		r.listenFn, r.dialFn = host.Listen, host.DialTimeout
+		r.dialFn = host.DialTimeout
 
-		if err := r.Listen(); err != nil {
+		l, err := host.Listen("tcp", node.Addr)
+		if err != nil {
 			c.Fatalf("raft.listen failed: %v", err)
 		}
-		go func() { _ = r.Serve() }()
+		go func() { _ = r.Serve(l) }()
 	}
 }
 
