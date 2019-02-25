@@ -30,7 +30,7 @@ func TestServer(t *testing.T) {
 				entries: []*entry{
 					{index: 3, term: 5, typ: 2, data: []byte("sleep")},
 					{index: 4, term: 5, typ: 3, data: []byte("wakeup")},
-				}, leaderCommitIndex: 7,
+				}, ldrCommitIndex: 7,
 			},
 			resp: &appendEntriesResponse{term: 5, success: true},
 		},

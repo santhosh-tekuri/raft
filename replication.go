@@ -136,8 +136,8 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 			case <-repl.stopCh:
 				return
 			case update := <-repl.leaderUpdateCh:
-				ldrLastIndex, req.leaderCommitIndex = update.lastIndex, update.commitIndex
-				debug(repl, "{last:", ldrLastIndex, "commit:", req.leaderCommitIndex, "} <-leaderUpdateCh")
+				ldrLastIndex, req.ldrCommitIndex = update.lastIndex, update.commitIndex
+				debug(repl, "{last:", ldrLastIndex, "commit:", req.ldrCommitIndex, "} <-leaderUpdateCh")
 			case <-afterRandomTimeout(repl.heartbeatTimeout / 10):
 			}
 		} else {
@@ -146,8 +146,8 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 			case <-repl.stopCh:
 				return
 			case update := <-repl.leaderUpdateCh:
-				ldrLastIndex, req.leaderCommitIndex = update.lastIndex, update.commitIndex
-				debug(repl, "{last:", ldrLastIndex, "commit:", req.leaderCommitIndex, "} <-leaderUpdateCh")
+				ldrLastIndex, req.ldrCommitIndex = update.lastIndex, update.commitIndex
+				debug(repl, "{last:", ldrLastIndex, "commit:", req.ldrCommitIndex, "} <-leaderUpdateCh")
 			default:
 			}
 		}

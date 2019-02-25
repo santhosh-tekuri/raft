@@ -159,10 +159,10 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesRequest) *appendEntriesR
 
 	// If leaderCommit > commitIndex, set commitIndex =
 	// min(leaderCommit, index of last new entry)
-	// note: req.leaderCommitIndex==0 for heatbeat requests
+	// note: req.ldrCommitIndex==0 for heatbeat requests
 	lastIndex, lastTerm := r.lastLog(req)
-	if lastTerm == req.term && req.leaderCommitIndex > r.commitIndex {
-		r.commitIndex = min(req.leaderCommitIndex, lastIndex)
+	if lastTerm == req.term && req.ldrCommitIndex > r.commitIndex {
+		r.commitIndex = min(req.ldrCommitIndex, lastIndex)
 		r.fsmApply(nil) // apply newly committed logs
 	}
 

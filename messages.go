@@ -146,12 +146,12 @@ func (resp *voteResponse) encode(w io.Writer) error {
 }
 
 type appendEntriesRequest struct {
-	term              uint64
-	leaderID          string
-	prevLogIndex      uint64
-	prevLogTerm       uint64
-	entries           []*entry
-	leaderCommitIndex uint64
+	term           uint64
+	leaderID       string
+	prevLogIndex   uint64
+	prevLogTerm    uint64
+	entries        []*entry
+	ldrCommitIndex uint64
 }
 
 func (req *appendEntriesRequest) getTerm() uint64 {
@@ -186,7 +186,7 @@ func (req *appendEntriesRequest) decode(r io.Reader) error {
 		}
 	}
 
-	if req.leaderCommitIndex, err = readUint64(r); err != nil {
+	if req.ldrCommitIndex, err = readUint64(r); err != nil {
 		return err
 	}
 	return nil
@@ -215,7 +215,7 @@ func (req *appendEntriesRequest) encode(w io.Writer) error {
 		}
 	}
 
-	if err := writeUint64(w, req.leaderCommitIndex); err != nil {
+	if err := writeUint64(w, req.ldrCommitIndex); err != nil {
 		return err
 	}
 	return nil

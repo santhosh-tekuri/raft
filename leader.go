@@ -190,11 +190,11 @@ func (ldr *leadership) startReplication(node Node) {
 
 	// send initial empty AppendEntries RPCs (heartbeat) to each follower
 	req := &appendEntriesRequest{
-		term:              ldr.term,
-		leaderID:          ldr.addr,
-		leaderCommitIndex: ldr.commitIndex,
-		prevLogIndex:      ldr.lastLogIndex,
-		prevLogTerm:       ldr.lastLogTerm,
+		term:           ldr.term,
+		leaderID:       ldr.addr,
+		ldrCommitIndex: ldr.commitIndex,
+		prevLogIndex:   ldr.lastLogIndex,
+		prevLogTerm:    ldr.lastLogTerm,
 	}
 
 	ldr.wg.Add(1)
