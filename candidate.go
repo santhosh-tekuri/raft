@@ -4,10 +4,20 @@ import "time"
 
 func (r *Raft) runCandidate() {
 	assert(r.leader == "", "%s r.leader: got %s, want ", r, r.leader)
-	timeoutCh := afterRandomTimeout(r.heartbeatTimeout)
-	results := r.startElection()
-	votesNeeded := r.configs.Latest.quorum()
+	var (
+		timeoutCh   <-chan time.Time
+		voteCh      <-chan voteResult
+		votesNeeded int
+	)
+
+	startElection := true
 	for r.state == Candidate {
+		if startElection {
+			startElection = false
+			timeoutCh = afterRandomTimeout(r.heartbeatTimeout)
+			voteCh = r.startElection()
+			votesNeeded = r.configs.Latest.quorum()
+		}
 		select {
 		case <-r.shutdownCh:
 			return
@@ -15,7 +25,7 @@ func (r *Raft) runCandidate() {
 		case rpc := <-r.rpcCh:
 			r.replyRPC(rpc)
 
-		case vote := <-results:
+		case vote := <-voteCh:
 			// todo: if quorum unreachable raise alert
 			if vote.voterID != r.addr {
 				debug(r, "<< voteResponse", vote.voterID, vote.granted, vote.term, vote.err)
@@ -46,8 +56,7 @@ func (r *Raft) runCandidate() {
 				}
 			}
 		case <-timeoutCh:
-			// election timeout elapsed: start new election
-			return
+			startElection = true
 
 		case t := <-r.TasksCh:
 			r.executeTask(t)
