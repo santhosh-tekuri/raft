@@ -23,13 +23,13 @@ func TestRaft_Voting(t *testing.T) {
 	defer c.shutdown()
 	ldr := c.ensureHealthy()
 
-	c.ensureLeader(c.leader().addr)
+	c.ensureLeader(c.leader().id)
 
 	req := &voteRequest{}
-	ldr.inspect(func(r *Raft) {
-		req.term = r.term
-		req.lastLogIndex = r.lastLogIndex
-		req.lastLogTerm = r.lastLogTerm
+	ldr.inspect(func(r API) {
+		req.term = r.Term()
+		req.lastLogIndex = r.LastLogIndex()
+		req.lastLogTerm = r.LastLogTerm()
 	})
 
 	var followers []string
@@ -41,7 +41,7 @@ func TestRaft_Voting(t *testing.T) {
 
 	// a follower that thinks there's a leader should vote for that leader
 	req.candidateID = ldr.addr
-	ldr.inspect(func(raft *Raft) {
+	ldr.inspect(func(_ API) {
 		resp, err := ldr.requestVote(ldr.getConnPool(followers[0]), req)
 		if err != nil {
 			t.Logf("requestVote failed: %v", err)
@@ -55,7 +55,7 @@ func TestRaft_Voting(t *testing.T) {
 
 	// a follower that thinks there's a leader shouldn't vote for a different candidate
 	req.candidateID = followers[0]
-	ldr.inspect(func(raft *Raft) {
+	ldr.inspect(func(_ API) {
 		resp, err := ldr.requestVote(ldr.getConnPool(followers[1]), req)
 		if err != nil {
 			t.Logf("requestVote failed: %v", err)
@@ -112,7 +112,7 @@ func TestRaft_TripleNode(t *testing.T) {
 	ldr := c.ensureHealthy()
 
 	// should agree on leader
-	c.ensureLeader(ldr.addr)
+	c.ensureLeader(ldr.id)
 
 	// should be able to apply
 	resp, err := ldr.waitApply("test", c.heartbeatTimeout)
@@ -137,7 +137,7 @@ func TestRaft_LeaderFail(t *testing.T) {
 	ldr := c.ensureHealthy()
 
 	// should agree on leader
-	c.ensureLeader(ldr.addr)
+	c.ensureLeader(ldr.id)
 
 	// should be able to apply
 	resp, err := ldr.waitApply("test", c.heartbeatTimeout)
@@ -206,7 +206,7 @@ func TestRaft_BehindFollower(t *testing.T) {
 	ldr := c.ensureHealthy()
 
 	// should agree on leader
-	c.ensureLeader(ldr.addr)
+	c.ensureLeader(ldr.id)
 
 	// disconnect one follower
 	behind := c.followers()[0]
@@ -229,7 +229,7 @@ func TestRaft_BehindFollower(t *testing.T) {
 	c.ensureFSMSame(nil)
 
 	// Ensure one leader
-	c.ensureLeader(c.leader().addr)
+	c.ensureLeader(c.leader().id)
 }
 
 func TestRaft_ApplyNonLeader(t *testing.T) {
@@ -241,7 +241,7 @@ func TestRaft_ApplyNonLeader(t *testing.T) {
 	ldr := c.ensureHealthy()
 
 	// should agree on leader
-	c.ensureLeader(ldr.addr)
+	c.ensureLeader(ldr.id)
 
 	// apply should work not work on non-leader
 	for _, r := range c.rr {
@@ -265,7 +265,7 @@ func TestRaft_ApplyConcurrent(t *testing.T) {
 	ldr := c.ensureHealthy()
 
 	// should agree on leader
-	c.ensureLeader(ldr.addr)
+	c.ensureLeader(ldr.id)
 
 	// concurrently apply
 	wg := sync.WaitGroup{}
@@ -349,7 +349,7 @@ loop:
 	// the bootstrapped node should be the leader
 	c.ensureHealthy()
 	ldr := c.rr[0]
-	c.ensureLeader(ldr.addr)
+	c.ensureLeader(ldr.id)
 
 	// should be able to apply
 	if _, err := ldr.waitApply("hello", 0); err != nil {
@@ -384,7 +384,7 @@ func TestRaft_LeaderLeaseExpire(t *testing.T) {
 	ldr := c.ensureHealthy()
 
 	// should agree on leader
-	c.ensureLeader(ldr.addr)
+	c.ensureLeader(ldr.id)
 
 	// #followers must be 1
 	followers := c.followers()
@@ -410,7 +410,7 @@ func TestRaft_LeaderLeaseExpire(t *testing.T) {
 		t.Fatal("follower should have become candidate")
 	}
 	for _, r := range c.rr {
-		if ldr := r.Info().Leader; ldr != "" {
+		if ldr := r.Info().LeaderID; ldr != "" {
 			t.Fatalf("%s.leader: got %s want ", r.id, ldr)
 		}
 	}
@@ -426,7 +426,7 @@ func TestRaft_Barrier(t *testing.T) {
 	followers := c.followers()
 
 	// should agree on leader
-	c.ensureLeader(ldr.addr)
+	c.ensureLeader(ldr.id)
 
 	// commit a lot of things
 	n := 100
@@ -587,11 +587,11 @@ func (c *cluster) ensureHealthy() *Raft {
 	return ldr
 }
 
-func (c *cluster) ensureLeader(leader string) {
+func (c *cluster) ensureLeader(leaderID NodeID) {
 	c.Helper()
 	for _, r := range c.rr {
-		if got := r.Info().Leader; got != leader {
-			c.Fatalf("leader of %s: got %s, want %s", r.addr, got, leader)
+		if got := r.Info().LeaderID; got != leaderID {
+			c.Fatalf("leader of %s: got %s, want %s", r.addr, got, leaderID)
 		}
 	}
 }
@@ -668,9 +668,9 @@ func (c *cluster) shutdown() {
 // wait until state is one of given states
 func (r *Raft) waitForState(timeout time.Duration, states ...State) bool {
 	cond := func() bool {
-		rstate := r.Info().State
-		for _, s := range states {
-			if rstate == s {
+		got := r.Info().State
+		for _, want := range states {
+			if got == want {
 				return true
 			}
 		}
@@ -711,8 +711,8 @@ func (r *Raft) waitApply(cmd string, timeout time.Duration) (fsmReply, error) {
 	return result.(fsmReply), nil
 }
 
-func (r *Raft) inspect(fn func(*Raft)) {
-	_, _ = r.waitTask(inspect(fn), 0)
+func (r *Raft) inspect(fn func(API)) {
+	_, _ = r.waitTask(Inspect(fn), 0)
 }
 
 // events ----------------------------------------------------------------------

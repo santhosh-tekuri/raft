@@ -133,13 +133,66 @@ func (r *Raft) bootstrap(t bootstrap) {
 
 // ------------------------------------------------------------------------
 
-type inspectRaft struct {
-	*task
-	fn func(*Raft)
+type API struct {
+	r *Raft
 }
 
-func inspect(fn func(*Raft)) Task {
-	return inspectRaft{
+func (api API) ID() NodeID {
+	return api.r.id
+}
+
+func (api API) Addr() string {
+	return api.r.addr
+}
+
+func (api API) Term() uint64 {
+	return api.r.term
+}
+
+func (api API) State() State {
+	return api.r.state
+}
+
+func (api API) LeaderID() NodeID {
+	for _, node := range api.r.configs.Latest.Nodes {
+		if node.Addr == api.r.leader {
+			return node.ID
+		}
+	}
+	return NodeID("")
+}
+
+func (api API) LeaderAddr() string {
+	return api.r.leader
+}
+
+func (api API) LastLogIndex() uint64 {
+	return api.r.lastLogIndex
+}
+
+func (api API) LastLogTerm() uint64 {
+	return api.r.lastLogTerm
+}
+
+func (api API) Committed() uint64 {
+	return api.r.commitIndex
+}
+
+func (api API) LastApplied() uint64 {
+	return api.r.lastApplied
+}
+
+func (api API) Configs() Configs {
+	return api.r.configs.clone()
+}
+
+type inspect struct {
+	*task
+	fn func(api API)
+}
+
+func Inspect(fn func(r API)) Task {
+	return inspect{
 		task: &task{done: make(chan struct{})},
 		fn:   fn,
 	}
@@ -152,16 +205,33 @@ type info struct {
 }
 
 type Info struct {
-	ID               NodeID
-	Addr             string
-	Term             uint64
-	State            State
-	Leader           string
-	LastLogIndex     uint64
-	LastLogTerm      uint64
-	CommitIndex      uint64
-	LastAppliedIndex uint64
-	Configs          Configs
+	ID           NodeID
+	Addr         string
+	Term         uint64
+	State        State
+	LeaderID     NodeID
+	LeaderAddr   string
+	LastLogIndex uint64
+	LastLogTerm  uint64
+	Committed    uint64
+	LastApplied  uint64
+	Configs      Configs
+}
+
+func newInfo(r API) Info {
+	return Info{
+		ID:           r.ID(),
+		Addr:         r.Addr(),
+		Term:         r.Term(),
+		State:        r.State(),
+		LeaderID:     r.LeaderID(),
+		LeaderAddr:   r.LeaderAddr(),
+		LastLogIndex: r.LastLogIndex(),
+		LastLogTerm:  r.LastLogTerm(),
+		Committed:    r.Committed(),
+		LastApplied:  r.LastApplied(),
+		Configs:      r.Configs(),
+	}
 }
 
 func GetInfo() Task {
@@ -196,20 +266,9 @@ func (r *Raft) executeTask(t Task) {
 	case bootstrap:
 		r.bootstrap(t)
 	case info:
-		t.reply(Info{
-			ID:               r.id,
-			Addr:             r.addr,
-			Term:             r.term,
-			State:            r.state,
-			Leader:           r.leader,
-			LastLogIndex:     r.lastLogIndex,
-			LastLogTerm:      r.lastLogTerm,
-			CommitIndex:      r.commitIndex,
-			LastAppliedIndex: r.lastApplied,
-			Configs:          r.configs.clone(),
-		})
-	case inspectRaft:
-		t.fn(r)
+		t.reply(newInfo(API{r}))
+	case inspect:
+		t.fn(API{r})
 		t.reply(nil)
 	default:
 		t.reply(NotLeaderError{r.leader})
