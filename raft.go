@@ -50,7 +50,7 @@ type Raft struct {
 	fsmApplyCh chan NewEntry
 	fsm        FSM
 
-	storage *storage
+	storage *Storage
 	term    uint64
 	state   State
 	leader  string
@@ -70,13 +70,12 @@ type Raft struct {
 	shutdownCh chan struct{}
 }
 
-func New(id NodeID, addr string, opt Options, fsm FSM, stable Stable, log Log) (*Raft, error) {
-	storage := &storage{Stable: stable, log: log}
+func New(id NodeID, addr string, opt Options, fsm FSM, storage *Storage) (*Raft, error) {
 	if err := storage.init(); err != nil {
 		return nil, err
 	}
 
-	term, votedFor, err := storage.GetVars()
+	term, votedFor, err := storage.vars.GetVote()
 	if err != nil {
 		return nil, err
 	}
@@ -90,24 +89,9 @@ func New(id NodeID, addr string, opt Options, fsm FSM, stable Stable, log Log) (
 		lastLogIndex, lastLogTerm = last.index, last.term
 	}
 
-	configs := Configs{}
-	committed, latest, err := storage.GetConfig()
+	configs, err := storage.getConfigs()
 	if err != nil {
 		return nil, err
-	}
-	if committed != 0 {
-		e := &entry{}
-		storage.getEntry(committed, e)
-		if err := configs.Committed.decode(e); err != nil {
-			return nil, err
-		}
-	}
-	if latest != 0 {
-		e := &entry{}
-		storage.getEntry(latest, e)
-		if err := configs.Latest.decode(e); err != nil {
-			return nil, err
-		}
 	}
 
 	server := &server{
@@ -186,14 +170,14 @@ func (r *Raft) loop() {
 }
 
 func (r *Raft) setTerm(term uint64) {
-	if err := r.storage.SetVars(term, ""); err != nil {
+	if err := r.storage.vars.SetVote(term, ""); err != nil {
 		panic(fmt.Sprintf("stable.Set failed: %v", err))
 	}
 	r.term, r.votedFor = term, ""
 }
 
 func (r *Raft) setVotedFor(v string) {
-	if err := r.storage.SetVars(r.term, v); err != nil {
+	if err := r.storage.vars.SetVote(r.term, v); err != nil {
 		panic(fmt.Sprintf("save votedFor failed: %v", err))
 	}
 	r.votedFor = v

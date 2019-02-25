@@ -503,15 +503,15 @@ func (c *cluster) launch(n int, bootstrap bool) {
 	i := 0
 	for _, node := range nodes {
 		inMemStorage := new(inmem.Storage)
+		storage := NewStorage(inMemStorage, inMemStorage)
 		if bootstrap {
-			storage := storage{Stable: inMemStorage, log: inMemStorage}
 			_, err := storage.bootstrap(nodes)
 			if err != nil {
-				c.Fatalf("storage.bootstrap failed: %v", err)
+				c.Fatalf("Storage.bootstrap failed: %v", err)
 			}
 		}
 		fsm := &fsmMock{changedCh: c.fsmChangedCh}
-		r, err := New(node.ID, node.Addr, opt, fsm, inMemStorage, inMemStorage)
+		r, err := New(node.ID, node.Addr, opt, fsm, storage)
 		if err != nil {
 			c.Fatal(err)
 		}

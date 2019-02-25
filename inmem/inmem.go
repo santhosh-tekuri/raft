@@ -13,7 +13,7 @@ var (
 type Storage struct {
 	muStable      sync.RWMutex
 	term          uint64
-	votedFor      string
+	vote          string
 	confCommitted uint64
 	confLatest    uint64
 
@@ -21,16 +21,16 @@ type Storage struct {
 	list  [][]byte
 }
 
-func (s *Storage) GetVars() (term uint64, votedFor string, err error) {
+func (s *Storage) GetVote() (term uint64, vote string, err error) {
 	s.muStable.RLock()
 	defer s.muStable.RUnlock()
-	return s.term, s.votedFor, nil
+	return s.term, s.vote, nil
 }
 
-func (s *Storage) SetVars(term uint64, votedFor string) error {
+func (s *Storage) SetVote(term uint64, vote string) error {
 	s.muStable.Lock()
 	defer s.muStable.Unlock()
-	s.term, s.votedFor = term, votedFor
+	s.term, s.vote = term, vote
 	return nil
 }
 

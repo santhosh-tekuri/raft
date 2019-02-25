@@ -6,9 +6,9 @@ import (
 	"sync"
 )
 
-type Stable interface {
-	GetVars() (term uint64, votedFor string, err error)
-	SetVars(term uint64, votedFor string) error
+type Vars interface {
+	GetVote() (term uint64, vote string, err error)
+	SetVote(term uint64, vote string) error
 	GetConfig() (committed, latest uint64, err error)
 	SetConfig(committed, latest uint64) error
 }
@@ -32,16 +32,20 @@ type Log interface {
 
 // todo: can we avoid panics on storage error
 
-type storage struct {
-	Stable // todo: cache values
-	log    Log
+type Storage struct {
+	vars Vars
+	log  Log
 
 	mu sync.RWMutex
 	// zero for no entries. note that we never have an entry with index zero
 	first, last uint64
 }
 
-func (s *storage) init() error {
+func NewStorage(vars Vars, log Log) *Storage {
+	return &Storage{vars: vars, log: log}
+}
+
+func (s *Storage) init() error {
 	if empty, err := s.log.Empty(); err != nil || empty {
 		return err
 	}
@@ -72,13 +76,36 @@ func (s *storage) init() error {
 	return nil
 }
 
-func (s *storage) setConfigs(configs Configs) {
-	if err := s.Stable.SetConfig(configs.Committed.Index, configs.Latest.Index); err != nil {
+func (s *Storage) getConfigs() (Configs, error) {
+	configs := Configs{}
+	committed, latest, err := s.vars.GetConfig()
+	if err != nil {
+		return configs, err
+	}
+	if committed != 0 {
+		e := &entry{}
+		s.getEntry(committed, e)
+		if err := configs.Committed.decode(e); err != nil {
+			return configs, err
+		}
+	}
+	if latest != 0 {
+		e := &entry{}
+		s.getEntry(latest, e)
+		if err := configs.Latest.decode(e); err != nil {
+			return configs, err
+		}
+	}
+	return configs, nil
+}
+
+func (s *Storage) setConfigs(configs Configs) {
+	if err := s.vars.SetConfig(configs.Committed.Index, configs.Latest.Index); err != nil {
 		panic(err)
 	}
 }
 
-func (s *storage) count() uint64 {
+func (s *Storage) count() uint64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.first == 0 {
@@ -88,14 +115,14 @@ func (s *storage) count() uint64 {
 }
 
 // if empty, returns 0
-func (s *storage) getLast() uint64 {
+func (s *Storage) getLast() uint64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.last
 }
 
 // if empty returns nil
-func (s *storage) lastEntry() (*entry, error) {
+func (s *Storage) lastEntry() (*entry, error) {
 	if s.count() == 0 {
 		return nil, nil
 	}
@@ -109,9 +136,9 @@ func (s *storage) lastEntry() (*entry, error) {
 }
 
 // index must be valid. panic if empty
-func (s *storage) getEntry(index uint64, entry *entry) {
+func (s *Storage) getEntry(index uint64, entry *entry) {
 	if s.count() == 0 {
-		panic("raft: [BUG] storage.getEntry on empty log")
+		panic("raft: [BUG] Storage.getEntry on empty log")
 	}
 	s.mu.RLock()
 	offset := index - s.first
@@ -126,7 +153,7 @@ func (s *storage) getEntry(index uint64, entry *entry) {
 	}
 }
 
-func (s *storage) append(entry *entry) {
+func (s *Storage) append(entry *entry) {
 	w := new(bytes.Buffer)
 	if err := entry.encode(w); err != nil {
 		panic(fmt.Sprintf("raft: entry.encode(%d) failed: %v", entry.index, err))
@@ -143,13 +170,13 @@ func (s *storage) append(entry *entry) {
 	s.mu.Unlock()
 }
 
-func (s *storage) deleteLTE(index uint64) {
+func (s *Storage) deleteLTE(index uint64) {
 	if s.count() == 0 {
-		panic("raft: [BUG] storage.deleteLTE on empty log")
+		panic("raft: [BUG] Storage.deleteLTE on empty log")
 	}
 	n := index - s.first + 1
 	if n > s.count() {
-		panic(fmt.Sprintf("raft: [BUG] storage.deleteLTE(%d) failed: not enough entries", index))
+		panic(fmt.Sprintf("raft: [BUG] Storage.deleteLTE(%d) failed: not enough entries", index))
 	}
 	if err := s.log.DeleteFirst(n); err != nil {
 		panic(fmt.Sprintf("raft: log.deleteFirst(%d) failed: %v", n, err))
@@ -164,13 +191,13 @@ func (s *storage) deleteLTE(index uint64) {
 	s.mu.Unlock()
 }
 
-func (s *storage) deleteGTE(index uint64) {
+func (s *Storage) deleteGTE(index uint64) {
 	if s.count() == 0 {
-		panic("raft: [BUG] storage.deleteGTE on empty log")
+		panic("raft: [BUG] Storage.deleteGTE on empty log")
 	}
 	n := s.last - index + 1
 	if n > s.count() {
-		panic(fmt.Sprintf("raft: [BUG] storage.deleteGTE(%d) failed: not enough entries", index))
+		panic(fmt.Sprintf("raft: [BUG] Storage.deleteGTE(%d) failed: not enough entries", index))
 	}
 	if err := s.log.DeleteLast(n); err != nil {
 		panic(fmt.Sprintf("raft: log.deleteLast(%d) failed: %v", n, err))
@@ -185,7 +212,7 @@ func (s *storage) deleteGTE(index uint64) {
 	s.mu.Unlock()
 }
 
-func (s *storage) bootstrap(nodes map[NodeID]Node) (Config, error) {
+func (s *Storage) bootstrap(nodes map[NodeID]Node) (Config, error) {
 	// todo: validate
 	ids := make(map[NodeID]bool)
 	addrs := make(map[string]bool)
@@ -222,10 +249,10 @@ func (s *storage) bootstrap(nodes map[NodeID]Node) (Config, error) {
 	}
 	s.append(configEntry.encode())
 
-	if err := s.SetVars(1, ""); err != nil {
+	if err := s.vars.SetVote(1, ""); err != nil {
 		return configEntry, err
 	}
-	if err := s.SetConfig(0, 1); err != nil {
+	if err := s.vars.SetConfig(0, 1); err != nil {
 		return configEntry, err
 	}
 	return configEntry, nil

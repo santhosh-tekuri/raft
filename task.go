@@ -130,7 +130,7 @@ func (r *Raft) bootstrap(t bootstrap) {
 	if err != nil {
 		t.reply(err)
 	}
-	term, votedFor, err := r.storage.GetVars()
+	term, votedFor, err := r.storage.vars.GetVote()
 	if err != nil {
 		t.reply(err)
 	}

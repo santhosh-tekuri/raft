@@ -14,7 +14,7 @@ type replication struct {
 	status replStatus
 
 	connPool         *connPool
-	storage          *storage
+	storage          *Storage
 	heartbeatTimeout time.Duration
 	conn             *netConn
 
