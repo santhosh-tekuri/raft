@@ -77,5 +77,5 @@ func assert(b bool, format string, args ...interface{}) {
 // ----------------------------------------------------------
 
 func (r *Raft) String() string {
-	return fmt.Sprintf("%s %d %s |", r.id, r.term, r.state)
+	return fmt.Sprintf("%s %d %s |", r.id, r.term, string(r.state))
 }

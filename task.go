@@ -140,6 +140,22 @@ func (r *Raft) bootstrap(t bootstrap) {
 
 // ------------------------------------------------------------------------
 
+type json struct {
+	ID           NodeID               `json:"id"`
+	Addr         string               `json:"addr"`
+	Term         uint64               `json:"term"`
+	State        State                `json:"state"`
+	LeaderID     NodeID               `json:"leaderID,omitempty"`
+	LeaderAddr   string               `json:"leaderAddr,omitempty"`
+	LastLogIndex uint64               `json:"lastLogIndex"`
+	LastLogTerm  uint64               `json:"lastLogTerm"`
+	Committed    uint64               `json:"committed"`
+	LastApplied  uint64               `json:"lastApplied"`
+	Configs      Configs              `json:"configs"`
+	MatchIndexes map[NodeID]uint64    `json:"matchIndexes,omitempty"`
+	Unreachable  map[NodeID]time.Time `json:"unreachable,omitempty"`
+}
+
 type Info interface {
 	ID() NodeID
 	Addr() string
@@ -154,6 +170,7 @@ type Info interface {
 	Configs() Configs
 	MatchIndexes() map[NodeID]uint64
 	Unreachable() map[NodeID]time.Time
+	JSON() interface{}
 }
 
 type liveInfo struct {
@@ -205,35 +222,41 @@ func (info liveInfo) Unreachable() map[NodeID]time.Time {
 	return m
 }
 
-type cachedInfo struct {
-	id           NodeID
-	addr         string
-	term         uint64
-	state        State
-	leaderID     NodeID
-	leaderAddr   string
-	lastLogIndex uint64
-	lastLogTerm  uint64
-	committed    uint64
-	lastApplied  uint64
-	configs      Configs
-	matchIndexes map[NodeID]uint64
-	unreachable  map[NodeID]time.Time
+func (info liveInfo) JSON() interface{} {
+	return json{
+		ID:           info.ID(),
+		Addr:         info.Addr(),
+		Term:         info.Term(),
+		State:        info.State(),
+		LeaderID:     info.LeaderID(),
+		LeaderAddr:   info.LeaderAddr(),
+		LastLogIndex: info.LastLogIndex(),
+		LastLogTerm:  info.LastLogTerm(),
+		Committed:    info.Committed(),
+		LastApplied:  info.LastApplied(),
+		Configs:      info.Configs(),
+		MatchIndexes: info.MatchIndexes(),
+	}
 }
 
-func (info cachedInfo) ID() NodeID                        { return info.id }
-func (info cachedInfo) Addr() string                      { return info.addr }
-func (info cachedInfo) Term() uint64                      { return info.term }
-func (info cachedInfo) State() State                      { return info.state }
-func (info cachedInfo) LeaderID() NodeID                  { return info.leaderID }
-func (info cachedInfo) LeaderAddr() string                { return info.leaderAddr }
-func (info cachedInfo) LastLogIndex() uint64              { return info.lastLogIndex }
-func (info cachedInfo) LastLogTerm() uint64               { return info.lastLogTerm }
-func (info cachedInfo) Committed() uint64                 { return info.committed }
-func (info cachedInfo) LastApplied() uint64               { return info.lastApplied }
-func (info cachedInfo) Configs() Configs                  { return info.configs }
-func (info cachedInfo) MatchIndexes() map[NodeID]uint64   { return info.matchIndexes }
-func (info cachedInfo) Unreachable() map[NodeID]time.Time { return info.unreachable }
+type cachedInfo struct {
+	json json
+}
+
+func (info cachedInfo) ID() NodeID                        { return info.json.ID }
+func (info cachedInfo) Addr() string                      { return info.json.Addr }
+func (info cachedInfo) Term() uint64                      { return info.json.Term }
+func (info cachedInfo) State() State                      { return info.json.State }
+func (info cachedInfo) LeaderID() NodeID                  { return info.json.LeaderID }
+func (info cachedInfo) LeaderAddr() string                { return info.json.LeaderAddr }
+func (info cachedInfo) LastLogIndex() uint64              { return info.json.LastLogIndex }
+func (info cachedInfo) LastLogTerm() uint64               { return info.json.LastLogTerm }
+func (info cachedInfo) Committed() uint64                 { return info.json.Committed }
+func (info cachedInfo) LastApplied() uint64               { return info.json.LastApplied }
+func (info cachedInfo) Configs() Configs                  { return info.json.Configs }
+func (info cachedInfo) MatchIndexes() map[NodeID]uint64   { return info.json.MatchIndexes }
+func (info cachedInfo) Unreachable() map[NodeID]time.Time { return info.json.Unreachable }
+func (info cachedInfo) JSON() interface{}                 { return info.json }
 
 type inspect struct {
 	*task
@@ -251,18 +274,7 @@ func (r *Raft) Info() Info {
 	var info Info
 	task := Inspect(func(r Info) {
 		info = cachedInfo{
-			id:           r.ID(),
-			addr:         r.Addr(),
-			term:         r.Term(),
-			state:        r.State(),
-			leaderID:     r.LeaderID(),
-			leaderAddr:   r.LeaderAddr(),
-			lastLogIndex: r.LastLogIndex(),
-			lastLogTerm:  r.LastLogTerm(),
-			committed:    r.Committed(),
-			lastApplied:  r.LastApplied(),
-			configs:      r.Configs(),
-			matchIndexes: r.MatchIndexes(),
+			json: r.JSON().(json),
 		}
 	})
 	r.taskCh <- task

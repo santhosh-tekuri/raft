@@ -181,7 +181,7 @@ func (ldr *leadership) startReplication(node Node) {
 		replUpdatedCh:    ldr.replUpdatedCh,
 		newTermCh:        ldr.newTermCh,
 		leaderUpdateCh:   make(chan leaderUpdate, 1),
-		str:              ldr.String() + " " + string(node.ID),
+		str:              fmt.Sprintf("%v %s", ldr, string(node.ID)),
 	}
 	ldr.repls[node.ID] = repl
 

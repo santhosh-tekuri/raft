@@ -7,26 +7,38 @@ import (
 
 type NodeID string
 
-type NodeType int8
+type NodeType byte
 
 const (
-	Voter NodeType = iota
-	NonVoter
-	Staging
+	Voter    NodeType = 'V'
+	NonVoter          = 'N'
+	Staging           = 'S'
 )
 
+func (nt NodeType) String() string {
+	switch nt {
+	case Voter:
+		return "voter"
+	case NonVoter:
+		return "nonVoter"
+	case Staging:
+		return "staging"
+	}
+	return string(nt)
+}
+
 type Node struct {
-	ID   NodeID
-	Addr string
-	Type NodeType
+	ID   NodeID   `json:"-"`
+	Addr string   `json:"addr"`
+	Type NodeType `json:"type"`
 }
 
 // -------------------------------------------------
 
 type Config struct {
-	Nodes map[NodeID]Node
-	Index uint64
-	Term  uint64
+	Nodes map[NodeID]Node `json:"nodes"`
+	Index uint64          `json:"index"`
+	Term  uint64          `json:"term"`
 }
 
 func (c Config) isVoter(id NodeID) bool {
@@ -114,7 +126,8 @@ func (c *Config) decode(e *entry) error {
 // ---------------------------------------------------------
 
 type Configs struct {
-	Committed, Latest Config
+	Committed Config `json:"committed"`
+	Latest    Config `json:"latest"`
 }
 
 func (c Configs) clone() Configs {
