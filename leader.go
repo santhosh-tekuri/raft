@@ -127,7 +127,7 @@ func (ldr *leadership) runLoop() {
 			ldr.state = Follower
 			ldr.setTerm(newTerm)
 			ldr.leader = ""
-			StateChanged(ldr.Raft, ldr.state)
+			ldr.stateChanged()
 			return
 
 		case rpc := <-ldr.rpcCh:
@@ -270,7 +270,7 @@ func (ldr *leadership) checkLeaderLease() {
 		debug(ldr, "leader -> follower quorumUnreachable")
 		ldr.state = Follower
 		ldr.leader = ""
-		StateChanged(ldr.Raft, ldr.state)
+		ldr.stateChanged()
 		return
 	}
 

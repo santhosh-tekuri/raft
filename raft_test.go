@@ -500,6 +500,10 @@ func (c *cluster) launch(n int, bootstrap bool) {
 	opt := Options{
 		HeartbeatTimeout: c.heartbeatTimeout,
 	}
+	trace := Trace{
+		StateChanged:    stateChanged,
+		ElectionAborted: electionAborted,
+	}
 	i := 0
 	for _, node := range nodes {
 		inMemStorage := new(inmem.Storage)
@@ -511,7 +515,7 @@ func (c *cluster) launch(n int, bootstrap bool) {
 			}
 		}
 		fsm := &fsmMock{changedCh: c.fsmChangedCh}
-		r, err := New(node.ID, node.Addr, opt, fsm, storage)
+		r, err := New(node.ID, node.Addr, opt, fsm, storage, trace)
 		if err != nil {
 			c.Fatal(err)
 		}
@@ -737,18 +741,14 @@ func (r *Raft) inspect(fn func(Info)) {
 
 var stateChangedCh = make(chan struct{}, 1)
 var electionAbortedCh = make(chan NodeID, 10)
-
-func init() {
-	StateChanged = func(r *Raft, state State) {
-		notify(stateChangedCh)
-	}
-
-	ElectionAborted = func(r *Raft, reason string) {
-		debug(r, "electionAborted", reason)
-		select {
-		case electionAbortedCh <- r.id:
-		default:
-		}
+var stateChanged = func(_ Info) {
+	notify(stateChangedCh)
+}
+var electionAborted = func(info Info, reason string) {
+	debug(info.ID(), info.Term(), string(info.State()), "|", "electionAborted", reason)
+	select {
+	case electionAbortedCh <- info.ID():
+	default:
 	}
 }
 

@@ -67,10 +67,11 @@ type Raft struct {
 
 	taskCh     chan Task
 	newEntryCh chan NewEntry
+	trace      Trace
 	shutdownCh chan struct{}
 }
 
-func New(id NodeID, addr string, opt Options, fsm FSM, storage *Storage) (*Raft, error) {
+func New(id NodeID, addr string, opt Options, fsm FSM, storage *Storage, trace Trace) (*Raft, error) {
 	if err := storage.init(); err != nil {
 		return nil, err
 	}
@@ -113,6 +114,7 @@ func New(id NodeID, addr string, opt Options, fsm FSM, storage *Storage) (*Raft,
 		fsmApplyCh:       make(chan NewEntry, 128), // todo configurable capacity
 		newEntryCh:       make(chan NewEntry, 100), // todo configurable capacity
 		taskCh:           make(chan Task, 100),     // todo configurable capacity
+		trace:            trace,
 		shutdownCh:       make(chan struct{}),
 	}, nil
 }

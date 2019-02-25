@@ -40,7 +40,7 @@ func (r *Raft) runCandidate() {
 				debug(r, "candidate -> follower")
 				r.state = Follower
 				r.setTerm(vote.term)
-				StateChanged(r, r.state)
+				r.stateChanged()
 				return
 			}
 
@@ -51,7 +51,7 @@ func (r *Raft) runCandidate() {
 					debug(r, "candidate -> leader")
 					r.state = Leader
 					r.leader = r.addr
-					StateChanged(r, r.state)
+					r.stateChanged()
 					return
 				}
 			}

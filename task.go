@@ -174,6 +174,7 @@ type Info interface {
 	Configs() Configs
 	MatchIndexes() map[NodeID]uint64
 	Unreachable() map[NodeID]time.Time
+	Trace() *Trace
 	JSON() interface{}
 }
 
@@ -192,6 +193,7 @@ func (info liveInfo) LastLogTerm() uint64  { return info.r.lastLogTerm }
 func (info liveInfo) Committed() uint64    { return info.r.commitIndex }
 func (info liveInfo) LastApplied() uint64  { return info.r.lastApplied }
 func (info liveInfo) Configs() Configs     { return info.r.configs.clone() }
+func (info liveInfo) Trace() *Trace        { return &info.r.trace }
 
 func (info liveInfo) LeaderID() NodeID {
 	for _, node := range info.r.configs.Latest.Nodes {
@@ -260,6 +262,7 @@ func (info cachedInfo) LastApplied() uint64               { return info.json.Las
 func (info cachedInfo) Configs() Configs                  { return info.json.Configs }
 func (info cachedInfo) MatchIndexes() map[NodeID]uint64   { return info.json.MatchIndexes }
 func (info cachedInfo) Unreachable() map[NodeID]time.Time { return info.json.Unreachable }
+func (info cachedInfo) Trace() *Trace                     { return nil }
 func (info cachedInfo) JSON() interface{}                 { return info.json }
 
 type inspect struct {

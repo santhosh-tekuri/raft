@@ -25,13 +25,13 @@ func (r *Raft) runFollower() {
 			r.leader = ""
 
 			if can, reason := r.canStartElection(); !can {
-				ElectionAborted(r, reason)
+				r.electionAborted(reason)
 				continue // timer will be restarted on configChange
 			}
 
 			debug(r, "follower -> candidate")
 			r.state = Candidate
-			StateChanged(r, r.state)
+			r.stateChanged()
 
 		case ne := <-r.newEntryCh:
 			ne.reply(NotLeaderError{r.leader})
