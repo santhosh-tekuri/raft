@@ -139,116 +139,118 @@ func (r *Raft) bootstrap(t bootstrap) {
 
 // ------------------------------------------------------------------------
 
-type API struct {
-	r *Raft
+type Info interface {
+	ID() NodeID
+	Addr() string
+	Term() uint64
+	State() State
+	LeaderID() NodeID
+	LeaderAddr() string
+	LastLogIndex() uint64
+	LastLogTerm() uint64
+	Committed() uint64
+	LastApplied() uint64
+	Configs() Configs
+	MatchIndexes() map[NodeID]uint64
 }
 
-func (api API) ID() NodeID {
-	return api.r.id
+type liveInfo struct {
+	r   *Raft
+	ldr *leadership
 }
 
-func (api API) Addr() string {
-	return api.r.addr
-}
+func (info liveInfo) ID() NodeID           { return info.r.id }
+func (info liveInfo) Addr() string         { return info.r.addr }
+func (info liveInfo) Term() uint64         { return info.r.term }
+func (info liveInfo) State() State         { return info.r.state }
+func (info liveInfo) LeaderAddr() string   { return info.r.leader }
+func (info liveInfo) LastLogIndex() uint64 { return info.r.lastLogIndex }
+func (info liveInfo) LastLogTerm() uint64  { return info.r.lastLogTerm }
+func (info liveInfo) Committed() uint64    { return info.r.commitIndex }
+func (info liveInfo) LastApplied() uint64  { return info.r.lastApplied }
+func (info liveInfo) Configs() Configs     { return info.r.configs.clone() }
 
-func (api API) Term() uint64 {
-	return api.r.term
-}
-
-func (api API) State() State {
-	return api.r.state
-}
-
-func (api API) LeaderID() NodeID {
-	for _, node := range api.r.configs.Latest.Nodes {
-		if node.Addr == api.r.leader {
+func (info liveInfo) LeaderID() NodeID {
+	for _, node := range info.r.configs.Latest.Nodes {
+		if node.Addr == info.r.leader {
 			return node.ID
 		}
 	}
 	return NodeID("")
 }
 
-func (api API) LeaderAddr() string {
-	return api.r.leader
+func (info liveInfo) MatchIndexes() map[NodeID]uint64 {
+	if info.ldr == nil {
+		return nil
+	}
+	m := make(map[NodeID]uint64)
+	for id, repl := range info.ldr.repls {
+		m[id] = repl.status.matchIndex
+	}
+	return m
 }
 
-func (api API) LastLogIndex() uint64 {
-	return api.r.lastLogIndex
+type cachedInfo struct {
+	id           NodeID
+	addr         string
+	term         uint64
+	state        State
+	leaderID     NodeID
+	leaderAddr   string
+	lastLogIndex uint64
+	lastLogTerm  uint64
+	committed    uint64
+	lastApplied  uint64
+	configs      Configs
+	matchIndexes map[NodeID]uint64
 }
 
-func (api API) LastLogTerm() uint64 {
-	return api.r.lastLogTerm
-}
-
-func (api API) Committed() uint64 {
-	return api.r.commitIndex
-}
-
-func (api API) LastApplied() uint64 {
-	return api.r.lastApplied
-}
-
-func (api API) Configs() Configs {
-	return api.r.configs.clone()
-}
+func (info cachedInfo) ID() NodeID                      { return info.id }
+func (info cachedInfo) Addr() string                    { return info.addr }
+func (info cachedInfo) Term() uint64                    { return info.term }
+func (info cachedInfo) State() State                    { return info.state }
+func (info cachedInfo) LeaderID() NodeID                { return info.leaderID }
+func (info cachedInfo) LeaderAddr() string              { return info.leaderAddr }
+func (info cachedInfo) LastLogIndex() uint64            { return info.lastLogIndex }
+func (info cachedInfo) LastLogTerm() uint64             { return info.lastLogTerm }
+func (info cachedInfo) Committed() uint64               { return info.committed }
+func (info cachedInfo) LastApplied() uint64             { return info.lastApplied }
+func (info cachedInfo) Configs() Configs                { return info.configs }
+func (info cachedInfo) MatchIndexes() map[NodeID]uint64 { return info.matchIndexes }
 
 type inspect struct {
 	*task
-	fn func(api API)
+	fn func(api Info)
 }
 
-func Inspect(fn func(r API)) Task {
+func Inspect(fn func(r Info)) Task {
 	return inspect{
 		task: &task{done: make(chan struct{})},
 		fn:   fn,
 	}
 }
 
-// ------------------------------------------------------------------------
-
-type info struct {
-	*task
-}
-
-type Info struct {
-	ID           NodeID
-	Addr         string
-	Term         uint64
-	State        State
-	LeaderID     NodeID
-	LeaderAddr   string
-	LastLogIndex uint64
-	LastLogTerm  uint64
-	Committed    uint64
-	LastApplied  uint64
-	Configs      Configs
-}
-
-func newInfo(r API) Info {
-	return Info{
-		ID:           r.ID(),
-		Addr:         r.Addr(),
-		Term:         r.Term(),
-		State:        r.State(),
-		LeaderID:     r.LeaderID(),
-		LeaderAddr:   r.LeaderAddr(),
-		LastLogIndex: r.LastLogIndex(),
-		LastLogTerm:  r.LastLogTerm(),
-		Committed:    r.Committed(),
-		LastApplied:  r.LastApplied(),
-		Configs:      r.Configs(),
-	}
-}
-
-func GetInfo() Task {
-	return info{task: &task{done: make(chan struct{})}}
-}
-
 func (r *Raft) Info() Info {
-	t := GetInfo()
-	r.taskCh <- t
-	<-t.Done()
-	return t.Result().(Info)
+	var info Info
+	task := Inspect(func(r Info) {
+		info = cachedInfo{
+			id:           r.ID(),
+			addr:         r.Addr(),
+			term:         r.Term(),
+			state:        r.State(),
+			leaderID:     r.LeaderID(),
+			leaderAddr:   r.LeaderAddr(),
+			lastLogIndex: r.LastLogIndex(),
+			lastLogTerm:  r.LastLogTerm(),
+			committed:    r.Committed(),
+			lastApplied:  r.LastApplied(),
+			configs:      r.Configs(),
+			matchIndexes: r.MatchIndexes(),
+		}
+	})
+	r.taskCh <- task
+	<-task.Done()
+	return info
 }
 
 // ------------------------------------------------------------------------
@@ -271,10 +273,8 @@ func (r *Raft) executeTask(t Task) {
 	switch t := t.(type) {
 	case bootstrap:
 		r.bootstrap(t)
-	case info:
-		t.reply(newInfo(API{r}))
 	case inspect:
-		t.fn(API{r})
+		t.fn(liveInfo{r: r})
 		t.reply(nil)
 	default:
 		t.reply(NotLeaderError{r.leader})
@@ -287,6 +287,9 @@ func (ldr *leadership) executeTask(t Task) {
 		ldr.applyEntry(t)
 	case addNode:
 		ldr.addNode(t)
+	case inspect:
+		t.fn(liveInfo{r: ldr.Raft, ldr: ldr})
+		t.reply(nil)
 	default:
 		ldr.Raft.executeTask(t)
 	}

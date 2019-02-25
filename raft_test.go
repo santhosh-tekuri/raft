@@ -26,7 +26,7 @@ func TestRaft_Voting(t *testing.T) {
 	c.ensureLeader(c.leader().id)
 
 	req := &voteRequest{}
-	ldr.inspect(func(r API) {
+	ldr.inspect(func(r Info) {
 		req.term = r.Term()
 		req.lastLogIndex = r.LastLogIndex()
 		req.lastLogTerm = r.LastLogTerm()
@@ -41,7 +41,7 @@ func TestRaft_Voting(t *testing.T) {
 
 	// a follower that thinks there's a leader should vote for that leader
 	req.candidateID = ldr.addr
-	ldr.inspect(func(_ API) {
+	ldr.inspect(func(_ Info) {
 		resp, err := ldr.requestVote(ldr.getConnPool(followers[0]), req)
 		if err != nil {
 			t.Logf("requestVote failed: %v", err)
@@ -55,7 +55,7 @@ func TestRaft_Voting(t *testing.T) {
 
 	// a follower that thinks there's a leader shouldn't vote for a different candidate
 	req.candidateID = followers[0]
-	ldr.inspect(func(_ API) {
+	ldr.inspect(func(_ Info) {
 		resp, err := ldr.requestVote(ldr.getConnPool(followers[1]), req)
 		if err != nil {
 			t.Logf("requestVote failed: %v", err)
@@ -153,7 +153,7 @@ func TestRaft_LeaderFail(t *testing.T) {
 	c.ensureFSMReplicated(1)
 
 	// disconnect leader
-	ldrTerm := ldr.Info().Term
+	ldrTerm := ldr.Info().Term()
 	c.disconnect(ldr)
 
 	// leader should stepDown
@@ -169,7 +169,7 @@ func TestRaft_LeaderFail(t *testing.T) {
 	}
 
 	// ensure leader term is greater
-	if newLdrTerm := newLdr.Info().Term; newLdrTerm <= ldrTerm {
+	if newLdrTerm := newLdr.Info().Term(); newLdrTerm <= ldrTerm {
 		t.Fatalf("expected new leader term: newLdrTerm=%d, ldrTerm=%d", newLdrTerm, ldrTerm)
 	}
 
@@ -410,7 +410,7 @@ func TestRaft_LeaderLeaseExpire(t *testing.T) {
 		t.Fatal("follower should have become candidate")
 	}
 	for _, r := range c.rr {
-		if ldr := r.Info().LeaderID; ldr != "" {
+		if ldr := r.Info().LeaderID(); ldr != "" {
 			t.Fatalf("%s.leader: got %s want ", r.id, ldr)
 		}
 	}
@@ -448,9 +448,9 @@ func TestRaft_Barrier(t *testing.T) {
 	}
 
 	// ensure leader's lastLogIndex matches with at-least one of follower
-	len0 := ldr.Info().LastLogIndex
-	len1 := followers[0].Info().LastLogIndex
-	len2 := followers[1].Info().LastLogIndex
+	len0 := ldr.Info().LastLogIndex()
+	len1 := followers[0].Info().LastLogIndex()
+	len2 := followers[1].Info().LastLogIndex()
 	if len0 != len1 && len0 != len2 {
 		t.Fatalf("len0 %d, len1 %d, len2 %d", len0, len1, len2)
 	}
@@ -554,7 +554,7 @@ func (c *cluster) ensureStability() {
 func (c *cluster) getInState(state State) []*Raft {
 	var rr []*Raft
 	for _, r := range c.rr {
-		if r.Info().State == state {
+		if r.Info().State() == state {
 			rr = append(rr, r)
 		}
 	}
@@ -590,7 +590,7 @@ func (c *cluster) ensureHealthy() *Raft {
 func (c *cluster) ensureLeader(leaderID NodeID) {
 	c.Helper()
 	for _, r := range c.rr {
-		if got := r.Info().LeaderID; got != leaderID {
+		if got := r.Info().LeaderID(); got != leaderID {
 			c.Fatalf("leader of %s: got %s, want %s", r.addr, got, leaderID)
 		}
 	}
@@ -601,7 +601,7 @@ func (c *cluster) waitForLeader(timeout time.Duration) {
 
 	cond := func() bool {
 		for _, r := range c.rr {
-			if r.Info().State == Leader {
+			if r.Info().State() == Leader {
 				return true
 			}
 		}
@@ -668,7 +668,7 @@ func (c *cluster) shutdown() {
 // wait until state is one of given states
 func (r *Raft) waitForState(timeout time.Duration, states ...State) bool {
 	cond := func() bool {
-		got := r.Info().State
+		got := r.Info().State()
 		for _, want := range states {
 			if got == want {
 				return true
@@ -711,7 +711,7 @@ func (r *Raft) waitApply(cmd string, timeout time.Duration) (fsmReply, error) {
 	return result.(fsmReply), nil
 }
 
-func (r *Raft) inspect(fn func(API)) {
+func (r *Raft) inspect(fn func(Info)) {
 	_, _ = r.waitTask(Inspect(fn), 0)
 }
 
