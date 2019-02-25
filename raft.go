@@ -215,35 +215,3 @@ func (e NotLeaderError) Error() string {
 func afterRandomTimeout(min time.Duration) <-chan time.Time {
 	return time.After(min + time.Duration(rand.Int63())%min)
 }
-
-const (
-	maxFailureScale = 12
-	failureWait     = 10 * time.Millisecond
-)
-
-// backoff is used to compute an exponential backoff
-// duration. Base time is scaled by the current round,
-// up to some maximum scale factor.
-func backoff(round uint64) time.Duration {
-	base, limit := failureWait, uint64(maxFailureScale)
-	power := min(round, limit)
-	for power > 2 {
-		base *= 2
-		power--
-	}
-	return base
-}
-
-func min(a, b uint64) uint64 {
-	if a <= b {
-		return a
-	}
-	return b
-}
-
-func max(a, b uint64) uint64 {
-	if a >= b {
-		return a
-	}
-	return b
-}

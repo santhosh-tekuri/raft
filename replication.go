@@ -88,7 +88,7 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 				select {
 				case <-repl.stopCh:
 					return
-				case <-time.After(backoff(failures)):
+				case <-time.After(backOff(failures)):
 					continue
 				}
 			}
@@ -181,4 +181,38 @@ func (repl *replication) appendEntries(req *appendEntriesRequest) (*appendEntrie
 
 func (repl *replication) String() string {
 	return repl.str
+}
+
+// ------------------------------------------------
+
+const (
+	maxFailureScale = 12
+	failureWait     = 10 * time.Millisecond
+)
+
+// backOff is used to compute an exponential backOff
+// duration. Base time is scaled by the current round,
+// up to some maximum scale factor.
+func backOff(round uint64) time.Duration {
+	base, limit := failureWait, uint64(maxFailureScale)
+	power := min(round, limit)
+	for power > 2 {
+		base *= 2
+		power--
+	}
+	return base
+}
+
+func min(a, b uint64) uint64 {
+	if a <= b {
+		return a
+	}
+	return b
+}
+
+func max(a, b uint64) uint64 {
+	if a >= b {
+		return a
+	}
+	return b
 }
