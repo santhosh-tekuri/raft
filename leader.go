@@ -183,7 +183,7 @@ func (ldr *leadership) startReplication(node Node) {
 		stopCh:           make(chan struct{}),
 		replUpdatedCh:    ldr.replUpdatedCh,
 		newTermCh:        ldr.newTermCh,
-		leaderUpdateCh:   make(chan leaderUpdate, 1),
+		ldrUpdateCh:      make(chan leaderUpdate, 1),
 		str:              fmt.Sprintf("%v %s", ldr, string(node.ID)),
 	}
 	ldr.repls[node.ID] = repl
@@ -212,7 +212,7 @@ func (ldr *leadership) startReplication(node Node) {
 				select {
 				case <-repl.stopCh:
 					return
-				case update := <-repl.leaderUpdateCh:
+				case update := <-repl.ldrUpdateCh:
 					repl.notifyLdr(update.lastIndex, time.Time{})
 				}
 			}
@@ -337,9 +337,9 @@ func (ldr *leadership) notifyReplicators() {
 	}
 	for _, repl := range ldr.repls {
 		select {
-		case repl.leaderUpdateCh <- leaderUpdate:
-		case <-repl.leaderUpdateCh:
-			repl.leaderUpdateCh <- leaderUpdate
+		case repl.ldrUpdateCh <- leaderUpdate:
+		case <-repl.ldrUpdateCh:
+			repl.ldrUpdateCh <- leaderUpdate
 		}
 	}
 }

@@ -19,7 +19,7 @@ type replication struct {
 	conn             *netConn
 
 	// leader notifies replication with update
-	leaderUpdateCh chan leaderUpdate
+	ldrUpdateCh chan leaderUpdate
 
 	// replication notifies leader about our progress
 	replUpdatedCh chan<- replUpdate
@@ -135,9 +135,9 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 			select {
 			case <-repl.stopCh:
 				return
-			case update := <-repl.leaderUpdateCh:
+			case update := <-repl.ldrUpdateCh:
 				ldrLastIndex, req.ldrCommitIndex = update.lastIndex, update.commitIndex
-				debug(repl, "{last:", ldrLastIndex, "commit:", req.ldrCommitIndex, "} <-leaderUpdateCh")
+				debug(repl, "{last:", ldrLastIndex, "commit:", req.ldrCommitIndex, "} <-ldrUpdateCh")
 			case <-afterRandomTimeout(repl.heartbeatTimeout / 10):
 			}
 		} else {
@@ -145,9 +145,9 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 			select {
 			case <-repl.stopCh:
 				return
-			case update := <-repl.leaderUpdateCh:
+			case update := <-repl.ldrUpdateCh:
 				ldrLastIndex, req.ldrCommitIndex = update.lastIndex, update.commitIndex
-				debug(repl, "{last:", ldrLastIndex, "commit:", req.ldrCommitIndex, "} <-leaderUpdateCh")
+				debug(repl, "{last:", ldrLastIndex, "commit:", req.ldrCommitIndex, "} <-ldrUpdateCh")
 			default:
 			}
 		}
