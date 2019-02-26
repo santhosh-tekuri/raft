@@ -21,11 +21,11 @@ type message interface {
 type entryType uint8
 
 const (
-	entryCommand entryType = iota
+	entryBarrier entryType = iota
+	entryCommand
 	entryQuery
 	entryNop
 	entryConfig
-	entryBarrier
 )
 
 func (t entryType) String() string {
