@@ -129,7 +129,7 @@ func (r *Raft) startElection() <-chan voteResult {
 }
 
 func (r *Raft) requestVote(pool *connPool, req *voteRequest) (*voteResponse, error) {
-	debug(r, ">> requestVote", pool.addr)
+	debug(r.id, ">> requestVote", pool.addr)
 	conn, err := pool.getConn()
 	if err != nil {
 		return nil, err
