@@ -457,7 +457,8 @@ func TestRaft_Barrier(t *testing.T) {
 }
 
 // todo: test query entries
-// todo: test removal of leader
+// todo: test removal of leader. ensure that leader replies
+//       success configChange before shutting down
 
 func TestMain(m *testing.M) {
 	code := m.Run()

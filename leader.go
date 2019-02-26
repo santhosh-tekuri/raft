@@ -336,6 +336,26 @@ func (ldr *leadership) commitAndApplyOnMajority() {
 		if !ldr.configs.IsCommitted() && ldr.commitIndex >= ldr.configs.Latest.Index {
 			ldr.configs.Committed = ldr.configs.Latest
 			ldr.storage.setConfigs(ldr.configs)
+
+			// reply configEntries immediately
+			// we cant reply in fsmLoop, because
+			// in we are not part of cluster, we shutdown
+			// immediately
+			elem := ldr.newEntries.Front()
+			for {
+				ne := elem.Value.(NewEntry)
+				if ne.index == ldr.configs.Latest.Index {
+					ne.reply(nil)
+					ldr.newEntries.Remove(elem)
+					break
+				} else if ne.index > ldr.configs.Latest.Index {
+					// configEntry not found. means
+					// it is submitted in earlier term
+					break
+				}
+				elem = elem.Next()
+			}
+
 			if !ldr.configs.Latest.isVoter(ldr.id) {
 				shutdown = true
 			}
