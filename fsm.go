@@ -5,6 +5,7 @@ import (
 )
 
 // todo: add availability methods
+
 type FSM interface {
 	Apply(cmd []byte) interface{}
 }
@@ -68,7 +69,7 @@ func (r *Raft) applyCommitted(newEntries *list.List) {
 				r.configs.Committed = r.configs.Latest
 				r.storage.setConfigs(r.configs)
 				ne.reply(nil)
-				if !r.configs.Latest.isVoter(r.id) && r.state == Leader {
+				if r.state == Leader && r.configs.Latest.typeOf(r.id) != Voter {
 					debug(r, "leader -> follower notVoter")
 					r.state = Follower
 					r.leader = ""

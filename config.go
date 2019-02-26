@@ -13,6 +13,7 @@ const (
 	Voter    NodeType = 'V'
 	NonVoter          = 'N'
 	Staging           = 'S'
+	None              = '-'
 )
 
 func (nt NodeType) String() string {
@@ -23,6 +24,8 @@ func (nt NodeType) String() string {
 		return "nonVoter"
 	case Staging:
 		return "staging"
+	case None:
+		return "none"
 	}
 	return string(nt)
 }
@@ -41,9 +44,11 @@ type Config struct {
 	Term  uint64          `json:"term"`
 }
 
-func (c Config) isVoter(id NodeID) bool {
-	node, ok := c.Nodes[id]
-	return ok && node.Type == Voter
+func (c Config) typeOf(id NodeID) NodeType {
+	if node, ok := c.Nodes[id]; ok {
+		return node.Type
+	}
+	return None
 }
 
 func (c Config) numVoters() int {

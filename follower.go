@@ -51,8 +51,14 @@ func (r *Raft) canStartElection() (can bool, reason string) {
 	if r.configs.IsBootstrap() {
 		return false, "no known peers"
 	}
-	if r.configs.IsCommitted() && !r.configs.Committed.isVoter(r.id) {
-		return false, "not part of committed cluster"
+	if r.configs.IsCommitted() {
+		switch r.configs.Committed.typeOf(r.id) {
+		case None:
+			return false, "not part of cluster"
+		case Voter:
+		default:
+			return false, "not voter"
+		}
 	}
 	return true, ""
 }
