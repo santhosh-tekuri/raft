@@ -2,6 +2,7 @@ package raft
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net"
 	"os"
 	"reflect"
@@ -75,7 +76,11 @@ func TestRaft_SingleNode(t *testing.T) {
 	defer leaktest.Check(t)()
 	c := newCluster(t)
 	c.launch(1, true)
-	defer c.shutdown()
+	defer func() {
+		if c != nil {
+			c.shutdown()
+		}
+	}()
 	ldr := c.ensureHealthy()
 
 	// should be able to apply
@@ -101,6 +106,43 @@ func TestRaft_SingleNode(t *testing.T) {
 	if cmd := ldr.fsmMock().lastCommand(); cmd != "test" {
 		t.Fatalf("fsm.lastCommand: got %s want test", cmd)
 	}
+
+	// shutdown and restart with fresh fsm and new addr
+	cc := c
+	c = nil
+	cc.shutdown()
+	opt := Options{
+		HeartbeatTimeout: cc.heartbeatTimeout,
+	}
+	fsm := &fsmMock{changedCh: cc.fsmChangedCh}
+	storage := NewStorage(ldr.storage.vars, ldr.storage.log)
+	r, err := New(ldr.id, "localhost:0", opt, fsm, storage, NewTrace(ioutil.Discard))
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go r.Serve(l)
+
+	// wait for fsm restore
+	limit := time.Now().Add(cc.longTimeout)
+	for time.Now().Before(limit) {
+		if info := r.Info(); info.LastLogIndex() == info.Committed() {
+			break
+		}
+		time.Sleep(cc.commitTimeout)
+	}
+
+	// ensure that fsm has been restored from log
+	if idx := r.fsmMock().len(); idx != 1 {
+		t.Fatalf("fsm.len: got %d want 1", idx)
+	}
+	if cmd := r.fsmMock().lastCommand(); cmd != "test" {
+		t.Fatalf("fsm.lastCommand: got %s want test", cmd)
+	}
+	r.Shutdown().Wait()
 }
 
 func TestRaft_TripleNode(t *testing.T) {

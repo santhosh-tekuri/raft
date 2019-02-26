@@ -31,7 +31,7 @@ const (
 func (t entryType) String() string {
 	switch t {
 	case entryUpdate:
-		return "udate"
+		return "update"
 	case entryQuery:
 		return "query"
 	case entryNop:

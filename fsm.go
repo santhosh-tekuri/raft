@@ -13,7 +13,7 @@ type FSM interface {
 func (r *Raft) fsmLoop() {
 	defer r.wg.Done()
 	for ne := range r.fsmApplyCh {
-		debug(r.addr, "fsm.apply", ne.typ, ne.index)
+		debug(r.id, "fsm.apply", ne.typ, ne.index)
 		var resp interface{}
 		if ne.typ == entryUpdate || ne.typ == entryQuery {
 			resp = r.fsm.Apply(ne.entry.data)

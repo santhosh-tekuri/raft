@@ -93,7 +93,7 @@ func (r *Raft) startElection() <-chan voteResult {
 		if n.Type != Voter {
 			continue
 		}
-		if n.Addr == r.addr {
+		if n.ID == r.id {
 			// vote for self
 			r.setVotedFor(r.addr)
 			results <- voteResult{
