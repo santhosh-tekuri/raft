@@ -233,17 +233,22 @@ func (ldr *leadership) applyEntry(ne NewEntry) {
 	ne.entry.index, ne.entry.term = ldr.lastLogIndex+1, ldr.term
 
 	// append entry to local log
-	if ne.typ == entryNop {
-		debug(ldr, "log.append noop", ne.index)
-	} else {
-		debug(ldr, "log.append cmd", ne.index)
+	debug(ldr, "log.append", ne.typ, ne.index)
+	if ne.typ != entryQuery {
+		ldr.storage.append(ne.entry)
+		ldr.lastLogIndex, ldr.lastLogTerm = ne.index, ne.term
 	}
-	ldr.storage.append(ne.entry)
-	ldr.lastLogIndex, ldr.lastLogTerm = ne.index, ne.term
 	ldr.newEntries.PushBack(ne)
 
 	// we updated lastLogIndex, so notify replicators
-	ldr.notifyReplicators()
+	if ne.typ == entryQuery {
+		// if all log entries are applied
+		if ldr.lastApplied == ldr.lastLogIndex {
+			ldr.fsmApply(ldr.newEntries)
+		}
+	} else {
+		ldr.notifyReplicators()
+	}
 }
 
 func (ldr *leadership) checkLeaderLease() {

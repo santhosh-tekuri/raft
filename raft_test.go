@@ -456,6 +456,9 @@ func TestRaft_Barrier(t *testing.T) {
 	}
 }
 
+// todo: test query entries
+// todo: test removal of leader
+
 func TestMain(m *testing.M) {
 	code := m.Run()
 

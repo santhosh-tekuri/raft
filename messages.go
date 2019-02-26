@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"fmt"
 	"io"
 )
 
@@ -21,10 +22,27 @@ type entryType uint8
 
 const (
 	entryCommand entryType = iota
+	entryQuery
 	entryNop
 	entryConfig
 	entryBarrier
 )
+
+func (t entryType) String() string {
+	switch t {
+	case entryCommand:
+		return "command"
+	case entryQuery:
+		return "query"
+	case entryNop:
+		return "nop"
+	case entryConfig:
+		return "config"
+	case entryBarrier:
+		return "barrier"
+	}
+	return fmt.Sprintf("unknown(%d)", uint8(t))
+}
 
 type entry struct {
 	index uint64

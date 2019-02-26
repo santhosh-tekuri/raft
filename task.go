@@ -62,14 +62,21 @@ func (r *Raft) NewEntries() chan<- NewEntry {
 	return r.newEntryCh
 }
 
-// todo: support for readonly commands
-//       readonly commands are not stored in log
-//       add entryQuery for this
 func Command(data []byte) NewEntry {
 	return NewEntry{
 		task: &task{done: make(chan struct{})},
 		entry: &entry{
 			typ:  entryCommand,
+			data: data,
+		},
+	}
+}
+
+func Query(data []byte) NewEntry {
+	return NewEntry{
+		task: &task{done: make(chan struct{})},
+		entry: &entry{
+			typ:  entryQuery,
 			data: data,
 		},
 	}
