@@ -42,6 +42,12 @@ func (r *Raft) onVoteRequest(req *voteRequest) *voteResponse {
 		r.stateChanged()
 	}
 
+	// if we have leader, we only vote for him
+	if r.leader != "" {
+		resp.granted = req.candidateID == r.leader
+		return resp
+	}
+
 	if r.votedFor != "" { // we already voted in this election before
 		if r.votedFor == req.candidateID { // same candidate we votedFor
 			resp.granted = true
