@@ -28,7 +28,7 @@ func (r *Raft) fsmLoop() {
 // in case of leader:
 // 		- newEntries is not nil
 //      - reply end user with response
-func (r *Raft) fsmApply(newEntries *list.List) {
+func (r *Raft) applyCommitted(newEntries *list.List) {
 	for {
 		// send query entries to fsm
 		if newEntries != nil {
@@ -63,12 +63,28 @@ func (r *Raft) fsmApply(newEntries *list.List) {
 				r.storage.getEntry(r.lastApplied+1, ne.entry)
 			}
 
-			// send to fsm
-			debug(r, "fms <- {", ne.typ, ne.index, "}")
-			select {
-			case <-r.shutdownCh:
-				return
-			case r.fsmApplyCh <- ne:
+			switch ne.typ {
+			case entryConfig:
+				r.configs.Committed = r.configs.Latest
+				r.storage.setConfigs(r.configs)
+				ne.reply(nil)
+				if !r.configs.Latest.isVoter(r.id) && r.state == Leader {
+					debug(r, "leader -> follower notVoter")
+					r.state = Follower
+					r.leader = ""
+					r.stateChanged()
+				}
+				// todo: we can provide option to shutdown
+				//       if it is no longer part of new config
+			case entryUpdate, entryQuery, entryBarrier:
+				debug(r, "fms <- {", ne.typ, ne.index, "}")
+				select {
+				case <-r.shutdownCh:
+					return
+				case r.fsmApplyCh <- ne:
+				}
+			default:
+				assert(ne.typ == entryNop, "got %d, want %d", ne.typ, entryNop)
 			}
 			r.lastApplied++
 		} else {

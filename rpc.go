@@ -169,7 +169,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesRequest) *appendEntriesR
 	lastIndex, lastTerm := r.lastLog(req)
 	if lastTerm == req.term && req.ldrCommitIndex > r.commitIndex {
 		r.commitIndex = min(req.ldrCommitIndex, lastIndex)
-		r.fsmApply(nil) // apply newly committed logs
+		r.applyCommitted(nil) // apply newly committed logs
 	}
 
 	resp.success = true

@@ -83,7 +83,7 @@ func (ldr *leadership) runLoop() {
 	ldr.startIndex = ldr.lastLogIndex + 1
 
 	// add a blank no-op entry into log at the start of its term
-	ldr.applyEntry(NewEntry{
+	ldr.storeEntry(NewEntry{
 		entry: &entry{
 			typ: entryNop,
 		},
@@ -156,7 +156,7 @@ func (ldr *leadership) runLoop() {
 				}
 			}
 			if matchUpdated {
-				ldr.commitAndApplyOnMajority()
+				ldr.onMajorityCommit()
 			}
 			if noContactUpdated {
 				ldr.checkLeaderLease()
@@ -166,7 +166,7 @@ func (ldr *leadership) runLoop() {
 			ldr.checkLeaderLease()
 
 		case ne := <-ldr.Raft.newEntryCh:
-			ldr.applyEntry(ne)
+			ldr.storeEntry(ne)
 
 		case t := <-ldr.taskCh:
 			ldr.executeTask(t)
@@ -229,7 +229,7 @@ func (ldr *leadership) startReplication(node Node) {
 	}
 }
 
-func (ldr *leadership) applyEntry(ne NewEntry) {
+func (ldr *leadership) storeEntry(ne NewEntry) {
 	ne.entry.index, ne.entry.term = ldr.lastLogIndex+1, ldr.term
 
 	// append entry to local log
@@ -242,10 +242,7 @@ func (ldr *leadership) applyEntry(ne NewEntry) {
 
 	// we updated lastLogIndex, so notify replicators
 	if ne.typ == entryQuery {
-		// if all log entries are applied
-		if ldr.lastApplied == ldr.lastLogIndex {
-			ldr.fsmApply(ldr.newEntries)
-		}
+		ldr.applyCommitted(ldr.newEntries)
 	} else {
 		ldr.notifyReplicators()
 	}
@@ -322,7 +319,7 @@ func (ldr *leadership) majorityMatchIndex() uint64 {
 
 // If majorityMatchIndex(N) > commitIndex,
 // and log[N].term == currentTerm: set commitIndex = N
-func (ldr *leadership) commitAndApplyOnMajority() {
+func (ldr *leadership) onMajorityCommit() {
 	majorityMatchIndex := ldr.majorityMatchIndex()
 
 	// note: if majorityMatchIndex >= ldr.startIndex, it also mean
@@ -330,46 +327,8 @@ func (ldr *leadership) commitAndApplyOnMajority() {
 	if majorityMatchIndex > ldr.commitIndex && majorityMatchIndex >= ldr.startIndex {
 		ldr.commitIndex = majorityMatchIndex
 		debug(ldr, "commitIndex", ldr.commitIndex)
-
-		// is latest config committed ?
-		shutdown := false
-		if !ldr.configs.IsCommitted() && ldr.commitIndex >= ldr.configs.Latest.Index {
-			ldr.configs.Committed = ldr.configs.Latest
-			ldr.storage.setConfigs(ldr.configs)
-
-			// reply configEntries immediately
-			// we cant reply in fsmLoop, because
-			// in we are not part of cluster, we shutdown
-			// immediately
-			elem := ldr.newEntries.Front()
-			for {
-				ne := elem.Value.(NewEntry)
-				if ne.index == ldr.configs.Latest.Index {
-					ne.reply(nil)
-					ldr.newEntries.Remove(elem)
-					break
-				} else if ne.index > ldr.configs.Latest.Index {
-					// configEntry not found. means
-					// it is submitted in earlier term
-					break
-				}
-				elem = elem.Next()
-			}
-
-			if !ldr.configs.Latest.isVoter(ldr.id) {
-				shutdown = true
-			}
-		}
-
-		ldr.fsmApply(ldr.newEntries)
+		ldr.applyCommitted(ldr.newEntries)
 		ldr.notifyReplicators() // we updated commit index
-		if shutdown {
-			// if we don't shutdown, we will become follower
-			// on heartbeat timeout, we notice that we are no longer
-			// part of committed cluster. thus does not start election
-			// and sits idle for ever
-			ldr.Shutdown()
-		}
 	}
 }
 
@@ -401,22 +360,21 @@ func (ldr *leadership) addNode(t addNode) {
 	}
 	newConfig := ldr.configs.Latest.clone()
 	newConfig.Nodes[t.node.ID] = t.node
-	ldr.applyConfig(newConfig)
-	t.reply(nil)
+	ldr.applyConfig(t.task, newConfig)
 }
 
-func (ldr *leadership) applyConfig(newConfig Config) {
+func (ldr *leadership) applyConfig(t *task, newConfig Config) {
 	ne := NewEntry{
 		entry: newConfig.encode(),
+		task:  t,
 	}
-	ldr.applyEntry(ne)
-	debug(ldr, "XXXXXXXXXXXXXXXXxx", ne.index, ne.term)
+	ldr.storeEntry(ne)
 	newConfig.Index, newConfig.Term = ne.index, ne.term
 	ldr.configs.Latest = newConfig
 	ldr.storage.setConfigs(ldr.configs)
 
 	// now majority might have changed. needs to be recalculated
-	ldr.commitAndApplyOnMajority()
+	ldr.onMajorityCommit()
 }
 
 // -------------------------------------------------------
