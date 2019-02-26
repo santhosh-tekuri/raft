@@ -72,18 +72,18 @@ func newEntry(typ entryType, data []byte) NewEntry {
 	}
 }
 
-func Command(data []byte) NewEntry {
-	return newEntry(entryCommand, data)
+func UpdateEntry(data []byte) NewEntry {
+	return newEntry(entryUpdate, data)
 }
 
-func Query(data []byte) NewEntry {
+func QueryEntry(data []byte) NewEntry {
 	return newEntry(entryQuery, data)
 }
 
-// Barrier is used to issue a command that blocks until all preceding
+// BarrierEntry is used to issue a command that blocks until all preceding
 // commands have been applied to the FSM. It can be used to ensure the
 // FSM reflects all queued commands.
-func Barrier() NewEntry {
+func BarrierEntry() NewEntry {
 	return newEntry(entryBarrier, nil)
 }
 

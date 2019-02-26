@@ -22,7 +22,7 @@ type entryType uint8
 
 const (
 	entryBarrier entryType = iota
-	entryCommand
+	entryUpdate
 	entryQuery
 	entryNop
 	entryConfig
@@ -30,8 +30,8 @@ const (
 
 func (t entryType) String() string {
 	switch t {
-	case entryCommand:
-		return "command"
+	case entryUpdate:
+		return "udate"
 	case entryQuery:
 		return "query"
 	case entryNop:

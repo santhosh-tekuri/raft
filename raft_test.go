@@ -214,7 +214,7 @@ func TestRaft_BehindFollower(t *testing.T) {
 
 	// commit a lot of things
 	for i := 0; i < 100; i++ {
-		ldr.NewEntries() <- Command([]byte(fmt.Sprintf("test%d", i)))
+		ldr.NewEntries() <- UpdateEntry([]byte(fmt.Sprintf("test%d", i)))
 	}
 	if _, err := ldr.waitApply("test100", c.longTimeout); err != nil {
 		t.Fatal(err)
@@ -431,11 +431,11 @@ func TestRaft_Barrier(t *testing.T) {
 	// commit a lot of things
 	n := 100
 	for i := 0; i < n; i++ {
-		ldr.NewEntries() <- Command([]byte(fmt.Sprintf("test%d", i)))
+		ldr.NewEntries() <- UpdateEntry([]byte(fmt.Sprintf("test%d", i)))
 	}
 
 	// wait for a barrier complete
-	b := Barrier()
+	b := BarrierEntry()
 	ldr.NewEntries() <- b
 	<-b.Done()
 	if b.Err() != nil {
@@ -719,7 +719,7 @@ func (r *Raft) waitApply(cmd string, timeout time.Duration) (fsmReply, error) {
 	if timeout > 0 {
 		timer = time.After(timeout)
 	}
-	ne := Command([]byte(cmd))
+	ne := UpdateEntry([]byte(cmd))
 	select {
 	case r.NewEntries() <- ne:
 		break

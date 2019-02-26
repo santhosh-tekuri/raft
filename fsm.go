@@ -14,7 +14,7 @@ func (r *Raft) fsmLoop() {
 	for ne := range r.fsmApplyCh {
 		debug(r.addr, "fsm.apply", ne.typ, ne.index)
 		var resp interface{}
-		if ne.typ == entryCommand || ne.typ == entryQuery {
+		if ne.typ == entryUpdate || ne.typ == entryQuery {
 			resp = r.fsm.Apply(ne.entry.data)
 		}
 		ne.task.reply(resp)
