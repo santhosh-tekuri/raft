@@ -62,36 +62,29 @@ func (r *Raft) NewEntries() chan<- NewEntry {
 	return r.newEntryCh
 }
 
-func Command(data []byte) NewEntry {
+func newEntry(typ entryType, data []byte) NewEntry {
 	return NewEntry{
 		task: &task{done: make(chan struct{})},
 		entry: &entry{
-			typ:  entryCommand,
+			typ:  typ,
 			data: data,
 		},
 	}
 }
 
+func Command(data []byte) NewEntry {
+	return newEntry(entryCommand, data)
+}
+
 func Query(data []byte) NewEntry {
-	return NewEntry{
-		task: &task{done: make(chan struct{})},
-		entry: &entry{
-			typ:  entryQuery,
-			data: data,
-		},
-	}
+	return newEntry(entryQuery, data)
 }
 
 // Barrier is used to issue a command that blocks until all preceding
 // commands have been applied to the FSM. It can be used to ensure the
 // FSM reflects all queued commands.
 func Barrier() NewEntry {
-	return NewEntry{
-		task: &task{done: make(chan struct{})},
-		entry: &entry{
-			typ: entryBarrier,
-		},
-	}
+	return newEntry(entryBarrier, nil)
 }
 
 // ------------------------------------------------------------------------
