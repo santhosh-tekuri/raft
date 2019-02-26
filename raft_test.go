@@ -666,7 +666,8 @@ func (c *cluster) connect() {
 
 func (c *cluster) shutdown() {
 	for _, r := range c.rr {
-		r.Shutdown()
+		r.Shutdown().Wait()
+		debug(r.addr, "<< shutdown()")
 	}
 }
 

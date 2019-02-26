@@ -325,8 +325,26 @@ func (ldr *leadership) commitAndApplyOnMajority() {
 	if majorityMatchIndex > ldr.commitIndex && majorityMatchIndex >= ldr.startIndex {
 		ldr.commitIndex = majorityMatchIndex
 		debug(ldr, "commitIndex", ldr.commitIndex)
+
+		// is latest config committed ?
+		shutdown := false
+		if !ldr.configs.IsCommitted() && ldr.commitIndex >= ldr.configs.Latest.Index {
+			ldr.configs.Committed = ldr.configs.Latest
+			ldr.storage.setConfigs(ldr.configs)
+			if !ldr.configs.Latest.isVoter(ldr.id) {
+				shutdown = true
+			}
+		}
+
 		ldr.fsmApply(ldr.newEntries)
 		ldr.notifyReplicators() // we updated commit index
+		if shutdown {
+			// if we don't shutdown, we will become follower
+			// on heartbeat timeout, we notice that we are no longer
+			// part of committed cluster. thus does not start election
+			// and sits idle for ever
+			ldr.Shutdown()
+		}
 	}
 }
 
@@ -371,6 +389,9 @@ func (ldr *leadership) applyConfig(newConfig Config) {
 	newConfig.Index, newConfig.Term = ne.index, ne.term
 	ldr.configs.Latest = newConfig
 	ldr.storage.setConfigs(ldr.configs)
+
+	// now majority might have changed. needs to be recalculated
+	ldr.commitAndApplyOnMajority()
 }
 
 // -------------------------------------------------------

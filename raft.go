@@ -127,11 +127,10 @@ func (r *Raft) Serve(l net.Listener) error {
 	return r.server.serve(l)
 }
 
-func (r *Raft) Shutdown() {
+func (r *Raft) Shutdown() *sync.WaitGroup {
 	debug(r.addr, ">> shutdown()")
 	close(r.shutdownCh)
-	r.wg.Wait()
-	debug(r.addr, "<< shutdown()")
+	return &r.wg
 }
 
 func (r *Raft) loop() {

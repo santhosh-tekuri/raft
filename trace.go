@@ -5,6 +5,7 @@ import (
 	"io"
 )
 
+// todo: add ConfigChangeInProgress, ConfigCommitted
 type Trace struct {
 	StateChanged    func(info Info)
 	ElectionAborted func(info Info, reason string)
