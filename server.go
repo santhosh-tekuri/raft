@@ -24,18 +24,18 @@ type server struct {
 	rpcCh    chan rpc
 
 	// interval to check for shutdown signal
-	shutdownCheckDuration time.Duration
+	idleTimeout time.Duration
 
 	// to handle safe shutdown
 	shutdownCh chan struct{}
 	wg         sync.WaitGroup
 }
 
-func newServer(shutdownCheckDuration time.Duration) *server {
+func newServer(idleTimeout time.Duration) *server {
 	return &server{
-		rpcCh:                 make(chan rpc),
-		shutdownCh:            make(chan struct{}),
-		shutdownCheckDuration: shutdownCheckDuration,
+		rpcCh:       make(chan rpc),
+		shutdownCh:  make(chan struct{}),
+		idleTimeout: idleTimeout,
 	}
 }
 
@@ -82,7 +82,7 @@ func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) erro
 	// close client if idle, on shutdown signal
 	for {
 		// todo: use setting past deadline technique for this
-		if err := conn.SetReadDeadline(time.Now().Add(s.shutdownCheckDuration)); err != nil {
+		if err := conn.SetReadDeadline(time.Now().Add(s.idleTimeout)); err != nil {
 			return err
 		}
 		b, err := r.ReadByte()

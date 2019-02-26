@@ -14,7 +14,7 @@ const minCheckInterval = 10 * time.Millisecond
 func (r *Raft) runLeader() {
 	ldr := leadership{
 		Raft:         r,
-		leaseTimeout: r.heartbeatTimeout, // todo: should it be same as heartbeatTimeout ? make configurable
+		leaseTimeout: r.hbTimeout, // todo: should it be same as heartbeatTimeout ? make configurable
 		leaseTimer:   time.NewTimer(time.Hour),
 		newEntries:   list.New(),
 		repls:        make(map[NodeID]*replication),
@@ -178,7 +178,7 @@ func (ldr *leadership) startReplication(node Node) {
 	repl := &replication{
 		status:           replStatus{id: node.ID},
 		connPool:         ldr.getConnPool(node.Addr),
-		heartbeatTimeout: ldr.heartbeatTimeout,
+		heartbeatTimeout: ldr.hbTimeout,
 		storage:          ldr.storage,
 		stopCh:           make(chan struct{}),
 		replUpdatedCh:    ldr.replUpdatedCh,

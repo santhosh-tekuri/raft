@@ -55,8 +55,8 @@ type Raft struct {
 	state   State
 	leader  string
 
-	votedFor         string
-	heartbeatTimeout time.Duration
+	votedFor  string
+	hbTimeout time.Duration
 
 	lastLogIndex uint64
 	lastLogTerm  uint64
@@ -95,27 +95,27 @@ func New(id NodeID, addr string, opt Options, fsm FSM, storage *Storage, trace T
 		return nil, err
 	}
 
-	server := newServer(opt.HeartbeatTimeout)
+	server := newServer(2 * opt.HeartbeatTimeout)
 	return &Raft{
-		id:               id,
-		addr:             addr,
-		storage:          storage,
-		fsm:              fsm,
-		term:             term,
-		votedFor:         votedFor,
-		lastLogIndex:     lastLogIndex,
-		lastLogTerm:      lastLogTerm,
-		configs:          configs,
-		state:            Follower,
-		heartbeatTimeout: opt.HeartbeatTimeout,
-		dialFn:           net.DialTimeout,
-		server:           server,
-		connPools:        make(map[string]*connPool),
-		fsmApplyCh:       make(chan NewEntry, 128), // todo configurable capacity
-		newEntryCh:       make(chan NewEntry, 100), // todo configurable capacity
-		taskCh:           make(chan Task, 100),     // todo configurable capacity
-		trace:            trace,
-		shutdownCh:       make(chan struct{}),
+		id:           id,
+		addr:         addr,
+		storage:      storage,
+		fsm:          fsm,
+		term:         term,
+		votedFor:     votedFor,
+		lastLogIndex: lastLogIndex,
+		lastLogTerm:  lastLogTerm,
+		configs:      configs,
+		state:        Follower,
+		hbTimeout:    opt.HeartbeatTimeout,
+		dialFn:       net.DialTimeout,
+		server:       server,
+		connPools:    make(map[string]*connPool),
+		fsmApplyCh:   make(chan NewEntry, 128), // todo configurable capacity
+		newEntryCh:   make(chan NewEntry, 100), // todo configurable capacity
+		taskCh:       make(chan Task, 100),     // todo configurable capacity
+		trace:        trace,
+		shutdownCh:   make(chan struct{}),
 	}, nil
 }
 

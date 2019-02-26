@@ -4,7 +4,7 @@ func (r *Raft) runFollower() {
 	assert(r.leader != r.addr, "%s r.leader: got %s, want !=%s", r, r.leader, r.addr)
 
 	// todo: use single timer by resetting
-	timeoutCh := afterRandomTimeout(r.heartbeatTimeout)
+	timeoutCh := afterRandomTimeout(r.hbTimeout)
 	for r.state == Follower {
 		select {
 		case <-r.shutdownCh:
@@ -14,7 +14,7 @@ func (r *Raft) runFollower() {
 			if resetElectionTimer := r.replyRPC(rpc); resetElectionTimer {
 				// a server remains in follower state as long as it receives valid
 				// RPCs from a leader or candidate
-				timeoutCh = afterRandomTimeout(r.heartbeatTimeout)
+				timeoutCh = afterRandomTimeout(r.hbTimeout)
 			}
 
 			// If timeout elapses without receiving AppendEntries
@@ -41,7 +41,7 @@ func (r *Raft) runFollower() {
 			r.executeTask(t)
 			if now, _ := r.canStartElection(); !before && now {
 				// we got new config, which allows us to start election
-				timeoutCh = afterRandomTimeout(r.heartbeatTimeout)
+				timeoutCh = afterRandomTimeout(r.hbTimeout)
 			}
 		}
 	}

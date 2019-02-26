@@ -14,7 +14,7 @@ func (r *Raft) runCandidate() {
 	for r.state == Candidate {
 		if startElection {
 			startElection = false
-			timeoutCh = afterRandomTimeout(r.heartbeatTimeout)
+			timeoutCh = afterRandomTimeout(r.hbTimeout)
 			voteCh = r.startElection()
 			votesNeeded = r.configs.Latest.quorum()
 		}
