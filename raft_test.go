@@ -1,11 +1,13 @@
 package raft
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
 	"reflect"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -83,7 +85,7 @@ func TestRaft_SingleNode(t *testing.T) {
 	ldr := c.ensureHealthy()
 
 	// should be able to apply
-	resp, err := ldr.waitApply("test", c.heartbeatTimeout)
+	resp, err := ldr.waitUpdate("test", c.heartbeatTimeout)
 	if err != nil {
 		t.Fatalf("apply failed: %v", err)
 	}
@@ -166,7 +168,7 @@ func TestRaft_TripleNode(t *testing.T) {
 	c.ensureLeader(ldr.ID())
 
 	// should be able to apply
-	resp, err := ldr.waitApply("test", c.heartbeatTimeout)
+	resp, err := ldr.waitUpdate("test", c.heartbeatTimeout)
 	if err != nil {
 		t.Fatalf("apply failed: %v", err)
 	}
@@ -191,7 +193,7 @@ func TestRaft_LeaderFail(t *testing.T) {
 	c.ensureLeader(ldr.ID())
 
 	// should be able to apply
-	resp, err := ldr.waitApply("test", c.heartbeatTimeout)
+	resp, err := ldr.waitUpdate("test", c.heartbeatTimeout)
 	if err != nil {
 		t.Fatalf("apply failed: %v", err)
 	}
@@ -225,7 +227,7 @@ func TestRaft_LeaderFail(t *testing.T) {
 	}
 
 	// apply should work not work on old leader
-	_, err = ldr.waitApply("reject", c.heartbeatTimeout)
+	_, err = ldr.waitUpdate("reject", c.heartbeatTimeout)
 	if err, ok := err.(NotLeaderError); !ok {
 		t.Fatalf("got %v, want NotLeaderError", err)
 	} else if err.Leader != "" {
@@ -233,7 +235,7 @@ func TestRaft_LeaderFail(t *testing.T) {
 	}
 
 	// apply should work on new leader
-	if _, err = newLdr.waitApply("accept", c.heartbeatTimeout); err != nil {
+	if _, err = newLdr.waitUpdate("accept", c.heartbeatTimeout); err != nil {
 		t.Fatalf("got %v, want nil", err)
 	}
 
@@ -267,7 +269,7 @@ func TestRaft_BehindFollower(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		ldr.NewEntries() <- UpdateEntry([]byte(fmt.Sprintf("test%d", i)))
 	}
-	if _, err := ldr.waitApply("test100", c.longTimeout); err != nil {
+	if _, err := ldr.waitUpdate("test100", c.longTimeout); err != nil {
 		t.Fatal(err)
 	}
 
@@ -298,7 +300,7 @@ func TestRaft_ApplyNonLeader(t *testing.T) {
 	ldrAddr := ldr.Info().Addr()
 	for _, r := range c.rr {
 		if r != ldr {
-			_, err := r.waitApply("reject", c.commitTimeout)
+			_, err := r.waitUpdate("reject", c.commitTimeout)
 			if err, ok := err.(NotLeaderError); !ok {
 				t.Fatalf("got %v, want NotLeaderError", err)
 			} else if err.Leader != ldrAddr {
@@ -325,7 +327,7 @@ func TestRaft_ApplyConcurrent(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			if _, err := ldr.waitApply(fmt.Sprintf("test%d", i), 0); err != nil {
+			if _, err := ldr.waitUpdate(fmt.Sprintf("test%d", i), 0); err != nil {
 				debug("FAIL got", err, "want nil")
 				t.Fail() // note: t.Fatal should note be called from non-test goroutine
 			}
@@ -404,7 +406,7 @@ loop:
 	c.ensureLeader(ldr.ID())
 
 	// should be able to apply
-	if _, err := ldr.waitApply("hello", 0); err != nil {
+	if _, err := ldr.waitUpdate("hello", 0); err != nil {
 		t.Fatal(err)
 	}
 	c.ensureFSMReplicated(1)
@@ -487,11 +489,8 @@ func TestRaft_Barrier(t *testing.T) {
 	}
 
 	// wait for a barrier complete
-	b := BarrierEntry()
-	ldr.NewEntries() <- b
-	<-b.Done()
-	if b.Err() != nil {
-		t.Fatalf("barrier failed: %v", b.Err())
+	if err := ldr.waitBarrier(0); err != nil {
+		t.Fatalf("barrier failed: %v", err)
 	}
 
 	// ensure leader fsm got all commands
@@ -509,9 +508,9 @@ func TestRaft_Barrier(t *testing.T) {
 
 	// ensure that barrier is not stored in log
 	want := ldr.Info().LastLogIndex()
-	b = BarrierEntry()
-	ldr.NewEntries() <- b
-	<-b.Done()
+	if err := ldr.waitBarrier(0); err != nil {
+		t.Fatalf("barrier failed: %v", err)
+	}
 	if got := ldr.Info().LastLogIndex(); got != want {
 		t.Fatalf("lastLogIndex: got %d, want %d", got, want)
 	}
@@ -785,27 +784,43 @@ func (r *Raft) waitTask(t Task, timeout time.Duration) (interface{}, error) {
 }
 
 // use zero timeout, to wait till reply received
-func (r *Raft) waitApply(cmd string, timeout time.Duration) (fsmReply, error) {
+func (r *Raft) waitNewEntry(ne NewEntry, timeout time.Duration) (fsmReply, error) {
 	var timer <-chan time.Time
 	if timeout > 0 {
 		timer = time.After(timeout)
 	}
-	ne := UpdateEntry([]byte(cmd))
 	select {
 	case r.NewEntries() <- ne:
 		break
 	case <-timer:
-		return fsmReply{}, fmt.Errorf("waitApply(%v): submit timedout", cmd)
+		return fsmReply{}, errors.New("waitNewEntry: submit timedout")
 	}
 	select {
 	case <-ne.Done():
 		if ne.Err() != nil {
 			return fsmReply{}, ne.Err()
 		}
-		return ne.Result().(fsmReply), nil
+		result := fsmReply{}
+		if ne.Result() != nil {
+			result = ne.Result().(fsmReply)
+		}
+		return result, nil
 	case <-timer:
-		return fsmReply{}, fmt.Errorf("waitApply(%v): result timedout", cmd)
+		return fsmReply{}, errors.New("waitUpdate: result timeout")
 	}
+}
+
+func (r *Raft) waitUpdate(cmd string, timeout time.Duration) (fsmReply, error) {
+	return r.waitNewEntry(UpdateEntry([]byte(cmd)), timeout)
+}
+
+func (r *Raft) waitQuery(query string, timeout time.Duration) (fsmReply, error) {
+	return r.waitNewEntry(QueryEntry([]byte(query)), timeout)
+}
+
+func (r *Raft) waitBarrier(timeout time.Duration) error {
+	_, err := r.waitNewEntry(BarrierEntry(), timeout)
+	return err
 }
 
 func (r *Raft) inspect(fn func(Info)) {
@@ -841,6 +856,8 @@ var trace = Trace{
 
 // ---------------------------------------------
 
+var errNoCommands = errors.New("no commands")
+
 type fsmMock struct {
 	mu        sync.RWMutex
 	cmds      []string
@@ -855,9 +872,30 @@ type fsmReply struct {
 func (fsm *fsmMock) Apply(cmd []byte) interface{} {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
-	fsm.cmds = append(fsm.cmds, string(cmd))
+	s := string(cmd)
+
+	// query
+	if strings.HasPrefix(s, "query:") {
+		s = strings.TrimPrefix(s, "query:")
+		if s == "last" {
+			sz := len(fsm.cmds)
+			if sz == 0 {
+				return errNoCommands
+			}
+			return fsmReply{fsm.cmds[sz-1], sz - 1}
+		} else {
+			i, err := strconv.Atoi(s)
+			if err != nil {
+				return err
+			}
+			return fsmReply{fsm.cmds[i], i}
+		}
+	}
+
+	// update
+	fsm.cmds = append(fsm.cmds, s)
 	notify(fsm.changedCh)
-	return fsmReply{string(cmd), len(fsm.cmds)}
+	return fsmReply{s, len(fsm.cmds)}
 }
 
 func (fsm *fsmMock) len() uint64 {
