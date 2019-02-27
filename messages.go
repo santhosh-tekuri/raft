@@ -30,6 +30,8 @@ const (
 
 func (t entryType) String() string {
 	switch t {
+	case entryBarrier:
+		return "barrier"
 	case entryUpdate:
 		return "update"
 	case entryQuery:
@@ -38,8 +40,6 @@ func (t entryType) String() string {
 		return "nop"
 	case entryConfig:
 		return "config"
-	case entryBarrier:
-		return "barrier"
 	}
 	return fmt.Sprintf("unknown(%d)", uint8(t))
 }

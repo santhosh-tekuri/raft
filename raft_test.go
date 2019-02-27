@@ -516,10 +516,79 @@ func TestRaft_Barrier(t *testing.T) {
 	}
 }
 
+func TestRaft_Query(t *testing.T) {
+	debug("\nTestRaft_Query --------------------------")
+	defer leaktest.Check(t)()
+	c := newCluster(t)
+	c.launch(3, true)
+	defer c.shutdown()
+	ldr := c.ensureHealthy()
+
+	// should agree on leader
+	c.ensureLeader(ldr.ID())
+
+	// wait for fsm ready
+	if err := ldr.waitBarrier(0); err != nil {
+		t.Fatalf("barrier failed: %v", err)
+	}
+
+	// send query
+	want := ldr.Info().LastLogIndex()
+	if _, err := ldr.waitQuery("query:last", 0); err != errNoCommands {
+		t.Fatalf("got %v, want %v", err, errNoCommands)
+	}
+
+	// ensure query is not stored in log
+	if got := ldr.Info().LastLogIndex(); got != want {
+		t.Fatalf("got %d, want %d", got, want)
+	}
+
+	// ensure fsm is not changed
+	if got := ldr.fsmMock().len(); got != 0 {
+		t.Fatalf("got %d, want %d", got, 0)
+	}
+
+	// send updates, in between do queries and check query reply
+	for i := 0; i < 101; i++ {
+		cmd := fmt.Sprintf("cmd%d", i)
+		ldr.NewEntries() <- UpdateEntry([]byte(cmd))
+		if i%10 == 0 {
+			qq := []NewEntry{
+				QueryEntry([]byte("query:last")),
+				QueryEntry([]byte("query:last")),
+			}
+			for _, q := range qq {
+				ldr.NewEntries() <- q
+			}
+			for _, q := range qq {
+				<-q.Done()
+				if q.Err() != nil {
+					t.Fatal(q.Err())
+				}
+				reply := fsmReply{cmd, i}
+				if q.Result() != reply {
+					t.Fatalf("got %v, want %v", q.Result(), reply)
+				}
+			}
+		}
+	}
+
+	// ensure queries are not stored in log
+	want += 101
+	if got := ldr.Info().LastLogIndex(); got != want {
+		t.Fatalf("got %d, want %d", got, want)
+	}
+
+	// ensure fsm has all commands but not queries
+	if got := ldr.fsmMock().len(); got != 101 {
+		t.Fatalf("got %d, want %d", got, 100)
+	}
+}
+
 // todo: test that non voter does not start election
 //        * if he started as voter and hasn't got any requests from leader
 //        * if leader contact lost for more than heartbeat timeout
-// todo: test query entries
+
 // todo: test removal of leader, removal of follower
 //       ensure that leader replies confChange
 //       ensure that removed node sits idle as follower
@@ -857,6 +926,7 @@ var trace = Trace{
 // ---------------------------------------------
 
 var errNoCommands = errors.New("no commands")
+var errNoCommandAt = errors.New("no command at index")
 
 type fsmMock struct {
 	mu        sync.RWMutex
@@ -887,6 +957,9 @@ func (fsm *fsmMock) Apply(cmd []byte) interface{} {
 			i, err := strconv.Atoi(s)
 			if err != nil {
 				return err
+			}
+			if i < 0 || i >= len(fsm.cmds) {
+				return errNoCommandAt
 			}
 			return fsmReply{fsm.cmds[i], i}
 		}
