@@ -137,8 +137,13 @@ func (r *Raft) Serve(l net.Listener) error {
 }
 
 func (r *Raft) Shutdown() *sync.WaitGroup {
-	debug(r.id, ">> shutdown()")
-	close(r.shutdownCh)
+	select {
+	case <-r.shutdownCh:
+		// shutdown already called
+	default:
+		debug(r.id, ">> shutdown()")
+		close(r.shutdownCh)
+	}
 	return &r.wg
 }
 

@@ -141,6 +141,19 @@ func TestRaft_SingleNode(t *testing.T) {
 	r.Shutdown().Wait()
 }
 
+func TestRaft_Shutdown(t *testing.T) {
+	debug("\nTestRaft_Shutdown --------------------------")
+	defer leaktest.Check(t)()
+	c := newCluster(t)
+	c.launch(1, true)
+
+	// shutdown
+	c.shutdown()
+
+	// shutdown on stopped one, should work
+	c.shutdown()
+}
+
 func TestRaft_TripleNode(t *testing.T) {
 	debug("\nTestRaft_TripleNode --------------------------")
 	defer leaktest.Check(t)()
