@@ -146,6 +146,9 @@ func (ldr *leadership) runLoop() {
 				if !replUpdate.status.noContact.Equal(replUpdate.noContact) {
 					noContactUpdated = true
 					replUpdate.status.noContact = replUpdate.noContact
+					if ldr.trace.Unreachable != nil {
+						ldr.trace.Unreachable(ldr.liveInfo(), replUpdate.status.id, replUpdate.noContact)
+					}
 				}
 				select {
 				case <-ldr.shutdownCh:

@@ -98,7 +98,7 @@ func New(id NodeID, addr string, opt Options, fsm FSM, storage *Storage, trace T
 	}
 
 	server := newServer(2 * opt.HeartbeatTimeout)
-	return &Raft{
+	r := &Raft{
 		id:           id,
 		addr:         addr,
 		storage:      storage,
@@ -118,7 +118,9 @@ func New(id NodeID, addr string, opt Options, fsm FSM, storage *Storage, trace T
 		taskCh:       make(chan Task, 100),     // todo configurable capacity
 		trace:        trace,
 		shutdownCh:   make(chan struct{}),
-	}, nil
+	}
+	r.wg.Add(1)
+	return r, nil
 }
 
 func (r *Raft) ID() NodeID {
@@ -141,6 +143,7 @@ func (r *Raft) Serve(l net.Listener) error {
 func (r *Raft) Shutdown() *sync.WaitGroup {
 	r.shutdownOnce.Do(func() {
 		debug(r.id, ">> shutdown()")
+		r.wg.Done()
 		close(r.shutdownCh)
 	})
 	return &r.wg

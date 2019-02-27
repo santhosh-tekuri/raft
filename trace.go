@@ -3,6 +3,7 @@ package raft
 import (
 	"fmt"
 	"io"
+	"time"
 )
 
 // todo: add ConfigChangeInProgress, ConfigCommitted
@@ -14,6 +15,7 @@ type Trace struct {
 	ConfigChanged   func(info Info)
 	ConfigCommitted func(info Info)
 	ConfigReverted  func(info Info)
+	Unreachable     func(info Info, id NodeID, since time.Time)
 }
 
 func NewTraceWriter(w io.Writer) Trace {
@@ -34,6 +36,13 @@ func NewTraceWriter(w io.Writer) Trace {
 		},
 		ConfigReverted: func(info Info) {
 			_, _ = fmt.Fprintf(w, "[INFO] raft: config reverted to %s\n", info.Configs().Latest)
+		},
+		Unreachable: func(info Info, id NodeID, since time.Time) {
+			if since.IsZero() {
+				_, _ = fmt.Fprintf(w, "[INFO] raft: node %s is reachable\n", id)
+			} else {
+				_, _ = fmt.Fprintf(w, "[INFO] raft: node %s is unreachable since %s\n", id, since)
+			}
 		},
 	}
 }

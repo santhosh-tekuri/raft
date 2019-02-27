@@ -876,29 +876,53 @@ func waitBarrier(r *Raft, timeout time.Duration) error {
 
 // trace ----------------------------------------------------------------------
 
-var stateChangedCh = make(chan struct{}, 1)
-var electionStartedCh = make(chan NodeID, 1)
-var electionAbortedCh = make(chan NodeID, 10)
-var stateChanged = func(info Info) {
-	notify(stateChangedCh)
+var (
+	stateChangedCh    = make(chan struct{}, 1)
+	configChangedCh   = make(chan struct{}, 1)
+	configCommittedCh = make(chan struct{}, 1)
+	configRevertedCh  = make(chan struct{}, 1)
+
+	electionStartedCh = make(chan NodeID, 1)
+	electionAbortedCh = make(chan NodeID, 10)
+	unreachableCh     = make(chan struct{}, 1)
+)
+
+func notifyTrace(ch chan<- struct{}) func(Info) {
+	return func(Info) {
+		notify(ch)
+	}
 }
-var electionStarted = func(info Info) {
+
+func electionStarted(info Info) {
 	select {
 	case electionAbortedCh <- info.ID():
 	default:
 	}
 }
-var electionAborted = func(info Info, reason string) {
+
+func electionAborted(info Info, reason string) {
 	Debug(info.ID(), info.Term(), string(info.State()), "|", "electionAborted", reason)
 	select {
 	case electionAbortedCh <- info.ID():
 	default:
 	}
 }
+
+func unreachable(Info, NodeID, time.Time) {
+	select {
+	case unreachableCh <- struct{}{}:
+	default:
+	}
+}
+
 var trace = Trace{
-	StateChanged:    stateChanged,
+	StateChanged:    notifyTrace(stateChangedCh),
 	ElectionStarted: electionStarted,
 	ElectionAborted: electionAborted,
+	ConfigChanged:   notifyTrace(configChangedCh),
+	ConfigCommitted: notifyTrace(configCommittedCh),
+	ConfigReverted:  notifyTrace(configRevertedCh),
+	Unreachable:     unreachable,
 }
 
 // ---------------------------------------------
