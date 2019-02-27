@@ -2,7 +2,6 @@ package raft
 
 import (
 	"errors"
-	"fmt"
 	"time"
 )
 
@@ -99,50 +98,6 @@ func Bootstrap(nodes map[NodeID]Node) Task {
 		task:  &task{done: make(chan struct{})},
 		nodes: nodes,
 	}
-}
-
-var ErrCantBootstrap = errors.New("raft: bootstrap only works on new clusters")
-
-func (r *Raft) bootstrap(t bootstrap) {
-	debug(r, "bootstrapping....")
-
-	// validations
-	self, ok := t.nodes[r.id]
-	if !ok {
-		t.reply(fmt.Errorf("bootstrap: myself %s must be part of cluster", r.id))
-		return
-	}
-	if self.Addr != r.addr { // todo: allow changing advertise address
-		t.reply(fmt.Errorf("bootstrap: my address does not match"))
-		return
-	}
-
-	// todo: check whether bootstrap is allowed ?
-	if r.term != 0 || r.lastLogIndex != 0 {
-		t.reply(ErrCantBootstrap)
-		return
-	}
-
-	// persist config change
-	configEntry, err := r.storage.bootstrap(t.nodes)
-	if err != nil {
-		t.reply(err)
-		return
-	}
-	e, err := r.storage.lastEntry()
-	if err != nil {
-		t.reply(err)
-	}
-	term, votedFor, err := r.storage.vars.GetVote()
-	if err != nil {
-		t.reply(err)
-	}
-
-	// everything is ok. bootstrapping now...
-	r.term, r.votedFor = term, votedFor
-	r.lastLogIndex, r.lastLogTerm = e.index, e.term
-	r.configs.Latest = configEntry
-	t.reply(nil)
 }
 
 // ------------------------------------------------------------------------
@@ -303,6 +258,18 @@ func AddNode(node Node) Task {
 	return addNode{
 		task: &task{done: make(chan struct{})},
 		node: node,
+	}
+}
+
+type removeNode struct {
+	*task
+	id NodeID
+}
+
+func RemoveNode(id NodeID) Task {
+	return removeNode{
+		task: &task{done: make(chan struct{})},
+		id:   id,
 	}
 }
 

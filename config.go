@@ -128,6 +128,37 @@ func (c *Config) decode(e *entry) error {
 	return nil
 }
 
+func (c Config) validate() error {
+	ids := make(map[NodeID]bool)
+	addrs := make(map[string]bool)
+	voters := 0
+	for _, node := range c.Nodes {
+		if node.ID == "" {
+			return fmt.Errorf("raft: Conf.validate failed: empty node id")
+		}
+		if ids[node.ID] {
+			return fmt.Errorf("raft: Conf.validate failed: duplicate id %s", node.ID)
+		}
+		ids[node.ID] = true
+
+		if node.Addr == "" {
+			return fmt.Errorf("raft: Conf.validate failed: empty address")
+		}
+		if addrs[node.Addr] {
+			return fmt.Errorf("raft: Conf.validate failed: duplicate address %s", node.Addr)
+		}
+		addrs[node.Addr] = true
+
+		if node.Type == Voter {
+			voters++
+		}
+	}
+	if voters == 0 {
+		return fmt.Errorf("raft: Conf.validate failed: no voter")
+	}
+	return nil
+}
+
 func (c Config) String() string {
 	var voters, staging, nonVoters []string
 	for _, n := range c.Nodes {

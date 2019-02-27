@@ -2,7 +2,6 @@ package raft
 
 import (
 	"container/list"
-	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -349,34 +348,6 @@ func (ldr *leadership) notifyReplicators() {
 }
 
 // -------------------------------------------------------
-
-func (ldr *leadership) addNode(t addNode) {
-	if !ldr.configs.IsCommitted() {
-		t.reply(errors.New("raft: configChange is in progress"))
-	}
-	if ldr.commitIndex < ldr.startIndex {
-		t.reply(errors.New("raft: noop entry is not yet committed"))
-	}
-	if _, ok := ldr.configs.Latest.Nodes[t.node.ID]; ok {
-		t.reply(fmt.Errorf("raft: node %s already exists", t.node.ID))
-	}
-	newConfig := ldr.configs.Latest.clone()
-	newConfig.Nodes[t.node.ID] = t.node
-	ldr.storeConfig(t.task, newConfig)
-}
-
-func (ldr *leadership) storeConfig(t *task, newConfig Config) {
-	ne := NewEntry{
-		entry: newConfig.encode(),
-		task:  t,
-	}
-	ldr.storeEntry(ne)
-	newConfig.Index, newConfig.Term = ne.index, ne.term
-	ldr.changeConfig(newConfig)
-
-	// now majority might have changed. needs to be recalculated
-	ldr.onMajorityCommit()
-}
 
 // -------------------------------------------------------
 

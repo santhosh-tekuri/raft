@@ -226,47 +226,22 @@ func (s *Storage) deleteGTE(index uint64) {
 }
 
 func (s *Storage) bootstrap(nodes map[NodeID]Node) (Config, error) {
-	// todo: validate
-	ids := make(map[NodeID]bool)
-	addrs := make(map[string]bool)
-	voters := 0
-	for _, node := range nodes {
-		if node.ID == "" {
-			return Config{}, fmt.Errorf("raft.bootstrap: empty node id")
-		}
-		if ids[node.ID] {
-			return Config{}, fmt.Errorf("raft.bootstrap: duplicate id %s", node.ID)
-		}
-		ids[node.ID] = true
-
-		if node.Addr == "" {
-			return Config{}, fmt.Errorf("raft.bootstrap: empty address")
-		}
-		if addrs[node.Addr] {
-			return Config{}, fmt.Errorf("raft.bootstrap: duplicate address %s", node.Addr)
-		}
-		addrs[node.Addr] = true
-
-		if node.Type == Voter {
-			voters++
-		}
-	}
-	if voters == 0 {
-		return Config{}, fmt.Errorf("raft.bootstrap: no voter")
-	}
-
-	configEntry := Config{
+	conf := Config{
 		Nodes: nodes,
 		Index: 1,
 		Term:  1,
 	}
-	s.append(configEntry.encode())
+	if err := conf.validate(); err != nil {
+		return conf, err
+	}
+
+	s.append(conf.encode())
 
 	if err := s.vars.SetVote(1, ""); err != nil {
-		return configEntry, err
+		return conf, err
 	}
 	if err := s.vars.SetConfig(0, 1); err != nil {
-		return configEntry, err
+		return conf, err
 	}
-	return configEntry, nil
+	return conf, nil
 }
