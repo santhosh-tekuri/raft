@@ -23,7 +23,7 @@ func TestRaft_Voting(t *testing.T) {
 	defer c.shutdown()
 	ldr := c.ensureHealthy()
 
-	c.ensureLeader(c.leader().id)
+	c.ensureLeader(c.leader().ID())
 
 	req := &voteRequest{}
 	ldr.inspect(func(r Info) {
@@ -112,7 +112,7 @@ func TestRaft_SingleNode(t *testing.T) {
 	cc.shutdown()
 	fsm := &fsmMock{changedCh: cc.fsmChangedCh}
 	storage := NewStorage(ldr.storage.vars, ldr.storage.log)
-	r, err := New(ldr.id, "localhost:0", cc.opt, fsm, storage, trace)
+	r, err := New(ldr.ID(), "localhost:0", cc.opt, fsm, storage, trace)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestRaft_TripleNode(t *testing.T) {
 	ldr := c.ensureHealthy()
 
 	// should agree on leader
-	c.ensureLeader(ldr.id)
+	c.ensureLeader(ldr.ID())
 
 	// should be able to apply
 	resp, err := ldr.waitApply("test", c.heartbeatTimeout)
@@ -188,7 +188,7 @@ func TestRaft_LeaderFail(t *testing.T) {
 	ldr := c.ensureHealthy()
 
 	// should agree on leader
-	c.ensureLeader(ldr.id)
+	c.ensureLeader(ldr.ID())
 
 	// should be able to apply
 	resp, err := ldr.waitApply("test", c.heartbeatTimeout)
@@ -213,7 +213,7 @@ func TestRaft_LeaderFail(t *testing.T) {
 	}
 
 	// wait for new leader
-	c.ensureStability(ldr.id)
+	c.ensureStability(ldr.ID())
 	newLdr := c.leader()
 	if newLdr == ldr {
 		t.Fatalf("newLeader: got %s, want !=%s", newLdr.addr, ldr.addr)
@@ -257,7 +257,7 @@ func TestRaft_BehindFollower(t *testing.T) {
 	ldr := c.ensureHealthy()
 
 	// should agree on leader
-	c.ensureLeader(ldr.id)
+	c.ensureLeader(ldr.ID())
 
 	// disconnect one follower
 	behind := c.followers()[0]
@@ -280,7 +280,7 @@ func TestRaft_BehindFollower(t *testing.T) {
 	c.ensureFSMSame(nil)
 
 	// Ensure one leader
-	c.ensureLeader(c.leader().id)
+	c.ensureLeader(c.leader().ID())
 }
 
 func TestRaft_ApplyNonLeader(t *testing.T) {
@@ -292,7 +292,7 @@ func TestRaft_ApplyNonLeader(t *testing.T) {
 	ldr := c.ensureHealthy()
 
 	// should agree on leader
-	c.ensureLeader(ldr.id)
+	c.ensureLeader(ldr.ID())
 
 	// apply should work not work on non-leader
 	for _, r := range c.rr {
@@ -316,7 +316,7 @@ func TestRaft_ApplyConcurrent(t *testing.T) {
 	ldr := c.ensureHealthy()
 
 	// should agree on leader
-	c.ensureLeader(ldr.id)
+	c.ensureLeader(ldr.ID())
 
 	// concurrently apply
 	wg := sync.WaitGroup{}
@@ -391,7 +391,7 @@ loop:
 	// bootstrap one of the nodes
 	nodes := make(map[NodeID]Node, 3)
 	for _, r := range c.rr {
-		nodes[r.id] = Node{ID: r.id, Addr: r.addr, Type: Voter}
+		nodes[r.ID()] = Node{ID: r.ID(), Addr: r.addr, Type: Voter}
 	}
 	if _, err := c.rr["M1"].waitTask(Bootstrap(nodes), c.longTimeout); err != nil {
 		t.Fatal(err)
@@ -400,7 +400,7 @@ loop:
 	// the bootstrapped node should be the leader
 	c.ensureHealthy()
 	ldr := c.rr["M1"]
-	c.ensureLeader(ldr.id)
+	c.ensureLeader(ldr.ID())
 
 	// should be able to apply
 	if _, err := ldr.waitApply("hello", 0); err != nil {
@@ -435,7 +435,7 @@ func TestRaft_LeaderLeaseExpire(t *testing.T) {
 	ldr := c.ensureHealthy()
 
 	// should agree on leader
-	c.ensureLeader(ldr.id)
+	c.ensureLeader(ldr.ID())
 
 	// #followers must be 1
 	followers := c.followers()
@@ -462,7 +462,7 @@ func TestRaft_LeaderLeaseExpire(t *testing.T) {
 	}
 	for _, r := range c.rr {
 		if ldr := r.Info().LeaderID(); ldr != "" {
-			t.Fatalf("%s.leader: got %s want ", r.id, ldr)
+			t.Fatalf("%s.leader: got %s want ", r.ID(), ldr)
 		}
 	}
 }
@@ -477,7 +477,7 @@ func TestRaft_Barrier(t *testing.T) {
 	followers := c.followers()
 
 	// should agree on leader
-	c.ensureLeader(ldr.id)
+	c.ensureLeader(ldr.ID())
 
 	// commit a lot of things
 	n := 100
@@ -590,7 +590,7 @@ func (c *cluster) launch(n int, bootstrap bool) {
 		i++
 
 		// switch to fake transport
-		host := c.network.Host(string(r.id))
+		host := c.network.Host(string(r.ID()))
 		r.dialFn = host.DialTimeout
 
 		l, err := host.Listen("tcp", node.Addr)
@@ -761,7 +761,7 @@ func (r *Raft) waitForState(timeout time.Duration, states ...State) bool {
 }
 
 func (r *Raft) fsmMock() *fsmMock {
-	return r.fsm.(*fsmMock)
+	return r.FSM().(*fsmMock)
 }
 
 func (r *Raft) waitTask(t Task, timeout time.Duration) (interface{}, error) {

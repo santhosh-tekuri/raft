@@ -123,7 +123,7 @@ func (r *Raft) ID() NodeID {
 	return r.id
 }
 
-func (r *Raft) FMS() FSM {
+func (r *Raft) FSM() FSM {
 	return r.fsm
 }
 
