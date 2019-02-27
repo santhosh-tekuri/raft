@@ -74,13 +74,15 @@ type voteResult struct {
 }
 
 func (r *Raft) startElection() <-chan voteResult {
-	results := make(chan voteResult, len(r.configs.Latest.Nodes))
+	resultsCh := make(chan voteResult, len(r.configs.Latest.Nodes))
 
 	// increment currentTerm
 	r.setTerm(r.term + 1)
 
-	// reset election timer
-	debug(r, "startElection", time.Now().UnixNano()/int64(time.Millisecond))
+	debug(r, "startElection")
+	if r.trace.ElectionStarted != nil {
+		r.trace.ElectionStarted(r.info())
+	}
 
 	// send RequestVote RPCs to all other servers
 	req := &voteRequest{
@@ -96,7 +98,7 @@ func (r *Raft) startElection() <-chan voteResult {
 		if n.ID == r.id {
 			// vote for self
 			r.setVotedFor(r.addr)
-			results <- voteResult{
+			resultsCh <- voteResult{
 				voteResponse: &voteResponse{
 					term:    r.term,
 					granted: true,
@@ -115,7 +117,7 @@ func (r *Raft) startElection() <-chan voteResult {
 				voterID: connPool.addr,
 			}
 			defer func() {
-				results <- result
+				resultsCh <- result
 			}()
 			resp, err := r.requestVote(connPool, req)
 			if err != nil {
@@ -125,7 +127,7 @@ func (r *Raft) startElection() <-chan voteResult {
 			result.voteResponse = resp
 		}()
 	}
-	return results
+	return resultsCh
 }
 
 func (r *Raft) requestVote(pool *connPool, req *voteRequest) (*voteResponse, error) {

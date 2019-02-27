@@ -9,6 +9,7 @@ import (
 
 type Trace struct {
 	StateChanged    func(info Info)
+	ElectionStarted func(info Info)
 	ElectionAborted func(info Info, reason string)
 }
 

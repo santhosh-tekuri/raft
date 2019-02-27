@@ -2,7 +2,6 @@ package raft
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
 	"reflect"
@@ -111,12 +110,9 @@ func TestRaft_SingleNode(t *testing.T) {
 	cc := c
 	c = nil
 	cc.shutdown()
-	opt := Options{
-		HeartbeatTimeout: cc.heartbeatTimeout,
-	}
 	fsm := &fsmMock{changedCh: cc.fsmChangedCh}
 	storage := NewStorage(ldr.storage.vars, ldr.storage.log)
-	r, err := New(ldr.id, "localhost:0", opt, fsm, storage, NewTrace(ioutil.Discard))
+	r, err := New(ldr.id, "localhost:0", cc.opt, fsm, storage, trace)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +200,7 @@ func TestRaft_LeaderFail(t *testing.T) {
 	}
 
 	// wait for new leader
-	c.ensureStability()
+	c.ensureStability(ldr.id)
 	newLdr := c.leader()
 	if newLdr == ldr {
 		t.Fatalf("newLeader: got %s, want !=%s", newLdr.addr, ldr.addr)
@@ -384,13 +380,13 @@ loop:
 	for _, r := range c.rr {
 		nodes[r.id] = Node{ID: r.id, Addr: r.addr, Type: Voter}
 	}
-	if _, err := c.rr[0].waitTask(Bootstrap(nodes), c.longTimeout); err != nil {
+	if _, err := c.rr["M1"].waitTask(Bootstrap(nodes), c.longTimeout); err != nil {
 		t.Fatal(err)
 	}
 
 	// the bootstrapped node should be the leader
 	c.ensureHealthy()
-	ldr := c.rr[0]
+	ldr := c.rr["M1"]
 	c.ensureLeader(ldr.id)
 
 	// should be able to apply
@@ -401,10 +397,10 @@ loop:
 	c.ensureFSMSame([]string{"hello"})
 
 	// ensure bootstrap fails if already bootstrapped
-	if _, err := c.rr[0].waitTask(Bootstrap(nodes), c.longTimeout); err != ErrCantBootstrap {
+	if _, err := c.rr["M1"].waitTask(Bootstrap(nodes), c.longTimeout); err != ErrCantBootstrap {
 		t.Fatalf("got %v, want %v", err, ErrCantBootstrap)
 	}
-	if _, err := c.rr[1].waitTask(Bootstrap(nodes), c.longTimeout); err != ErrCantBootstrap {
+	if _, err := c.rr["M2"].waitTask(Bootstrap(nodes), c.longTimeout); err != ErrCantBootstrap {
 		t.Fatalf("got %v, want %v", err, ErrCantBootstrap)
 	}
 
@@ -516,21 +512,27 @@ func TestMain(m *testing.M) {
 
 type cluster struct {
 	*testing.T
-	rr               []*Raft
+	rr               map[string]*Raft
 	network          *fnet.Network
 	heartbeatTimeout time.Duration
 	longTimeout      time.Duration
 	commitTimeout    time.Duration
+	opt              Options
 	fsmChangedCh     chan struct{}
 }
 
 func newCluster(t *testing.T) *cluster {
+	heartbeatTimeout := 50 * time.Millisecond
 	return &cluster{
 		T:                t,
-		heartbeatTimeout: 50 * time.Millisecond,
+		rr:               make(map[string]*Raft),
+		heartbeatTimeout: heartbeatTimeout,
 		longTimeout:      5 * time.Second,
 		commitTimeout:    5 * time.Millisecond,
 		fsmChangedCh:     make(chan struct{}, 1),
+		opt: Options{
+			HeartbeatTimeout: heartbeatTimeout,
+		},
 	}
 }
 
@@ -543,14 +545,6 @@ func (c *cluster) launch(n int, bootstrap bool) {
 		nodes[id] = Node{ID: id, Addr: string(id) + ":8888", Type: Voter}
 	}
 
-	c.rr = make([]*Raft, n)
-	opt := Options{
-		HeartbeatTimeout: c.heartbeatTimeout,
-	}
-	trace := Trace{
-		StateChanged:    stateChanged,
-		ElectionAborted: electionAborted,
-	}
 	i := 0
 	for _, node := range nodes {
 		inMemStorage := new(inmem.Storage)
@@ -562,12 +556,12 @@ func (c *cluster) launch(n int, bootstrap bool) {
 			}
 		}
 		fsm := &fsmMock{changedCh: c.fsmChangedCh}
-		r, err := New(node.ID, node.Addr, opt, fsm, storage, trace)
+		r, err := New(node.ID, node.Addr, c.opt, fsm, storage, trace)
 		if err != nil {
 			c.Fatal(err)
 		}
 
-		c.rr[i] = r
+		c.rr[string(node.ID)] = r
 		i++
 
 		// switch to fake transport
@@ -582,10 +576,10 @@ func (c *cluster) launch(n int, bootstrap bool) {
 	}
 }
 
-func (c *cluster) ensureStability() {
+func (c *cluster) ensureStability(excludes ...NodeID) {
 	c.Helper()
 	limitTimer := time.NewTimer(c.longTimeout)
-	startupTimeout := 2 * c.heartbeatTimeout
+	startupTimeout := c.heartbeatTimeout
 	electionTimer := time.NewTimer(startupTimeout + 2*c.heartbeatTimeout)
 
 	select {
@@ -593,11 +587,19 @@ func (c *cluster) ensureStability() {
 	default:
 	}
 
+loop:
 	for {
 		select {
 		case <-limitTimer.C:
 			c.Fatal("cluster is not stable")
 		case <-stateChangedCh:
+			electionTimer.Reset(2 * c.heartbeatTimeout)
+		case id := <-electionStartedCh:
+			for _, exclude := range excludes {
+				if id == exclude {
+					continue loop
+				}
+			}
 			electionTimer.Reset(2 * c.heartbeatTimeout)
 		case <-electionTimer.C:
 			return
@@ -691,7 +693,7 @@ func (c *cluster) ensureFSMReplicated(len uint64) {
 func (c *cluster) ensureFSMSame(want []string) {
 	c.Helper()
 	if want == nil {
-		want = c.rr[0].fsmMock().commands()
+		want = c.rr["M1"].fsmMock().commands()
 	}
 	for _, r := range c.rr {
 		if got := r.fsmMock().commands(); !reflect.DeepEqual(got, want) {
@@ -788,9 +790,16 @@ func (r *Raft) inspect(fn func(Info)) {
 // trace ----------------------------------------------------------------------
 
 var stateChangedCh = make(chan struct{}, 1)
+var electionStartedCh = make(chan NodeID, 1)
 var electionAbortedCh = make(chan NodeID, 10)
-var stateChanged = func(_ Info) {
+var stateChanged = func(info Info) {
 	notify(stateChangedCh)
+}
+var electionStarted = func(info Info) {
+	select {
+	case electionAbortedCh <- info.ID():
+	default:
+	}
 }
 var electionAborted = func(info Info, reason string) {
 	debug(info.ID(), info.Term(), string(info.State()), "|", "electionAborted", reason)
@@ -798,6 +807,11 @@ var electionAborted = func(info Info, reason string) {
 	case electionAbortedCh <- info.ID():
 	default:
 	}
+}
+var trace = Trace{
+	StateChanged:    stateChanged,
+	ElectionStarted: electionStarted,
+	ElectionAborted: electionAborted,
 }
 
 // ---------------------------------------------
