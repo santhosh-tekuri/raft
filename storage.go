@@ -96,6 +96,19 @@ func (s *Storage) getConfigs() (Configs, error) {
 			return configs, err
 		}
 	}
+
+	// handle the case, where config is stored in log but
+	// crashed before saving in vars
+	last, err := s.lastEntry()
+	if err != nil {
+		return configs, err
+	}
+	if last != nil && last.typ == entryConfig && last.index > latest {
+		if err := configs.Latest.decode(last); err != nil {
+			return configs, err
+		}
+	}
+
 	return configs, nil
 }
 
