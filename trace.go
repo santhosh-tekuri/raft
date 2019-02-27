@@ -26,28 +26,28 @@ func NewTrace(w io.Writer) Trace {
 	}
 }
 
-func (r *Raft) info() Info {
+func (r *Raft) liveInfo() Info {
 	return liveInfo{r: r}
 }
 
-func (ldr *leadership) info() Info {
+func (ldr *leadership) liveInfo() Info {
 	return liveInfo{r: ldr.Raft, ldr: ldr}
 }
 
 func (r *Raft) stateChanged() {
 	if r.trace.StateChanged != nil {
-		r.trace.StateChanged(r.info())
+		r.trace.StateChanged(r.liveInfo())
 	}
 }
 
 func (ldr *leadership) stateChanged() {
 	if ldr.trace.StateChanged != nil {
-		ldr.trace.StateChanged(ldr.info())
+		ldr.trace.StateChanged(ldr.liveInfo())
 	}
 }
 
 func (r *Raft) electionAborted(reason string) {
 	if r.trace.ElectionAborted != nil {
-		r.trace.ElectionAborted(r.info(), reason)
+		r.trace.ElectionAborted(r.liveInfo(), reason)
 	}
 }

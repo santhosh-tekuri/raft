@@ -81,7 +81,7 @@ func (r *Raft) startElection() <-chan voteResult {
 
 	debug(r, "startElection")
 	if r.trace.ElectionStarted != nil {
-		r.trace.ElectionStarted(r.info())
+		r.trace.ElectionStarted(r.liveInfo())
 	}
 
 	// send RequestVote RPCs to all other servers
