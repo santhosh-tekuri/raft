@@ -127,12 +127,12 @@ func TestRaft_SingleNode(t *testing.T) {
 	go r.Serve(l)
 
 	// wait for fsm restore
-	limit := time.Now().Add(cc.longTimeout)
-	for time.Now().Before(limit) {
-		if info := r.Info(); info.LastLogIndex() == info.Committed() {
-			break
-		}
-		time.Sleep(cc.commitTimeout)
+	fsmRestored := func() bool {
+		info := r.Info()
+		return info.LastLogIndex() == info.Committed()
+	}
+	if !ensureTimeoutSleep(fsmRestored, cc.commitTimeout, cc.longTimeout) {
+		t.Fatal("fsm restore failed after restart")
 	}
 
 	// ensure that fsm has been restored from log
@@ -585,7 +585,7 @@ func (c *cluster) launch(n int, bootstrap bool) {
 func (c *cluster) ensureStability() {
 	c.Helper()
 	limitTimer := time.NewTimer(c.longTimeout)
-	startupTimeout := c.heartbeatTimeout
+	startupTimeout := 2 * c.heartbeatTimeout
 	electionTimer := time.NewTimer(startupTimeout + 2*c.heartbeatTimeout)
 
 	select {
@@ -662,7 +662,7 @@ func (c *cluster) waitForLeader(timeout time.Duration) {
 		return false
 	}
 
-	if !ensureTimeout(cond, stateChangedCh, timeout) {
+	if !ensureTimeoutCh(cond, stateChangedCh, timeout) {
 		c.Fatalf("waitForLeader timeout")
 	}
 }
@@ -681,7 +681,7 @@ func (c *cluster) ensureFSMReplicated(len uint64) {
 	cond := func() bool {
 		return c.fsmReplicated(len)
 	}
-	if !ensureTimeout(cond, c.fsmChangedCh, c.longTimeout) {
+	if !ensureTimeoutCh(cond, c.fsmChangedCh, c.longTimeout) {
 		c.Fatalf("ensure fsmReplicated(%d): timeout after %s", len, c.longTimeout)
 	}
 }
@@ -731,7 +731,7 @@ func (r *Raft) waitForState(timeout time.Duration, states ...State) bool {
 		}
 		return false
 	}
-	return ensureTimeout(cond, stateChangedCh, timeout)
+	return ensureTimeoutCh(cond, stateChangedCh, timeout)
 }
 
 func (r *Raft) fsmMock() *fsmMock {
@@ -785,7 +785,7 @@ func (r *Raft) inspect(fn func(Info)) {
 	_, _ = r.waitTask(Inspect(fn), 0)
 }
 
-// events ----------------------------------------------------------------------
+// trace ----------------------------------------------------------------------
 
 var stateChangedCh = make(chan struct{}, 1)
 var electionAbortedCh = make(chan NodeID, 10)
@@ -851,7 +851,18 @@ func notify(ch chan<- struct{}) {
 	}
 }
 
-func ensureTimeout(condition func() bool, ch <-chan struct{}, timeout time.Duration) bool {
+func ensureTimeoutSleep(condition func() bool, sleep, timeout time.Duration) bool {
+	limit := time.Now().Add(timeout)
+	for time.Now().Before(limit) {
+		if condition() {
+			return true
+		}
+		time.Sleep(sleep)
+	}
+	return false
+}
+
+func ensureTimeoutCh(condition func() bool, ch <-chan struct{}, timeout time.Duration) bool {
 	var timeoutCh <-chan time.Time
 	if timeout <= 0 {
 		timeoutCh = make(chan time.Time)

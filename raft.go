@@ -119,7 +119,16 @@ func New(id NodeID, addr string, opt Options, fsm FSM, storage *Storage, trace T
 	}, nil
 }
 
+func (r *Raft) ID() NodeID {
+	return r.id
+}
+
+func (r *Raft) FMS() FSM {
+	return r.fsm
+}
+
 // todo: note that we dont support multiple listeners
+
 func (r *Raft) Serve(l net.Listener) error {
 	r.wg.Add(2)
 	go r.loop()
