@@ -16,7 +16,7 @@ type Trace struct {
 	ConfigReverted  func(info Info)
 }
 
-func NewTrace(w io.Writer) Trace {
+func NewTraceWriter(w io.Writer) Trace {
 	return Trace{
 		StateChanged: func(info Info) {
 			if info.State() == Leader {
@@ -25,6 +25,15 @@ func NewTrace(w io.Writer) Trace {
 		},
 		ElectionAborted: func(info Info, reason string) {
 			_, _ = fmt.Fprintf(w, "[INFO] raft: %s, aborting election\n", reason)
+		},
+		ConfigChanged: func(info Info) {
+			_, _ = fmt.Fprintf(w, "[INFO] raft: config changed to %s\n", info.Configs().Latest)
+		},
+		ConfigCommitted: func(info Info) {
+			_, _ = fmt.Fprintln(w, "[INFO] raft: config committed")
+		},
+		ConfigReverted: func(info Info) {
+			_, _ = fmt.Fprintf(w, "[INFO] raft: config reverted to %s\n", info.Configs().Latest)
 		},
 	}
 }
