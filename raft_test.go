@@ -51,11 +51,7 @@ func TestRaft_SingleNode(t *testing.T) {
 	defer leaktest.Check(t)()
 	c := newCluster(t)
 	c.launch(1, true)
-	defer func() {
-		if c != nil {
-			c.shutdown()
-		}
-	}()
+	defer c.shutdown()
 	ldr := c.ensureHealthy()
 
 	// should be able to apply
@@ -83,12 +79,10 @@ func TestRaft_SingleNode(t *testing.T) {
 	}
 
 	// shutdown and restart with fresh fsm and new addr
-	cc := c
-	c = nil
-	cc.shutdown()
-	fsm := &fsmMock{changedCh: cc.fsmChangedCh}
-	storage := NewStorage(ldr.storage.vars, ldr.storage.log)
-	r, err := New(ldr.ID(), "localhost:0", cc.opt, fsm, storage, trace)
+	c.shutdown()
+	fsm := &fsmMock{changedCh: c.fsmChangedCh}
+	storage := c.storage[string(ldr.ID())]
+	r, err := New(ldr.ID(), "localhost:0", c.opt, fsm, storage, trace)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,13 +91,16 @@ func TestRaft_SingleNode(t *testing.T) {
 		t.Fatal(err)
 	}
 	go r.Serve(l)
+	defer func() {
+		r.Shutdown().Wait()
+	}()
 
 	// wait for fsm restore
 	fsmRestored := func() bool {
 		info := r.Info()
 		return info.LastLogIndex() == info.Committed()
 	}
-	if !ensureTimeoutSleep(fsmRestored, cc.commitTimeout, cc.longTimeout) {
+	if !ensureTimeoutSleep(fsmRestored, c.commitTimeout, c.longTimeout) {
 		t.Fatal("fsm restore failed after restart")
 	}
 
@@ -114,7 +111,6 @@ func TestRaft_SingleNode(t *testing.T) {
 	if cmd := fsm.lastCommand(); cmd != "test" {
 		t.Fatalf("fsm.lastCommand: got %s want test", cmd)
 	}
-	r.Shutdown().Wait()
 }
 
 func TestRaft_Shutdown(t *testing.T) {
@@ -200,7 +196,7 @@ func TestRaft_LeaderFail(t *testing.T) {
 		t.Fatalf("expected new leader term: newLdrTerm=%d, ldrTerm=%d", newLdrTerm, ldrTerm)
 	}
 
-	// apply should work not work on old leader
+	// apply should not work on old leader
 	_, err = waitUpdate(ldr, "reject", c.heartbeatTimeout)
 	if err, ok := err.(NotLeaderError); !ok {
 		t.Fatalf("got %v, want NotLeaderError", err)
@@ -581,6 +577,7 @@ func TestMain(m *testing.M) {
 type cluster struct {
 	*testing.T
 	rr               map[string]*Raft
+	storage          map[string]*Storage
 	network          *fnet.Network
 	heartbeatTimeout time.Duration
 	longTimeout      time.Duration
@@ -594,6 +591,7 @@ func newCluster(t *testing.T) *cluster {
 	return &cluster{
 		T:                t,
 		rr:               make(map[string]*Raft),
+		storage:          make(map[string]*Storage),
 		heartbeatTimeout: heartbeatTimeout,
 		longTimeout:      5 * time.Second,
 		commitTimeout:    5 * time.Millisecond,
@@ -630,6 +628,7 @@ func (c *cluster) launch(n int, bootstrap bool) {
 		}
 
 		c.rr[string(node.ID)] = r
+		c.storage[string(node.ID)] = storage
 		i++
 
 		// switch to fake transport

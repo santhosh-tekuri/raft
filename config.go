@@ -128,6 +128,22 @@ func (c *Config) decode(e *entry) error {
 	return nil
 }
 
+func (c Config) String() string {
+	var voters, staging, nonVoters []string
+	for _, n := range c.Nodes {
+		s := fmt.Sprintf("%v[%s]", n.ID, n.Addr)
+		switch n.Type {
+		case Voter:
+			voters = append(voters, s)
+		case Staging:
+			staging = append(staging, s)
+		case NonVoter:
+			nonVoters = append(nonVoters, s)
+		}
+	}
+	return fmt.Sprintf("voters: %v, staging: %v, nonVoters: %v", voters, staging, nonVoters)
+}
+
 // ---------------------------------------------------------
 
 type Configs struct {
@@ -147,4 +163,28 @@ func (c Configs) IsBootstrap() bool {
 
 func (c Configs) IsCommitted() bool {
 	return c.Latest.Index == c.Committed.Index
+}
+
+func (r *Raft) changeConfig(new Config) {
+	r.configs.Committed, r.configs.Latest = r.configs.Latest, new
+	r.storage.setConfigs(r.configs)
+	if r.trace.ConfigChanged != nil {
+		r.trace.ConfigChanged(r.liveInfo())
+	}
+}
+
+func (r *Raft) commitConfig() {
+	r.configs.Committed = r.configs.Latest
+	r.storage.setConfigs(r.configs)
+	if r.trace.ConfigCommitted != nil {
+		r.trace.ConfigCommitted(r.liveInfo())
+	}
+}
+
+func (r *Raft) revertConfig() {
+	r.configs.Latest = r.configs.Committed
+	r.storage.setConfigs(r.configs)
+	if r.trace.ConfigReverted != nil {
+		r.trace.ConfigReverted(r.liveInfo())
+	}
 }

@@ -65,10 +65,12 @@ type Raft struct {
 
 	connPools map[string]*connPool
 
-	taskCh     chan Task
-	newEntryCh chan NewEntry
-	trace      Trace
-	shutdownCh chan struct{}
+	ldr          *leadership
+	taskCh       chan Task
+	newEntryCh   chan NewEntry
+	trace        Trace
+	shutdownOnce sync.Once
+	shutdownCh   chan struct{}
 }
 
 func New(id NodeID, addr string, opt Options, fsm FSM, storage *Storage, trace Trace) (*Raft, error) {
@@ -137,13 +139,10 @@ func (r *Raft) Serve(l net.Listener) error {
 }
 
 func (r *Raft) Shutdown() *sync.WaitGroup {
-	select {
-	case <-r.shutdownCh:
-		// shutdown already called
-	default:
+	r.shutdownOnce.Do(func() {
 		debug(r.id, ">> shutdown()")
 		close(r.shutdownCh)
-	}
+	})
 	return &r.wg
 }
 

@@ -116,7 +116,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesRequest) *appendEntriesR
 	}
 
 	// we came here, it means we got valid request
-	if len(req.entries) > 0 { // todo: should we check this. what if leader wants us to truncate
+	if len(req.entries) > 0 {
 		var newEntries []*entry
 
 		// if new entry conflicts, delete it and all that follow it
@@ -131,8 +131,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesRequest) *appendEntriesR
 				debug(r, "log.deleteGTE", ne.index)
 				r.storage.deleteGTE(ne.index)
 				if ne.index <= r.configs.Latest.Index {
-					r.configs.Latest = r.configs.Committed
-					r.storage.setConfigs(r.configs)
+					r.revertConfig()
 				}
 				newEntries = req.entries[i:]
 				break
@@ -142,19 +141,15 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesRequest) *appendEntriesR
 		// append new entries not already in the log
 		if len(newEntries) > 0 {
 			debug(r, "log.appendN", "from:", newEntries[0].index, "n:", len(newEntries))
-			var confEntry *entry
 			for _, e := range newEntries {
 				r.storage.append(e)
 				if e.typ == entryConfig {
-					confEntry = e
-					r.configs.Committed = r.configs.Latest
+					var newConfig Config
+					if err := newConfig.decode(e); err != nil {
+						panic(err)
+					}
+					r.changeConfig(newConfig)
 				}
-			}
-			if confEntry != nil {
-				if err := r.configs.Latest.decode(confEntry); err != nil {
-					panic(err)
-				}
-				r.storage.setConfigs(r.configs)
 			}
 			last := newEntries[len(newEntries)-1]
 			r.lastLogIndex, r.lastLogTerm = last.index, last.term

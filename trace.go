@@ -11,6 +11,9 @@ type Trace struct {
 	StateChanged    func(info Info)
 	ElectionStarted func(info Info)
 	ElectionAborted func(info Info, reason string)
+	ConfigChanged   func(info Info)
+	ConfigCommitted func(info Info)
+	ConfigReverted  func(info Info)
 }
 
 func NewTrace(w io.Writer) Trace {
@@ -27,22 +30,12 @@ func NewTrace(w io.Writer) Trace {
 }
 
 func (r *Raft) liveInfo() Info {
-	return liveInfo{r: r}
-}
-
-func (ldr *leadership) liveInfo() Info {
-	return liveInfo{r: ldr.Raft, ldr: ldr}
+	return liveInfo{r: r, ldr: r.ldr}
 }
 
 func (r *Raft) stateChanged() {
 	if r.trace.StateChanged != nil {
 		r.trace.StateChanged(r.liveInfo())
-	}
-}
-
-func (ldr *leadership) stateChanged() {
-	if ldr.trace.StateChanged != nil {
-		ldr.trace.StateChanged(ldr.liveInfo())
 	}
 }
 

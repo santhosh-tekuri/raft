@@ -12,7 +12,7 @@ import (
 const minCheckInterval = 10 * time.Millisecond
 
 func (r *Raft) runLeader() {
-	ldr := leadership{
+	ldr := &leadership{
 		Raft:         r,
 		leaseTimeout: r.hbTimeout, // todo: should it be same as heartbeatTimeout ? make configurable
 		leaseTimer:   time.NewTimer(time.Hour),
@@ -20,7 +20,9 @@ func (r *Raft) runLeader() {
 		repls:        make(map[NodeID]*replication),
 	}
 	ldr.leaseTimer.Stop() // we start it on detecting failures
+	r.ldr = ldr
 	ldr.runLoop()
+	r.ldr = nil
 }
 
 // ----------------------------------------------
@@ -360,18 +362,17 @@ func (ldr *leadership) addNode(t addNode) {
 	}
 	newConfig := ldr.configs.Latest.clone()
 	newConfig.Nodes[t.node.ID] = t.node
-	ldr.applyConfig(t.task, newConfig)
+	ldr.storeConfig(t.task, newConfig)
 }
 
-func (ldr *leadership) applyConfig(t *task, newConfig Config) {
+func (ldr *leadership) storeConfig(t *task, newConfig Config) {
 	ne := NewEntry{
 		entry: newConfig.encode(),
 		task:  t,
 	}
 	ldr.storeEntry(ne)
 	newConfig.Index, newConfig.Term = ne.index, ne.term
-	ldr.configs.Latest = newConfig
-	ldr.storage.setConfigs(ldr.configs)
+	ldr.changeConfig(newConfig)
 
 	// now majority might have changed. needs to be recalculated
 	ldr.onMajorityCommit()

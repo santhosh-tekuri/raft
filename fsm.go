@@ -32,8 +32,7 @@ func (r *Raft) fsmLoop() {
 func (r *Raft) applyCommitted(newEntries *list.List) {
 	// first commit latest config if not yet committed
 	if !r.configs.IsCommitted() && r.configs.Latest.Index <= r.commitIndex {
-		r.configs.Committed = r.configs.Latest
-		r.storage.setConfigs(r.configs)
+		r.commitConfig()
 		if r.state == Leader && r.configs.Latest.typeOf(r.id) != Voter {
 			debug(r, "leader -> follower notVoter")
 			r.state = Follower
