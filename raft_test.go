@@ -216,7 +216,7 @@ func TestRaft_LeaderFail(t *testing.T) {
 	c.ensureStability(ldr.ID())
 	newLdr := c.leader()
 	if newLdr == ldr {
-		t.Fatalf("newLeader: got %s, want !=%s", newLdr.addr, ldr.addr)
+		t.Fatalf("newLeader: got %s, want !=%s", newLdr.ID(), ldr.ID())
 	}
 
 	// ensure leader term is greater
@@ -295,13 +295,14 @@ func TestRaft_ApplyNonLeader(t *testing.T) {
 	c.ensureLeader(ldr.ID())
 
 	// apply should work not work on non-leader
+	ldrAddr := ldr.Info().Addr()
 	for _, r := range c.rr {
 		if r != ldr {
 			_, err := r.waitApply("reject", c.commitTimeout)
 			if err, ok := err.(NotLeaderError); !ok {
 				t.Fatalf("got %v, want NotLeaderError", err)
-			} else if err.Leader != ldr.addr {
-				t.Fatalf("got %s, want %s", err.Leader, ldr.addr)
+			} else if err.Leader != ldrAddr {
+				t.Fatalf("got %s, want %s", err.Leader, ldrAddr)
 			}
 		}
 	}
@@ -390,8 +391,8 @@ loop:
 
 	// bootstrap one of the nodes
 	nodes := make(map[NodeID]Node, 3)
-	for _, r := range c.rr {
-		nodes[r.ID()] = Node{ID: r.ID(), Addr: r.addr, Type: Voter}
+	for id, r := range c.rr {
+		nodes[r.ID()] = Node{ID: r.ID(), Addr: id + ":8888", Type: Voter}
 	}
 	if _, err := c.rr["M1"].waitTask(Bootstrap(nodes), c.longTimeout); err != nil {
 		t.Fatal(err)
@@ -422,7 +423,7 @@ loop:
 	c.ensureStability()
 	newLdr := c.leader()
 	if newLdr == ldr {
-		t.Fatalf("newLeader: got %s, want !=%s", newLdr.addr, ldr.addr)
+		t.Fatalf("newLeader: got %s, want !=%s", newLdr.ID(), ldr.ID())
 	}
 }
 
@@ -671,7 +672,7 @@ func (c *cluster) ensureLeader(leaderID NodeID) {
 	c.Helper()
 	for _, r := range c.rr {
 		if got := r.Info().LeaderID(); got != leaderID {
-			c.Fatalf("leader of %s: got %s, want %s", r.addr, got, leaderID)
+			c.Fatalf("leader of %s: got %s, want %s", r.ID(), got, leaderID)
 		}
 	}
 }
@@ -727,7 +728,7 @@ func (c *cluster) ensureFSMSame(want []string) {
 }
 
 func (c *cluster) disconnect(r *Raft) {
-	host, _, _ := net.SplitHostPort(r.addr)
+	host := string(r.ID())
 	debug("-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<- disconnecting", host)
 	c.network.SetFirewall(fnet.Split([]string{host}, fnet.AllowAll))
 }
@@ -740,7 +741,7 @@ func (c *cluster) connect() {
 func (c *cluster) shutdown() {
 	for _, r := range c.rr {
 		r.Shutdown().Wait()
-		debug(r.addr, "<< shutdown()")
+		debug(r.ID(), "<< shutdown()")
 	}
 }
 
