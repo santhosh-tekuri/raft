@@ -505,6 +505,15 @@ func TestRaft_Barrier(t *testing.T) {
 	if len0 != len1 && len0 != len2 {
 		t.Fatalf("len0 %d, len1 %d, len2 %d", len0, len1, len2)
 	}
+
+	// ensure that barrier is not stored in log
+	want := ldr.Info().LastLogIndex()
+	b = BarrierEntry()
+	ldr.NewEntries() <- b
+	<-b.Done()
+	if got := ldr.Info().LastLogIndex(); got != want {
+		t.Fatalf("lastLogIndex: got %d, want %d", got, want)
+	}
 }
 
 // todo: test that non voter does not start election

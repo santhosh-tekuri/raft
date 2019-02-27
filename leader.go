@@ -234,14 +234,14 @@ func (ldr *leadership) storeEntry(ne NewEntry) {
 
 	// append entry to local log
 	debug(ldr, "log.append", ne.typ, ne.index)
-	if ne.typ != entryQuery {
+	if ne.typ != entryQuery && ne.typ != entryBarrier {
 		ldr.storage.append(ne.entry)
 		ldr.lastLogIndex, ldr.lastLogTerm = ne.index, ne.term
 	}
 	ldr.newEntries.PushBack(ne)
 
 	// we updated lastLogIndex, so notify replicators
-	if ne.typ == entryQuery {
+	if ne.typ == entryQuery || ne.typ == entryBarrier {
 		ldr.applyCommitted(ldr.newEntries)
 	} else {
 		ldr.notifyReplicators()

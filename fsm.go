@@ -45,12 +45,12 @@ func (r *Raft) applyCommitted(newEntries *list.List) {
 	}
 
 	for {
-		// send query entries to fsm
+		// send query/barrier entries to fsm
 		if newEntries != nil {
 			for newEntries.Len() > 0 {
 				elem := newEntries.Front()
 				ne := elem.Value.(NewEntry)
-				if ne.index == r.lastApplied+1 && ne.typ == entryQuery {
+				if ne.index == r.lastApplied+1 && (ne.typ == entryQuery || ne.typ == entryBarrier) {
 					newEntries.Remove(elem)
 					debug(r, "fms <- {", ne.typ, ne.index, "}")
 					select {
@@ -79,10 +79,12 @@ func (r *Raft) applyCommitted(newEntries *list.List) {
 			}
 
 			switch ne.typ {
+			case entryNop:
+				// do nothing
 			case entryConfig:
 				// we already processed in beginning
 				ne.reply(nil)
-			case entryUpdate, entryQuery, entryBarrier:
+			case entryUpdate:
 				debug(r, "fms <- {", ne.typ, ne.index, "}")
 				select {
 				case <-r.shutdownCh:
@@ -90,7 +92,7 @@ func (r *Raft) applyCommitted(newEntries *list.List) {
 				case r.fsmApplyCh <- ne:
 				}
 			default:
-				assert(ne.typ == entryNop, "got %d, want %d", ne.typ, entryNop)
+				assert(true, "got unexpected entryType %d", ne.typ)
 			}
 			r.lastApplied++
 		} else {
