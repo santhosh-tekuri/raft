@@ -494,6 +494,9 @@ func TestRaft_Barrier(t *testing.T) {
 	}
 }
 
+// todo: test that non voter does not start election
+//        * if he started as voter and hasn't got any requests from leader
+//        * if leader contact lost for more than heartbeat timeout
 // todo: test query entries
 // todo: test removal of leader, removal of follower
 //       ensure that leader replies confChange
@@ -579,8 +582,7 @@ func (c *cluster) launch(n int, bootstrap bool) {
 func (c *cluster) ensureStability(excludes ...NodeID) {
 	c.Helper()
 	limitTimer := time.NewTimer(c.longTimeout)
-	startupTimeout := c.heartbeatTimeout
-	electionTimer := time.NewTimer(startupTimeout + 2*c.heartbeatTimeout)
+	electionTimer := time.NewTimer(4 * c.heartbeatTimeout)
 
 	select {
 	case <-stateChangedCh:
@@ -593,14 +595,14 @@ loop:
 		case <-limitTimer.C:
 			c.Fatal("cluster is not stable")
 		case <-stateChangedCh:
-			electionTimer.Reset(2 * c.heartbeatTimeout)
+			electionTimer.Reset(4 * c.heartbeatTimeout)
 		case id := <-electionStartedCh:
 			for _, exclude := range excludes {
 				if id == exclude {
 					continue loop
 				}
 			}
-			electionTimer.Reset(2 * c.heartbeatTimeout)
+			electionTimer.Reset(4 * c.heartbeatTimeout)
 		case <-electionTimer.C:
 			return
 		}
