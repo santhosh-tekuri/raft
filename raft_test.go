@@ -18,62 +18,36 @@ import (
 )
 
 func TestRaft_Voting(t *testing.T) {
-	debug("\nTestRaft_Voting --------------------------")
+	Debug("\nTestRaft_Voting --------------------------")
 	defer leaktest.Check(t)()
 	c := newCluster(t)
 	c.launch(3, true)
 	defer c.shutdown()
 	ldr := c.ensureHealthy()
+	followers := c.followers()
 
 	c.ensureLeader(c.leader().ID())
 
-	req := &voteRequest{}
-	ldr.inspect(func(r Info) {
-		req.term = r.Term()
-		req.lastLogIndex = r.LastLogIndex()
-		req.lastLogTerm = r.LastLogTerm()
-	})
-
-	var followers []string
-	for _, node := range ldr.configs.Latest.Nodes {
-		if node.Type == Voter && node.Addr != ldr.addr {
-			followers = append(followers, node.Addr)
-		}
+	// a follower that thinks there's a leader should vote for that leader
+	granted, err := RequestVote(ldr, followers[0])
+	if err != nil {
+		t.Fatalf("requestVote failed: %v", err)
+	}
+	if !granted {
+		t.Fatalf("voteGranted: got %t, want true", granted)
 	}
 
-	// a follower that thinks there's a leader should vote for that leader
-	req.candidateID = ldr.addr
-	ldr.inspect(func(_ Info) {
-		resp, err := ldr.requestVote(ldr.getConnPool(followers[0]), req)
-		if err != nil {
-			t.Logf("requestVote failed: %v", err)
-			t.Fail()
-		}
-		if !resp.granted {
-			t.Logf("voteGranted: got %t, want true", resp.granted)
-			t.Fail()
-		}
-	})
-
 	// a follower that thinks there's a leader shouldn't vote for a different candidate
-	req.candidateID = followers[0]
-	ldr.inspect(func(_ Info) {
-		resp, err := ldr.requestVote(ldr.getConnPool(followers[1]), req)
-		if err != nil {
-			t.Logf("requestVote failed: %v", err)
-			t.Fail()
-		} else if resp.granted {
-			t.Logf("voteGranted: got %t, want false", resp.granted)
-			t.Fail()
-		}
-	})
-	if t.Failed() {
-		t.FailNow()
+	granted, err = RequestVote(followers[0], followers[1])
+	if err != nil {
+		t.Fatalf("requestVote failed: %v", err)
+	} else if granted {
+		t.Fatalf("voteGranted: got %t, want false", granted)
 	}
 }
 
 func TestRaft_SingleNode(t *testing.T) {
-	debug("\nTestRaft_SingleNode --------------------------")
+	Debug("\nTestRaft_SingleNode --------------------------")
 	defer leaktest.Check(t)()
 	c := newCluster(t)
 	c.launch(1, true)
@@ -85,7 +59,7 @@ func TestRaft_SingleNode(t *testing.T) {
 	ldr := c.ensureHealthy()
 
 	// should be able to apply
-	resp, err := ldr.waitUpdate("test", c.heartbeatTimeout)
+	resp, err := waitUpdate(ldr, "test", c.heartbeatTimeout)
 	if err != nil {
 		t.Fatalf("apply failed: %v", err)
 	}
@@ -99,12 +73,12 @@ func TestRaft_SingleNode(t *testing.T) {
 	if resp.index != 1 {
 		t.Fatalf("fsmReplyIndex: got %d want 1", resp.index)
 	}
-	if idx := ldr.fsmMock().len(); idx != 1 {
+	if idx := fsm(ldr).len(); idx != 1 {
 		t.Fatalf("fsm.len: got %d want 1", idx)
 	}
 
 	// check that it is applied to the FSM
-	if cmd := ldr.fsmMock().lastCommand(); cmd != "test" {
+	if cmd := fsm(ldr).lastCommand(); cmd != "test" {
 		t.Fatalf("fsm.lastCommand: got %s want test", cmd)
 	}
 
@@ -134,17 +108,17 @@ func TestRaft_SingleNode(t *testing.T) {
 	}
 
 	// ensure that fsm has been restored from log
-	if idx := r.fsmMock().len(); idx != 1 {
+	if idx := fsm.len(); idx != 1 {
 		t.Fatalf("fsm.len: got %d want 1", idx)
 	}
-	if cmd := r.fsmMock().lastCommand(); cmd != "test" {
+	if cmd := fsm.lastCommand(); cmd != "test" {
 		t.Fatalf("fsm.lastCommand: got %s want test", cmd)
 	}
 	r.Shutdown().Wait()
 }
 
 func TestRaft_Shutdown(t *testing.T) {
-	debug("\nTestRaft_Shutdown --------------------------")
+	Debug("\nTestRaft_Shutdown --------------------------")
 	defer leaktest.Check(t)()
 	c := newCluster(t)
 	c.launch(1, true)
@@ -157,7 +131,7 @@ func TestRaft_Shutdown(t *testing.T) {
 }
 
 func TestRaft_TripleNode(t *testing.T) {
-	debug("\nTestRaft_TripleNode --------------------------")
+	Debug("\nTestRaft_TripleNode --------------------------")
 	defer leaktest.Check(t)()
 	c := newCluster(t)
 	c.launch(3, true)
@@ -168,7 +142,7 @@ func TestRaft_TripleNode(t *testing.T) {
 	c.ensureLeader(ldr.ID())
 
 	// should be able to apply
-	resp, err := ldr.waitUpdate("test", c.heartbeatTimeout)
+	resp, err := waitUpdate(ldr, "test", c.heartbeatTimeout)
 	if err != nil {
 		t.Fatalf("apply failed: %v", err)
 	}
@@ -182,7 +156,7 @@ func TestRaft_TripleNode(t *testing.T) {
 }
 
 func TestRaft_LeaderFail(t *testing.T) {
-	debug("\nTestRaft_LeaderFail --------------------------")
+	Debug("\nTestRaft_LeaderFail --------------------------")
 	defer leaktest.Check(t)()
 	c := newCluster(t)
 	c.launch(3, true)
@@ -193,7 +167,7 @@ func TestRaft_LeaderFail(t *testing.T) {
 	c.ensureLeader(ldr.ID())
 
 	// should be able to apply
-	resp, err := ldr.waitUpdate("test", c.heartbeatTimeout)
+	resp, err := waitUpdate(ldr, "test", c.heartbeatTimeout)
 	if err != nil {
 		t.Fatalf("apply failed: %v", err)
 	}
@@ -210,7 +184,7 @@ func TestRaft_LeaderFail(t *testing.T) {
 	c.disconnect(ldr)
 
 	// leader should stepDown
-	if !ldr.waitForState(c.longTimeout, Follower, Candidate) {
+	if !waitForState(ldr, c.longTimeout, Follower, Candidate) {
 		t.Fatal("leader should stepDown")
 	}
 
@@ -227,7 +201,7 @@ func TestRaft_LeaderFail(t *testing.T) {
 	}
 
 	// apply should work not work on old leader
-	_, err = ldr.waitUpdate("reject", c.heartbeatTimeout)
+	_, err = waitUpdate(ldr, "reject", c.heartbeatTimeout)
 	if err, ok := err.(NotLeaderError); !ok {
 		t.Fatalf("got %v, want NotLeaderError", err)
 	} else if err.Leader != "" {
@@ -235,7 +209,7 @@ func TestRaft_LeaderFail(t *testing.T) {
 	}
 
 	// apply should work on new leader
-	if _, err = newLdr.waitUpdate("accept", c.heartbeatTimeout); err != nil {
+	if _, err = waitUpdate(newLdr, "accept", c.heartbeatTimeout); err != nil {
 		t.Fatalf("got %v, want nil", err)
 	}
 
@@ -251,7 +225,7 @@ func TestRaft_LeaderFail(t *testing.T) {
 }
 
 func TestRaft_BehindFollower(t *testing.T) {
-	debug("\nTestRaft_BehindFollower --------------------------")
+	Debug("\nTestRaft_BehindFollower --------------------------")
 	defer leaktest.Check(t)()
 	c := newCluster(t)
 	c.launch(3, true)
@@ -269,7 +243,7 @@ func TestRaft_BehindFollower(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		ldr.NewEntries() <- UpdateEntry([]byte(fmt.Sprintf("test%d", i)))
 	}
-	if _, err := ldr.waitUpdate("test100", c.longTimeout); err != nil {
+	if _, err := waitUpdate(ldr, "test100", c.longTimeout); err != nil {
 		t.Fatal(err)
 	}
 
@@ -286,7 +260,7 @@ func TestRaft_BehindFollower(t *testing.T) {
 }
 
 func TestRaft_ApplyNonLeader(t *testing.T) {
-	debug("\nTestRaft_ApplyNonLeader --------------------------")
+	Debug("\nTestRaft_ApplyNonLeader --------------------------")
 	defer leaktest.Check(t)()
 	c := newCluster(t)
 	c.launch(3, true)
@@ -300,7 +274,7 @@ func TestRaft_ApplyNonLeader(t *testing.T) {
 	ldrAddr := ldr.Info().Addr()
 	for _, r := range c.rr {
 		if r != ldr {
-			_, err := r.waitUpdate("reject", c.commitTimeout)
+			_, err := waitUpdate(r, "reject", c.commitTimeout)
 			if err, ok := err.(NotLeaderError); !ok {
 				t.Fatalf("got %v, want NotLeaderError", err)
 			} else if err.Leader != ldrAddr {
@@ -311,7 +285,7 @@ func TestRaft_ApplyNonLeader(t *testing.T) {
 }
 
 func TestRaft_ApplyConcurrent(t *testing.T) {
-	debug("\nTestRaft_ApplyConcurrent --------------------------")
+	Debug("\nTestRaft_ApplyConcurrent --------------------------")
 	defer leaktest.Check(t)()
 	c := newCluster(t)
 	c.launch(3, true)
@@ -327,8 +301,8 @@ func TestRaft_ApplyConcurrent(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			if _, err := ldr.waitUpdate(fmt.Sprintf("test%d", i), 0); err != nil {
-				debug("FAIL got", err, "want nil")
+			if _, err := waitUpdate(ldr, fmt.Sprintf("test%d", i), 0); err != nil {
+				Debug("FAIL got", err, "want nil")
 				t.Fail() // note: t.Fatal should note be called from non-test goroutine
 			}
 		}(i)
@@ -358,7 +332,7 @@ func TestRaft_ApplyConcurrent(t *testing.T) {
 }
 
 func TestRaft_Bootstrap(t *testing.T) {
-	debug("\nTestRaft_Bootstrap --------------------------")
+	Debug("\nTestRaft_Bootstrap --------------------------")
 	defer leaktest.Check(t)()
 	c := newCluster(t)
 
@@ -396,7 +370,7 @@ loop:
 	for id, r := range c.rr {
 		nodes[r.ID()] = Node{ID: r.ID(), Addr: id + ":8888", Type: Voter}
 	}
-	if _, err := c.rr["M1"].waitTask(Bootstrap(nodes), c.longTimeout); err != nil {
+	if err := waitBootstrap(c.rr["M1"], nodes, c.longTimeout); err != nil {
 		t.Fatal(err)
 	}
 
@@ -406,17 +380,17 @@ loop:
 	c.ensureLeader(ldr.ID())
 
 	// should be able to apply
-	if _, err := ldr.waitUpdate("hello", 0); err != nil {
+	if _, err := waitUpdate(ldr, "hello", 0); err != nil {
 		t.Fatal(err)
 	}
 	c.ensureFSMReplicated(1)
 	c.ensureFSMSame([]string{"hello"})
 
 	// ensure bootstrap fails if already bootstrapped
-	if _, err := c.rr["M1"].waitTask(Bootstrap(nodes), c.longTimeout); err != ErrCantBootstrap {
+	if err := waitBootstrap(c.rr["M1"], nodes, c.longTimeout); err != ErrCantBootstrap {
 		t.Fatalf("got %v, want %v", err, ErrCantBootstrap)
 	}
-	if _, err := c.rr["M2"].waitTask(Bootstrap(nodes), c.longTimeout); err != ErrCantBootstrap {
+	if err := waitBootstrap(c.rr["M2"], nodes, c.longTimeout); err != ErrCantBootstrap {
 		t.Fatalf("got %v, want %v", err, ErrCantBootstrap)
 	}
 
@@ -430,7 +404,7 @@ loop:
 }
 
 func TestRaft_LeaderLeaseExpire(t *testing.T) {
-	debug("\nTestRaft_LeaderLeaseExpire --------------------------")
+	Debug("\nTestRaft_LeaderLeaseExpire --------------------------")
 	defer leaktest.Check(t)()
 	c := newCluster(t)
 	c.launch(2, true)
@@ -450,7 +424,7 @@ func TestRaft_LeaderLeaseExpire(t *testing.T) {
 	c.disconnect(followers[0])
 
 	// the leader should stepDown within leaderLeaseTimeout
-	if !ldr.waitForState(2*c.heartbeatTimeout, Follower, Candidate) {
+	if !waitForState(ldr, 2*c.heartbeatTimeout, Follower, Candidate) {
 		t.Fatal("leader did not stepDown")
 	}
 
@@ -460,7 +434,7 @@ func TestRaft_LeaderLeaseExpire(t *testing.T) {
 	}
 
 	// Ensure both have cleared their leader
-	if !followers[0].waitForState(2*c.heartbeatTimeout, Candidate) {
+	if !waitForState(followers[0], 2*c.heartbeatTimeout, Candidate) {
 		t.Fatal("follower should have become candidate")
 	}
 	for _, r := range c.rr {
@@ -471,7 +445,7 @@ func TestRaft_LeaderLeaseExpire(t *testing.T) {
 }
 
 func TestRaft_Barrier(t *testing.T) {
-	debug("\nTestRaft_Barrier --------------------------")
+	Debug("\nTestRaft_Barrier --------------------------")
 	defer leaktest.Check(t)()
 	c := newCluster(t)
 	c.launch(3, true)
@@ -489,12 +463,12 @@ func TestRaft_Barrier(t *testing.T) {
 	}
 
 	// wait for a barrier complete
-	if err := ldr.waitBarrier(0); err != nil {
+	if err := waitBarrier(ldr, 0); err != nil {
 		t.Fatalf("barrier failed: %v", err)
 	}
 
 	// ensure leader fsm got all commands
-	if got := ldr.fsmMock().len(); int(got) != n {
+	if got := fsm(ldr).len(); int(got) != n {
 		t.Fatalf("#entries: got %d, want %d", got, n)
 	}
 
@@ -508,7 +482,7 @@ func TestRaft_Barrier(t *testing.T) {
 
 	// ensure that barrier is not stored in log
 	want := ldr.Info().LastLogIndex()
-	if err := ldr.waitBarrier(0); err != nil {
+	if err := waitBarrier(ldr, 0); err != nil {
 		t.Fatalf("barrier failed: %v", err)
 	}
 	if got := ldr.Info().LastLogIndex(); got != want {
@@ -517,7 +491,7 @@ func TestRaft_Barrier(t *testing.T) {
 }
 
 func TestRaft_Query(t *testing.T) {
-	debug("\nTestRaft_Query --------------------------")
+	Debug("\nTestRaft_Query --------------------------")
 	defer leaktest.Check(t)()
 	c := newCluster(t)
 	c.launch(3, true)
@@ -528,13 +502,13 @@ func TestRaft_Query(t *testing.T) {
 	c.ensureLeader(ldr.ID())
 
 	// wait for fsm ready
-	if err := ldr.waitBarrier(0); err != nil {
+	if err := waitBarrier(ldr, 0); err != nil {
 		t.Fatalf("barrier failed: %v", err)
 	}
 
 	// send query
 	want := ldr.Info().LastLogIndex()
-	if _, err := ldr.waitQuery("query:last", 0); err != errNoCommands {
+	if _, err := waitQuery(ldr, "query:last", 0); err != errNoCommands {
 		t.Fatalf("got %v, want %v", err, errNoCommands)
 	}
 
@@ -544,7 +518,7 @@ func TestRaft_Query(t *testing.T) {
 	}
 
 	// ensure fsm is not changed
-	if got := ldr.fsmMock().len(); got != 0 {
+	if got := fsm(ldr).len(); got != 0 {
 		t.Fatalf("got %d, want %d", got, 0)
 	}
 
@@ -580,7 +554,7 @@ func TestRaft_Query(t *testing.T) {
 	}
 
 	// ensure fsm has all commands but not queries
-	if got := ldr.fsmMock().len(); got != 101 {
+	if got := fsm(ldr).len(); got != 101 {
 		t.Fatalf("got %d, want %d", got, 100)
 	}
 }
@@ -597,7 +571,7 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 
 	// wait until all pending debug messages are printed to stdout
-	debug("barrier")
+	Debug("barrier")
 
 	os.Exit(code)
 }
@@ -764,7 +738,7 @@ func (c *cluster) waitForLeader(timeout time.Duration) {
 
 func (c *cluster) fsmReplicated(len uint64) bool {
 	for _, r := range c.rr {
-		if got := r.fsmMock().len(); got != len {
+		if got := fsm(r).len(); got != len {
 			return false
 		}
 	}
@@ -786,10 +760,10 @@ func (c *cluster) ensureFSMReplicated(len uint64) {
 func (c *cluster) ensureFSMSame(want []string) {
 	c.Helper()
 	if want == nil {
-		want = c.rr["M1"].fsmMock().commands()
+		want = fsm(c.rr["M1"]).commands()
 	}
 	for _, r := range c.rr {
-		if got := r.fsmMock().commands(); !reflect.DeepEqual(got, want) {
+		if got := fsm(r).commands(); !reflect.DeepEqual(got, want) {
 			c.Fatalf("\n got %v\n want %v", got, want)
 		}
 	}
@@ -797,26 +771,26 @@ func (c *cluster) ensureFSMSame(want []string) {
 
 func (c *cluster) disconnect(r *Raft) {
 	host := string(r.ID())
-	debug("-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<- disconnecting", host)
+	Debug("-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<- disconnecting", host)
 	c.network.SetFirewall(fnet.Split([]string{host}, fnet.AllowAll))
 }
 
 func (c *cluster) connect() {
-	debug("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ reconnecting")
+	Debug("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ reconnecting")
 	c.network.SetFirewall(fnet.AllowAll)
 }
 
 func (c *cluster) shutdown() {
 	for _, r := range c.rr {
 		r.Shutdown().Wait()
-		debug(r.ID(), "<< shutdown()")
+		Debug(r.ID(), "<< shutdown()")
 	}
 }
 
 // ---------------------------------------------
 
 // wait until state is one of given states
-func (r *Raft) waitForState(timeout time.Duration, states ...State) bool {
+func waitForState(r *Raft, timeout time.Duration, states ...State) bool {
 	cond := func() bool {
 		got := r.Info().State()
 		for _, want := range states {
@@ -829,11 +803,11 @@ func (r *Raft) waitForState(timeout time.Duration, states ...State) bool {
 	return ensureTimeoutCh(cond, stateChangedCh, timeout)
 }
 
-func (r *Raft) fsmMock() *fsmMock {
+func fsm(r *Raft) *fsmMock {
 	return r.FSM().(*fsmMock)
 }
 
-func (r *Raft) waitTask(t Task, timeout time.Duration) (interface{}, error) {
+func waitTask(r *Raft, t Task, timeout time.Duration) (interface{}, error) {
 	var timer <-chan time.Time
 	if timeout > 0 {
 		timer = time.After(timeout)
@@ -852,8 +826,17 @@ func (r *Raft) waitTask(t Task, timeout time.Duration) (interface{}, error) {
 	}
 }
 
+func waitBootstrap(r *Raft, nodes map[NodeID]Node, timeout time.Duration) error {
+	_, err := waitTask(r, Bootstrap(nodes), timeout)
+	return err
+}
+
+func waitInspect(r *Raft, fn func(Info)) {
+	_, _ = waitTask(r, Inspect(fn), 0)
+}
+
 // use zero timeout, to wait till reply received
-func (r *Raft) waitNewEntry(ne NewEntry, timeout time.Duration) (fsmReply, error) {
+func waitNewEntry(r *Raft, ne NewEntry, timeout time.Duration) (fsmReply, error) {
 	var timer <-chan time.Time
 	if timeout > 0 {
 		timer = time.After(timeout)
@@ -879,21 +862,17 @@ func (r *Raft) waitNewEntry(ne NewEntry, timeout time.Duration) (fsmReply, error
 	}
 }
 
-func (r *Raft) waitUpdate(cmd string, timeout time.Duration) (fsmReply, error) {
-	return r.waitNewEntry(UpdateEntry([]byte(cmd)), timeout)
+func waitUpdate(r *Raft, cmd string, timeout time.Duration) (fsmReply, error) {
+	return waitNewEntry(r, UpdateEntry([]byte(cmd)), timeout)
 }
 
-func (r *Raft) waitQuery(query string, timeout time.Duration) (fsmReply, error) {
-	return r.waitNewEntry(QueryEntry([]byte(query)), timeout)
+func waitQuery(r *Raft, query string, timeout time.Duration) (fsmReply, error) {
+	return waitNewEntry(r, QueryEntry([]byte(query)), timeout)
 }
 
-func (r *Raft) waitBarrier(timeout time.Duration) error {
-	_, err := r.waitNewEntry(BarrierEntry(), timeout)
+func waitBarrier(r *Raft, timeout time.Duration) error {
+	_, err := waitNewEntry(r, BarrierEntry(), timeout)
 	return err
-}
-
-func (r *Raft) inspect(fn func(Info)) {
-	_, _ = r.waitTask(Inspect(fn), 0)
 }
 
 // trace ----------------------------------------------------------------------
@@ -911,7 +890,7 @@ var electionStarted = func(info Info) {
 	}
 }
 var electionAborted = func(info Info, reason string) {
-	debug(info.ID(), info.Term(), string(info.State()), "|", "electionAborted", reason)
+	Debug(info.ID(), info.Term(), string(info.State()), "|", "electionAborted", reason)
 	select {
 	case electionAbortedCh <- info.ID():
 	default:
