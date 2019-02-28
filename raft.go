@@ -65,12 +65,12 @@ type Raft struct {
 
 	connPools map[string]*connPool
 
-	ldr          *leadership
-	taskCh       chan Task
-	newEntryCh   chan NewEntry
-	trace        Trace
-	shutdownOnce sync.Once
-	shutdownCh   chan struct{}
+	ldr        *leadership
+	taskCh     chan Task
+	newEntryCh chan NewEntry
+	trace      Trace
+	shutdownMu sync.Mutex
+	shutdownCh chan struct{}
 }
 
 func New(id NodeID, addr string, opt Options, fsm FSM, storage *Storage, trace Trace) (*Raft, error) {
@@ -119,7 +119,6 @@ func New(id NodeID, addr string, opt Options, fsm FSM, storage *Storage, trace T
 		trace:        trace,
 		shutdownCh:   make(chan struct{}),
 	}
-	r.wg.Add(1)
 	return r, nil
 }
 
@@ -131,21 +130,38 @@ func (r *Raft) FSM() FSM {
 	return r.fsm
 }
 
+// tells whether shutdown was called
+func (r *Raft) shutdownCalled() bool {
+	select {
+	case <-r.shutdownCh:
+		return true
+	default:
+		return false
+	}
+}
+
 // todo: note that we dont support multiple listeners
 
 func (r *Raft) Serve(l net.Listener) error {
+	r.shutdownMu.Lock()
+	if r.shutdownCalled() {
+		return ErrServerClosed
+	}
 	r.wg.Add(2)
+	r.shutdownMu.Unlock()
+
 	go r.loop()
 	go r.fsmLoop()
 	return r.server.serve(l)
 }
 
 func (r *Raft) Shutdown() *sync.WaitGroup {
-	r.shutdownOnce.Do(func() {
+	r.shutdownMu.Lock()
+	defer r.shutdownMu.Unlock()
+	if !r.shutdownCalled() {
 		debug(r.id, ">> shutdown()")
-		r.wg.Done()
 		close(r.shutdownCh)
-	})
+	}
 	return &r.wg
 }
 

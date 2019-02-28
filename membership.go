@@ -36,10 +36,12 @@ func (r *Raft) bootstrap(t bootstrap) {
 	e, err := r.storage.lastEntry()
 	if err != nil {
 		t.reply(err)
+		return
 	}
 	term, votedFor, err := r.storage.vars.GetVote()
 	if err != nil {
 		t.reply(err)
+		return
 	}
 
 	// everything is ok. bootstrapping now...
@@ -52,9 +54,11 @@ func (r *Raft) bootstrap(t bootstrap) {
 func (ldr *leadership) addNode(t addNode) {
 	if _, ok := ldr.configs.Latest.Nodes[t.node.ID]; ok {
 		t.reply(fmt.Errorf("raft.addNode: node %s already exists", t.node.ID))
+		return
 	}
 	if t.node.Type == Voter {
 		t.reply(errors.New("raft.addNode: new node cannot be voter, add to staging"))
+		return
 	}
 	newConfig := ldr.configs.Latest.clone()
 	newConfig.Nodes[t.node.ID] = t.node
@@ -64,6 +68,7 @@ func (ldr *leadership) addNode(t addNode) {
 func (ldr *leadership) removeNode(t removeNode) {
 	if _, ok := ldr.configs.Latest.Nodes[t.id]; !ok {
 		t.reply(fmt.Errorf("raft.removeNode: node %s does not exist", t.id))
+		return
 	}
 	newConfig := ldr.configs.Latest.clone()
 	delete(newConfig.Nodes, t.id)
