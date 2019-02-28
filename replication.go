@@ -81,7 +81,7 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 			if err != nil {
 				if noContact.IsZero() {
 					noContact = time.Now()
-					debug(repl, "noContact")
+					debug(repl, "noContact", err)
 					repl.notifyLdr(matchIndex, noContact)
 				}
 				failures++

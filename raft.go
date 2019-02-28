@@ -148,11 +148,14 @@ func (r *Raft) shutdownCalled() bool {
 
 func (r *Raft) Serve(l net.Listener) error {
 	r.shutdownMu.Lock()
-	if r.shutdownCalled() {
+	shutdownCalled := r.shutdownCalled()
+	if !shutdownCalled {
+		r.wg.Add(2)
+	}
+	r.shutdownMu.Unlock()
+	if shutdownCalled {
 		return ErrServerClosed
 	}
-	r.wg.Add(2)
-	r.shutdownMu.Unlock()
 
 	go r.loop()
 	go r.fsmLoop()

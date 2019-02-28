@@ -513,16 +513,36 @@ func TestRaft_Query(t *testing.T) {
 	}
 }
 
-func TestRaft_AddNodeValidation(t *testing.T) {
-	Debug("\nTestRaft_AddNodeValidation --------------------------")
+func TestRaft_AddNode(t *testing.T) {
+	Debug("\nTestRaft_AddNode --------------------------")
 	defer leaktest.Check(t)()
 
-	// launch 3 node cluster
+	// launch 3 node cluster M1, M2, M3
 	c := newCluster(t)
 	c.launch(3, true)
 	defer c.shutdown()
 	ldr := c.waitForHealthy()
 	c.ensureLeader(ldr.ID())
+
+	configs := ldr.Info().Configs()
+
+	// adding node with empty id should fail
+	n := Node{Addr: "localhost:8888", Voter: false}
+	if _, err := waitTask(ldr, AddNode(n), 0); err == nil {
+		t.Fatal(err)
+	}
+
+	// adding node with empty addr should fail
+	n = Node{ID: NodeID("M10"), Voter: false}
+	if _, err := waitTask(ldr, AddNode(n), 0); err == nil {
+		t.Fatal(err)
+	}
+
+	// adding voter should fail
+	n = Node{ID: NodeID("M11"), Addr: "M10:8888", Voter: true}
+	if _, err := waitTask(ldr, AddNode(n), 0); err == nil {
+		t.Fatal(err)
+	}
 
 	// adding node with existing id should fail
 	for _, n := range ldr.Info().Configs().Latest.Nodes {
@@ -531,6 +551,115 @@ func TestRaft_AddNodeValidation(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+
+	// adding node with existing addr should fail
+	for _, n := range ldr.Info().Configs().Latest.Nodes {
+		n := Node{ID: "M12", Addr: n.Addr, Voter: false}
+		if _, err := waitTask(ldr, AddNode(n), 0); err == nil {
+			t.Fatal(err)
+		}
+	}
+
+	// ensure that config is not changed because of above errors
+	if configsNow := ldr.Info().Configs(); !reflect.DeepEqual(configsNow, configs) {
+		t.Log("old: ", configs)
+		t.Log("new: ", configsNow)
+		t.Fatal("configs changed")
+	}
+
+	// send 10 fsm updates, and wait for them to replicate
+	for i := 0; i < 10; i++ {
+		ldr.NewEntries() <- UpdateEntry([]byte(fmt.Sprintf("msg-%d", i)))
+	}
+	c.waitFSMLen(10)
+
+	// launch new raft instance M4, without bootstrap
+	c.launch(1, false)
+	m4 := c.rr["M4"]
+
+	configRelated := c.registerForEvent(configRelated, c.exclude(m4)...)
+	defer c.unregisterObserver(configRelated)
+
+	// add M4 as nonVoter, wait for success reply
+	task := AddNode(Node{ID: m4.ID(), Addr: m4.Info().Addr(), Voter: false})
+	ldr.Tasks() <- task
+	<-task.Done()
+	if task.Err() != nil {
+		t.Fatal(task.Err())
+	}
+
+	// ensure that leader raised configChange
+	select {
+	case e := <-configRelated.ch:
+		if e.src != ldr.ID() {
+			t.Fatalf("got %s, want %s", e.src, ldr.ID())
+		}
+		if e.typ != configChanged {
+			t.Fatalf("got %d, want %d", e.typ, configChanged)
+		}
+	default:
+		t.Fatal("expected configChange from ldr")
+	}
+
+	// ensure that followers raised configChange, exactly once
+	set := make(map[NodeID]bool)
+	for i := 0; i < 2; i++ {
+		select {
+		case e := <-configRelated.ch:
+			if e.src == ldr.ID() || e.src == m4.ID() {
+				t.Fatalf("got %s", e.src)
+			}
+			if e.typ != configChanged {
+				t.Fatalf("got %d, want %d", e.typ, configChanged)
+			}
+			if set[e.src] {
+				t.Fatalf("duplicate configChange from %s", e.src)
+			}
+		default:
+			t.Fatal("expected configChange from follower")
+		}
+	}
+
+	// ensure that leader raised configCommitted
+	select {
+	case e := <-configRelated.ch:
+		if e.src != ldr.ID() {
+			t.Fatalf("got %s, want %s", e.src, ldr.ID())
+		}
+		if e.typ != configCommitted {
+			t.Fatalf("got %d, want %d", e.typ, configChanged)
+		}
+	default:
+		t.Fatal("expected configCommitted from ldr")
+	}
+
+	// wait and ensure that followers raised configCommitted
+	limit := time.After(2 * c.heartbeatTimeout)
+	set = make(map[NodeID]bool)
+	for i := 0; i < 2; i++ {
+		select {
+		case e := <-configRelated.ch:
+			if e.src == ldr.ID() || e.src == m4.ID() {
+				t.Fatalf("got %s", e.src)
+			}
+			if e.typ != configCommitted {
+				t.Fatalf("got %d, want %d", e.typ, configChanged)
+			}
+			if set[e.src] {
+				t.Fatalf("duplicate configCommitted from %s", e.src)
+			}
+		case <-limit:
+			t.Fatal("expected configCommit from follower")
+		}
+	}
+
+	// ensure that leader has no config committed
+	if !ldr.Info().Configs().IsCommitted() {
+		t.Fatal("config is not committed")
+	}
+
+	// ensure that M4 got its FSM replicated
+	c.waitFSMLen(10, m4)
 }
 
 // todo: test that non voter does not start election
@@ -575,6 +704,7 @@ func newCluster(t *testing.T) *cluster {
 	}
 	c := &cluster{
 		T:                t,
+		network:          fnet.New(),
 		rr:               make(map[string]*Raft),
 		storage:          make(map[string]*Storage),
 		heartbeatTimeout: heartbeatTimeout,
@@ -624,8 +754,18 @@ func (c *cluster) registerObserver(filter func(event) bool) observer {
 }
 
 func (c *cluster) registerForEvent(typ eventType, rr ...*Raft) observer {
+	typeMatches := func(want, got eventType) bool {
+		return got == want
+	}
+	if typ == configRelated {
+		typeMatches = func(want, got eventType) bool {
+			return got == configChanged ||
+				got == configCommitted ||
+				got == configReverted
+		}
+	}
 	return c.registerObserver(func(e event) bool {
-		if e.typ == typ {
+		if typeMatches(typ, e.typ) {
 			if len(rr) == 0 {
 				return true
 			}
@@ -720,7 +860,6 @@ func (c *cluster) onUnreachable(info Info, id NodeID, since time.Time) {
 
 func (c *cluster) launch(n int, bootstrap bool) {
 	c.Helper()
-	c.network = fnet.New()
 	nodes := make(map[NodeID]Node, n)
 	for i := 1; i <= n; i++ {
 		id := NodeID("M" + strconv.Itoa(i+len(c.rr)))
@@ -900,7 +1039,7 @@ func (c *cluster) waitFSMLen(fsmLen uint64, rr ...*Raft) {
 	fsmChanged := c.registerForEvent(fsmChanged, rr...)
 	defer c.unregisterObserver(fsmChanged)
 	if !fsmChanged.waitFor(condition, c.longTimeout) {
-		c.Logf("want %d", fsmLen)
+		c.Logf("fsmLen: want %d", fsmLen)
 		for _, r := range rr {
 			c.Logf("%s got %d", r.ID(), fsm(r).len())
 		}
@@ -1027,6 +1166,8 @@ const (
 	configCommitted
 	configReverted
 	unreachable
+
+	configRelated
 )
 
 type event struct {

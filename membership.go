@@ -62,7 +62,12 @@ func (ldr *leadership) addNode(t addNode) {
 	}
 	newConfig := ldr.configs.Latest.clone()
 	newConfig.Nodes[t.node.ID] = t.node
-	ldr.storeConfig(t.task, newConfig)
+	if err := ldr.storeConfig(t.task, newConfig); err != nil {
+		t.reply(err)
+		return
+	}
+	debug(ldr, "addNode", t.node)
+	ldr.startReplication(t.node)
 }
 
 func (ldr *leadership) removeNode(t removeNode) {
@@ -72,22 +77,31 @@ func (ldr *leadership) removeNode(t removeNode) {
 	}
 	newConfig := ldr.configs.Latest.clone()
 	delete(newConfig.Nodes, t.id)
-	ldr.storeConfig(t.task, newConfig)
-}
-
-func (ldr *leadership) storeConfig(t *task, newConfig Config) {
-	// validate
-	if !ldr.configs.IsCommitted() {
-		t.reply(errors.New("raft: configChange is in progress"))
-		return
-	}
-	if ldr.commitIndex < ldr.startIndex {
-		t.reply(errors.New("raft: noop entry is not yet committed"))
-		return
-	}
-	if err := newConfig.validate(); err != nil {
+	if err := ldr.storeConfig(t.task, newConfig); err != nil {
 		t.reply(err)
 		return
+	}
+
+	// stop replication
+	debug(ldr, "removeNode", t.id)
+	repl := ldr.repls[t.id]
+	delete(ldr.repls, t.id)
+	close(repl.stopCh)
+
+	// now majority might have changed. needs to be recalculated
+	ldr.onMajorityCommit()
+}
+
+func (ldr *leadership) storeConfig(t *task, newConfig Config) error {
+	// validate
+	if !ldr.configs.IsCommitted() {
+		return errors.New("raft: configChange is in progress")
+	}
+	if ldr.commitIndex < ldr.startIndex {
+		return errors.New("raft: noop entry is not yet committed")
+	}
+	if err := newConfig.validate(); err != nil {
+		return err
 	}
 
 	// append to log
@@ -98,7 +112,5 @@ func (ldr *leadership) storeConfig(t *task, newConfig Config) {
 	ldr.storeEntry(ne)
 	newConfig.Index, newConfig.Term = ne.index, ne.term
 	ldr.changeConfig(newConfig)
-
-	// now majority might have changed. needs to be recalculated
-	ldr.onMajorityCommit()
+	return nil
 }
