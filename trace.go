@@ -56,9 +56,3 @@ func (r *Raft) stateChanged() {
 		r.trace.StateChanged(r.liveInfo())
 	}
 }
-
-func (r *Raft) electionAborted(reason string) {
-	if r.trace.ElectionAborted != nil {
-		r.trace.ElectionAborted(r.liveInfo(), reason)
-	}
-}

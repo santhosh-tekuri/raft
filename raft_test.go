@@ -79,25 +79,11 @@ func TestRaft_SingleNode(t *testing.T) {
 	}
 
 	// shutdown and restart with fresh fsm and new addr
-	c.shutdown()
-	newFSM := &fsmMock{id: ldr.ID(), changed: c.onFMSChanded}
-	storage := c.storage[string(ldr.ID())]
-	r, err := New(ldr.ID(), "localhost:0", c.opt, newFSM, storage, Trace{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	l, err := net.Listen("tcp", "localhost:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	go r.Serve(l)
-	defer func() {
-		r.Shutdown().Wait()
-	}()
+	r := c.restart(ldr, "localhost:0")
 
 	// ensure that fsm has been restored from log
 	c.waitFSMLen(fsm(ldr).len(), r)
-	if cmd := newFSM.lastCommand(); cmd != "test" {
+	if cmd := fsm(r).lastCommand(); cmd != "test" {
 		t.Fatalf("fsm.lastCommand: got %s want test", cmd)
 	}
 }
@@ -717,7 +703,7 @@ func (c *cluster) launch(n int, bootstrap bool) {
 	c.network = fnet.New()
 	nodes := make(map[NodeID]Node, n)
 	for i := 1; i <= n; i++ {
-		id := NodeID("M" + strconv.Itoa(i))
+		id := NodeID("M" + strconv.Itoa(i+len(c.rr)))
 		nodes[id] = Node{ID: id, Addr: string(id) + ":8888", Voter: true}
 	}
 
@@ -751,6 +737,28 @@ func (c *cluster) launch(n int, bootstrap bool) {
 		}
 		go func() { _ = r.Serve(l) }()
 	}
+}
+
+func (c *cluster) restart(r *Raft, addr string) *Raft {
+	r.Shutdown().Wait()
+	Debug(r.ID(), "<< shutdown()")
+
+	newFSM := &fsmMock{id: r.ID(), changed: c.onFMSChanded}
+	storage := c.storage[string(r.ID())]
+	newr, err := New(r.ID(), "localhost:0", c.opt, newFSM, storage, Trace{})
+	if err != nil {
+		c.Fatal(err)
+	}
+	if addr == "" {
+		addr = string(r.ID()) + ":8888"
+	}
+	l, err := net.Listen("tcp", addr)
+	if err != nil {
+		c.Fatal(err)
+	}
+	c.rr[string(r.ID())] = newr
+	go newr.Serve(l)
+	return newr
 }
 
 func (c *cluster) waitForStability(rr ...*Raft) {

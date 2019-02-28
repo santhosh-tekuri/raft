@@ -27,7 +27,9 @@ func (r *Raft) runFollower() {
 			r.leader = ""
 
 			if can, reason := r.canStartElection(); !can {
-				r.electionAborted(reason)
+				if r.trace.ElectionAborted != nil {
+					r.trace.ElectionAborted(r.liveInfo(), reason)
+				}
 				continue // timer will be restarted on configChange
 			}
 
