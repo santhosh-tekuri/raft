@@ -80,9 +80,9 @@ func TestRaft_SingleNode(t *testing.T) {
 
 	// shutdown and restart with fresh fsm and new addr
 	c.shutdown()
-	fsm := &fsmMock{changedCh: c.fsmChangedCh}
+	newFSM := &fsmMock{id: ldr.ID(), changed: c.onFMSChanded}
 	storage := c.storage[string(ldr.ID())]
-	r, err := New(ldr.ID(), "localhost:0", c.opt, fsm, storage, Trace{})
+	r, err := New(ldr.ID(), "localhost:0", c.opt, newFSM, storage, Trace{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,20 +95,9 @@ func TestRaft_SingleNode(t *testing.T) {
 		r.Shutdown().Wait()
 	}()
 
-	// wait for fsm restore
-	fsmRestored := func() bool {
-		info := r.Info()
-		return info.LastLogIndex() == info.Committed()
-	}
-	if !ensureTimeoutSleep(fsmRestored, c.commitTimeout, c.longTimeout) {
-		t.Fatal("fsm restore failed after restart")
-	}
-
 	// ensure that fsm has been restored from log
-	if idx := fsm.len(); idx != 1 {
-		t.Fatalf("fsm.len: got %d want 1", idx)
-	}
-	if cmd := fsm.lastCommand(); cmd != "test" {
+	c.waitFSMLen(fsm(ldr).len(), r)
+	if cmd := newFSM.lastCommand(); cmd != "test" {
 		t.Fatalf("fsm.lastCommand: got %s want test", cmd)
 	}
 }
@@ -566,7 +555,6 @@ type cluster struct {
 	longTimeout      time.Duration
 	commitTimeout    time.Duration
 	opt              Options
-	fsmChangedCh     chan struct{}
 
 	trace       Trace
 	observersMu sync.RWMutex
@@ -587,7 +575,6 @@ func newCluster(t *testing.T) *cluster {
 		longTimeout:      5 * time.Second,
 		commitTimeout:    5 * time.Millisecond,
 		opt:              opt,
-		fsmChangedCh:     make(chan struct{}, 1),
 		observers:        make(map[int]observer),
 	}
 	c.trace = Trace{
@@ -660,6 +647,14 @@ func (c *cluster) sendEvent(e event) {
 			ob.ch <- e
 		}
 	}
+}
+
+func (c *cluster) onFMSChanded(id NodeID, len uint64) {
+	c.sendEvent(event{
+		src:    id,
+		typ:    fsmChanged,
+		fsmLen: len,
+	})
 }
 
 func (c *cluster) onStateChanged(info Info) {
@@ -736,7 +731,7 @@ func (c *cluster) launch(n int, bootstrap bool) {
 				c.Fatalf("Storage.bootstrap failed: %v", err)
 			}
 		}
-		fsm := &fsmMock{changedCh: c.fsmChangedCh}
+		fsm := &fsmMock{id: node.ID, changed: c.onFMSChanded}
 		r, err := New(node.ID, node.Addr, c.opt, fsm, storage, c.trace)
 		if err != nil {
 			c.Fatal(err)
@@ -758,11 +753,11 @@ func (c *cluster) launch(n int, bootstrap bool) {
 	}
 }
 
-func (c *cluster) waitForStability(members ...*Raft) {
+func (c *cluster) waitForStability(rr ...*Raft) {
 	c.Helper()
-	stateChanged := c.registerForEvent(stateChanged, members...)
+	stateChanged := c.registerForEvent(stateChanged, rr...)
 	defer c.unregisterObserver(stateChanged)
-	electionStarted := c.registerForEvent(electionStarted, members...)
+	electionStarted := c.registerForEvent(electionStarted, rr...)
 	defer c.unregisterObserver(electionStarted)
 
 	limitTimer := time.NewTimer(c.longTimeout)
@@ -846,7 +841,6 @@ func (c *cluster) waitForState(r *Raft, timeout time.Duration, states ...State) 
 
 func (c *cluster) waitForLeader(timeout time.Duration) {
 	c.Helper()
-
 	condition := func() bool {
 		for _, r := range c.rr {
 			if r.Info().State() == Leader {
@@ -862,22 +856,27 @@ func (c *cluster) waitForLeader(timeout time.Duration) {
 	}
 }
 
-func (c *cluster) fsmReplicated(len uint64) bool {
-	for _, r := range c.rr {
-		if got := fsm(r).len(); got != len {
-			return false
-		}
-	}
-	return true
-}
-
-func (c *cluster) waitFSMLen(len uint64) {
+func (c *cluster) waitFSMLen(fsmLen uint64, rr ...*Raft) {
 	c.Helper()
-	cond := func() bool {
-		return c.fsmReplicated(len)
+	if len(rr) == 0 {
+		rr = c.exclude()
 	}
-	if !ensureTimeoutCh(cond, c.fsmChangedCh, c.longTimeout) {
-		c.Fatalf("ensure fsmReplicated(%d): timeout after %s", len, c.longTimeout)
+	condition := func() bool {
+		for _, r := range rr {
+			if got := fsm(r).len(); got != fsmLen {
+				return false
+			}
+		}
+		return true
+	}
+	fsmChanged := c.registerForEvent(fsmChanged, rr...)
+	defer c.unregisterObserver(fsmChanged)
+	if !fsmChanged.waitFor(condition, c.longTimeout) {
+		c.Logf("want %d", fsmLen)
+		for _, r := range rr {
+			c.Logf("%s got %d", r.ID(), fsm(r).len())
+		}
+		c.Fatalf("waitFSMLen(%d) timeout", fsmLen)
 	}
 }
 
@@ -992,7 +991,8 @@ func waitBarrier(r *Raft, timeout time.Duration) error {
 type eventType int
 
 const (
-	stateChanged eventType = iota
+	fsmChanged eventType = iota
+	stateChanged
 	electionStarted
 	electionAborted
 	configChanged
@@ -1005,6 +1005,7 @@ type event struct {
 	src NodeID
 	typ eventType
 
+	fsmLen  uint64
 	state   State
 	configs Configs
 	target  NodeID
@@ -1039,64 +1040,16 @@ func (ob observer) waitFor(condition func() bool, timeout time.Duration) bool {
 	}
 }
 
-//var (
-//	stateChangedCh    = make(chan struct{}, 1)
-//	configChangedCh   = make(chan struct{}, 1)
-//	configCommittedCh = make(chan struct{}, 1)
-//	configRevertedCh  = make(chan struct{}, 1)
-//
-//	electionStartedCh = make(chan NodeID, 1)
-//	electionAbortedCh = make(chan NodeID, 10)
-//	unreachableCh     = make(chan struct{}, 1)
-//)
-//
-//func notifyTrace(ch chan<- struct{}) func(Info) {
-//	return func(Info) {
-//		notify(ch)
-//	}
-//}
-//
-//func electionStarted(info Info) {
-//	select {
-//	case electionAbortedCh <- info.ID():
-//	default:
-//	}
-//}
-//
-//func electionAborted(info Info, reason string) {
-//	Debug(info.ID(), info.Term(), string(info.State()), "|", "electionAborted", reason)
-//	select {
-//	case electionAbortedCh <- info.ID():
-//	default:
-//	}
-//}
-//
-//func unreachable(Info, NodeID, time.Time) {
-//	select {
-//	case unreachableCh <- struct{}{}:
-//	default:
-//	}
-//}
-//
-//var trace = Trace{
-//	StateChanged:    notifyTrace(stateChangedCh),
-//	ElectionStarted: electionStarted,
-//	ElectionAborted: electionAborted,
-//	ConfigChanged:   notifyTrace(configChangedCh),
-//	ConfigCommitted: notifyTrace(configCommittedCh),
-//	ConfigReverted:  notifyTrace(configRevertedCh),
-//	Unreachable:     unreachable,
-//}
-
 // ---------------------------------------------
 
 var errNoCommands = errors.New("no commands")
 var errNoCommandAt = errors.New("no command at index")
 
 type fsmMock struct {
-	mu        sync.RWMutex
-	cmds      []string
-	changedCh chan<- struct{}
+	id      NodeID
+	mu      sync.RWMutex
+	cmds    []string
+	changed func(id NodeID, len uint64)
 }
 
 type fsmReply struct {
@@ -1132,7 +1085,9 @@ func (fsm *fsmMock) Apply(cmd []byte) interface{} {
 
 	// update
 	fsm.cmds = append(fsm.cmds, s)
-	notify(fsm.changedCh)
+	if fsm.changed != nil {
+		fsm.changed(fsm.id, uint64(len(fsm.cmds)))
+	}
 	return fsmReply{s, len(fsm.cmds)}
 }
 
@@ -1159,14 +1114,7 @@ func (fsm *fsmMock) commands() []string {
 
 // ------------------------------------------------------------------
 
-func notify(ch chan<- struct{}) {
-	select {
-	case ch <- struct{}{}:
-	default:
-	}
-}
-
-func ensureTimeoutSleep(condition func() bool, sleep, timeout time.Duration) bool {
+func waitForCondition(condition func() bool, sleep, timeout time.Duration) bool {
 	limit := time.Now().Add(timeout)
 	for time.Now().Before(limit) {
 		if condition() {
@@ -1175,31 +1123,4 @@ func ensureTimeoutSleep(condition func() bool, sleep, timeout time.Duration) boo
 		time.Sleep(sleep)
 	}
 	return false
-}
-
-func ensureTimeoutCh(condition func() bool, ch <-chan struct{}, timeout time.Duration) bool {
-	var timeoutCh <-chan time.Time
-	if timeout <= 0 {
-		timeoutCh = make(chan time.Time)
-	}
-	timeoutCh = time.After(timeout)
-
-	select {
-	case <-ch:
-	default:
-	}
-
-	if condition() {
-		return true
-	}
-	for {
-		select {
-		case <-ch:
-			if condition() {
-				return true
-			}
-		case <-timeoutCh:
-			return false
-		}
-	}
 }
