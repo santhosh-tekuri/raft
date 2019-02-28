@@ -513,6 +513,26 @@ func TestRaft_Query(t *testing.T) {
 	}
 }
 
+func TestRaft_AddNodeValidation(t *testing.T) {
+	Debug("\nTestRaft_AddNodeValidation --------------------------")
+	defer leaktest.Check(t)()
+
+	// launch 3 node cluster
+	c := newCluster(t)
+	c.launch(3, true)
+	defer c.shutdown()
+	ldr := c.waitForHealthy()
+	c.ensureLeader(ldr.ID())
+
+	// adding node with existing id should fail
+	for _, n := range ldr.Info().Configs().Latest.Nodes {
+		n := Node{ID: n.ID, Addr: "localhost:8888", Voter: false}
+		if _, err := waitTask(ldr, AddNode(n), 0); err == nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // todo: test that non voter does not start election
 //        * if he started as voter and hasn't got any requests from leader
 //        * if leader contact lost for more than heartbeat timeout

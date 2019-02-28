@@ -12,11 +12,10 @@ const minCheckInterval = 10 * time.Millisecond
 
 func (r *Raft) runLeader() {
 	ldr := &leadership{
-		Raft:         r,
-		leaseTimeout: r.hbTimeout, // todo: should it be same as heartbeatTimeout ? make configurable
-		leaseTimer:   time.NewTimer(time.Hour),
-		newEntries:   list.New(),
-		repls:        make(map[NodeID]*replication),
+		Raft:       r,
+		leaseTimer: time.NewTimer(time.Hour),
+		newEntries: list.New(),
+		repls:      make(map[NodeID]*replication),
 	}
 	ldr.leaseTimer.Stop() // we start it on detecting failures
 	r.ldr = ldr
@@ -56,8 +55,7 @@ type leadership struct {
 
 	// if quorum of nodes are not reachable for this duration
 	// leader steps down to follower
-	leaseTimeout time.Duration
-	leaseTimer   *time.Timer
+	leaseTimer *time.Timer
 
 	// leader term starts from this index.
 	// this index refers to noop entry
@@ -262,7 +260,7 @@ func (ldr *leadership) checkLeaderLease() {
 			noContact := repl.status.noContact
 			if noContact.IsZero() {
 				reachable++
-			} else if now.Sub(noContact) <= ldr.leaseTimeout {
+			} else if now.Sub(noContact) <= ldr.ldrLeaseTimeout {
 				reachable++
 				if firstFailure.IsZero() || noContact.Before(firstFailure) {
 					firstFailure = noContact
@@ -288,7 +286,7 @@ func (ldr *leadership) checkLeaderLease() {
 	}
 
 	if !firstFailure.IsZero() {
-		d := ldr.leaseTimeout - now.Sub(firstFailure)
+		d := ldr.ldrLeaseTimeout - now.Sub(firstFailure)
 		if d < minCheckInterval {
 			d = minCheckInterval
 		}

@@ -29,12 +29,14 @@ func (s State) String() string {
 }
 
 type Options struct {
-	HeartbeatTimeout time.Duration
+	HeartbeatTimeout   time.Duration
+	LeaderLeaseTimeout time.Duration
 }
 
 func DefaultOptions() Options {
 	return Options{
-		HeartbeatTimeout: 1000 * time.Millisecond,
+		HeartbeatTimeout:   1000 * time.Millisecond,
+		LeaderLeaseTimeout: 1000 * time.Millisecond,
 	}
 }
 
@@ -65,12 +67,13 @@ type Raft struct {
 
 	connPools map[string]*connPool
 
-	ldr        *leadership
-	taskCh     chan Task
-	newEntryCh chan NewEntry
-	trace      Trace
-	shutdownMu sync.Mutex
-	shutdownCh chan struct{}
+	ldrLeaseTimeout time.Duration
+	ldr             *leadership
+	taskCh          chan Task
+	newEntryCh      chan NewEntry
+	trace           Trace
+	shutdownMu      sync.Mutex
+	shutdownCh      chan struct{}
 }
 
 func New(id NodeID, addr string, opt Options, fsm FSM, storage *Storage, trace Trace) (*Raft, error) {
@@ -99,25 +102,26 @@ func New(id NodeID, addr string, opt Options, fsm FSM, storage *Storage, trace T
 
 	server := newServer(2 * opt.HeartbeatTimeout)
 	r := &Raft{
-		id:           id,
-		addr:         addr,
-		storage:      storage,
-		fsm:          fsm,
-		term:         term,
-		votedFor:     votedFor,
-		lastLogIndex: lastLogIndex,
-		lastLogTerm:  lastLogTerm,
-		configs:      configs,
-		state:        Follower,
-		hbTimeout:    opt.HeartbeatTimeout,
-		dialFn:       net.DialTimeout,
-		server:       server,
-		connPools:    make(map[string]*connPool),
-		fsmApplyCh:   make(chan NewEntry, 128), // todo configurable capacity
-		newEntryCh:   make(chan NewEntry, 100), // todo configurable capacity
-		taskCh:       make(chan Task, 100),     // todo configurable capacity
-		trace:        trace,
-		shutdownCh:   make(chan struct{}),
+		id:              id,
+		addr:            addr,
+		storage:         storage,
+		fsm:             fsm,
+		term:            term,
+		votedFor:        votedFor,
+		lastLogIndex:    lastLogIndex,
+		lastLogTerm:     lastLogTerm,
+		configs:         configs,
+		state:           Follower,
+		hbTimeout:       opt.HeartbeatTimeout,
+		ldrLeaseTimeout: opt.LeaderLeaseTimeout,
+		dialFn:          net.DialTimeout,
+		server:          server,
+		connPools:       make(map[string]*connPool),
+		fsmApplyCh:      make(chan NewEntry, 128), // todo configurable capacity
+		newEntryCh:      make(chan NewEntry, 100), // todo configurable capacity
+		taskCh:          make(chan Task, 100),     // todo configurable capacity
+		trace:           trace,
+		shutdownCh:      make(chan struct{}),
 	}
 	return r, nil
 }
