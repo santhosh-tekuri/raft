@@ -23,7 +23,7 @@ func TestRaft_Voting(t *testing.T) {
 	c := newCluster(t)
 	c.launch(3, true)
 	defer c.shutdown()
-	ldr := c.ensureHealthy()
+	ldr := c.waitForHealthy()
 	followers := c.followers()
 
 	c.ensureLeader(c.leader().ID())
@@ -52,7 +52,7 @@ func TestRaft_SingleNode(t *testing.T) {
 	c := newCluster(t)
 	c.launch(1, true)
 	defer c.shutdown()
-	ldr := c.ensureHealthy()
+	ldr := c.waitForHealthy()
 
 	// should be able to apply
 	resp, err := waitUpdate(ldr, "test", c.heartbeatTimeout)
@@ -82,7 +82,7 @@ func TestRaft_SingleNode(t *testing.T) {
 	c.shutdown()
 	fsm := &fsmMock{changedCh: c.fsmChangedCh}
 	storage := c.storage[string(ldr.ID())]
-	r, err := New(ldr.ID(), "localhost:0", c.opt, fsm, storage, trace)
+	r, err := New(ldr.ID(), "localhost:0", c.opt, fsm, storage, Trace{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +132,7 @@ func TestRaft_TripleNode(t *testing.T) {
 	c := newCluster(t)
 	c.launch(3, true)
 	defer c.shutdown()
-	ldr := c.ensureHealthy()
+	ldr := c.waitForHealthy()
 
 	// should agree on leader
 	c.ensureLeader(ldr.ID())
@@ -148,7 +148,7 @@ func TestRaft_TripleNode(t *testing.T) {
 	if resp.index != 1 {
 		t.Fatalf("fsmReplyIndex: got %d want 1", resp.index)
 	}
-	c.ensureFSMReplicated(1)
+	c.waitFSMLen(1)
 }
 
 func TestRaft_LeaderFail(t *testing.T) {
@@ -157,7 +157,7 @@ func TestRaft_LeaderFail(t *testing.T) {
 	c := newCluster(t)
 	c.launch(3, true)
 	defer c.shutdown()
-	ldr := c.ensureHealthy()
+	ldr := c.waitForHealthy()
 
 	// should agree on leader
 	c.ensureLeader(ldr.ID())
@@ -173,19 +173,17 @@ func TestRaft_LeaderFail(t *testing.T) {
 	if resp.index != 1 {
 		t.Fatalf("fsmReplyIndex: got %d want 1", resp.index)
 	}
-	c.ensureFSMReplicated(1)
+	c.waitFSMLen(1)
 
 	// disconnect leader
 	ldrTerm := ldr.Info().Term()
 	c.disconnect(ldr)
 
 	// leader should stepDown
-	if !waitForState(ldr, c.longTimeout, Follower, Candidate) {
-		t.Fatal("leader should stepDown")
-	}
+	c.waitForState(ldr, c.longTimeout, Follower, Candidate)
 
 	// wait for new leader
-	c.ensureStability(ldr.ID())
+	c.waitForStability(c.exclude(ldr)...)
 	newLdr := c.leader()
 	if newLdr == ldr {
 		t.Fatalf("newLeader: got %s, want !=%s", newLdr.ID(), ldr.ID())
@@ -211,10 +209,10 @@ func TestRaft_LeaderFail(t *testing.T) {
 
 	// reconnect the networks
 	c.connect()
-	c.ensureHealthy()
+	c.waitForHealthy()
 
 	// wait for log replication
-	c.ensureFSMReplicated(2)
+	c.waitFSMLen(2)
 
 	// Check two entries are applied to the FSM
 	c.ensureFSMSame([]string{"test", "accept"})
@@ -226,7 +224,7 @@ func TestRaft_BehindFollower(t *testing.T) {
 	c := newCluster(t)
 	c.launch(3, true)
 	defer c.shutdown()
-	ldr := c.ensureHealthy()
+	ldr := c.waitForHealthy()
 
 	// should agree on leader
 	c.ensureLeader(ldr.ID())
@@ -245,10 +243,10 @@ func TestRaft_BehindFollower(t *testing.T) {
 
 	// reconnect the behind node
 	c.connect()
-	c.ensureHealthy()
+	c.waitForHealthy()
 
 	// ensure all the logs are the same
-	c.ensureFSMReplicated(101)
+	c.waitFSMLen(101)
 	c.ensureFSMSame(nil)
 
 	// Ensure one leader
@@ -261,7 +259,7 @@ func TestRaft_ApplyNonLeader(t *testing.T) {
 	c := newCluster(t)
 	c.launch(3, true)
 	defer c.shutdown()
-	ldr := c.ensureHealthy()
+	ldr := c.waitForHealthy()
 
 	// should agree on leader
 	c.ensureLeader(ldr.ID())
@@ -286,7 +284,7 @@ func TestRaft_ApplyConcurrent(t *testing.T) {
 	c := newCluster(t)
 	c.launch(3, true)
 	defer c.shutdown()
-	ldr := c.ensureHealthy()
+	ldr := c.waitForHealthy()
 
 	// should agree on leader
 	c.ensureLeader(ldr.ID())
@@ -323,7 +321,7 @@ func TestRaft_ApplyConcurrent(t *testing.T) {
 	}
 
 	// check the FSMs
-	c.ensureFSMReplicated(100)
+	c.waitFSMLen(100)
 	c.ensureFSMSame(nil)
 }
 
@@ -332,30 +330,23 @@ func TestRaft_Bootstrap(t *testing.T) {
 	defer leaktest.Check(t)()
 	c := newCluster(t)
 
-loop:
-	// drain electionAbortCh
-	for {
-		select {
-		case <-electionAbortedCh:
-		default:
-			break loop
-		}
-	}
+	electionAborted := c.registerForEvent(electionAborted)
+	defer c.unregisterObserver(electionAborted)
 
 	// launch cluster without bootstrapping
 	c.launch(3, false)
 	defer c.shutdown()
 
-	// all nodes should must abort election
+	// all nodes should must abort election and only once
 	timeout := time.After(c.longTimeout)
 	aborted := make(map[NodeID]bool)
 	for i := 0; i < 3; i++ {
 		select {
-		case id := <-electionAbortedCh:
-			if aborted[id] {
+		case e := <-electionAborted.ch:
+			if aborted[e.src] {
 				t.Fatalf("aborted twice")
 			}
-			aborted[id] = true
+			aborted[e.src] = true
 		case <-timeout:
 			t.Fatal("timout in waiting for abort election")
 		}
@@ -371,7 +362,7 @@ loop:
 	}
 
 	// the bootstrapped node should be the leader
-	c.ensureHealthy()
+	c.waitForHealthy()
 	ldr := c.rr["M1"]
 	c.ensureLeader(ldr.ID())
 
@@ -379,7 +370,7 @@ loop:
 	if _, err := waitUpdate(ldr, "hello", 0); err != nil {
 		t.Fatal(err)
 	}
-	c.ensureFSMReplicated(1)
+	c.waitFSMLen(1)
 	c.ensureFSMSame([]string{"hello"})
 
 	// ensure bootstrap fails if already bootstrapped
@@ -392,7 +383,7 @@ loop:
 
 	// disconnect leader, and ensure that new leader is chosen
 	c.disconnect(ldr)
-	c.ensureStability()
+	c.waitForStability(c.exclude(ldr)...)
 	newLdr := c.leader()
 	if newLdr == ldr {
 		t.Fatalf("newLeader: got %s, want !=%s", newLdr.ID(), ldr.ID())
@@ -405,7 +396,7 @@ func TestRaft_LeaderLeaseExpire(t *testing.T) {
 	c := newCluster(t)
 	c.launch(2, true)
 	defer c.shutdown()
-	ldr := c.ensureHealthy()
+	ldr := c.waitForHealthy()
 
 	// should agree on leader
 	c.ensureLeader(ldr.ID())
@@ -420,9 +411,7 @@ func TestRaft_LeaderLeaseExpire(t *testing.T) {
 	c.disconnect(followers[0])
 
 	// the leader should stepDown within leaderLeaseTimeout
-	if !waitForState(ldr, 2*c.heartbeatTimeout, Follower, Candidate) {
-		t.Fatal("leader did not stepDown")
-	}
+	c.waitForState(ldr, 2*c.heartbeatTimeout, Follower, Candidate)
 
 	// should be no leaders
 	if n := len(c.getInState(Leader)); n != 0 {
@@ -430,14 +419,8 @@ func TestRaft_LeaderLeaseExpire(t *testing.T) {
 	}
 
 	// Ensure both have cleared their leader
-	if !waitForState(followers[0], 2*c.heartbeatTimeout, Candidate) {
-		t.Fatal("follower should have become candidate")
-	}
-	for _, r := range c.rr {
-		if ldr := r.Info().LeaderID(); ldr != "" {
-			t.Fatalf("%s.leader: got %s want ", r.ID(), ldr)
-		}
-	}
+	c.waitForState(followers[0], 2*c.heartbeatTimeout, Candidate)
+	c.ensureLeader(NodeID(""))
 }
 
 func TestRaft_Barrier(t *testing.T) {
@@ -446,7 +429,7 @@ func TestRaft_Barrier(t *testing.T) {
 	c := newCluster(t)
 	c.launch(3, true)
 	defer c.shutdown()
-	ldr := c.ensureHealthy()
+	ldr := c.waitForHealthy()
 	followers := c.followers()
 
 	// should agree on leader
@@ -492,7 +475,7 @@ func TestRaft_Query(t *testing.T) {
 	c := newCluster(t)
 	c.launch(3, true)
 	defer c.shutdown()
-	ldr := c.ensureHealthy()
+	ldr := c.waitForHealthy()
 
 	// should agree on leader
 	c.ensureLeader(ldr.ID())
@@ -584,22 +567,154 @@ type cluster struct {
 	commitTimeout    time.Duration
 	opt              Options
 	fsmChangedCh     chan struct{}
+
+	trace       Trace
+	observersMu sync.RWMutex
+	observerID  int
+	observers   map[int]observer
 }
 
 func newCluster(t *testing.T) *cluster {
 	heartbeatTimeout := 50 * time.Millisecond
-	return &cluster{
+	opt := Options{
+		HeartbeatTimeout: heartbeatTimeout,
+	}
+	c := &cluster{
 		T:                t,
 		rr:               make(map[string]*Raft),
 		storage:          make(map[string]*Storage),
 		heartbeatTimeout: heartbeatTimeout,
 		longTimeout:      5 * time.Second,
 		commitTimeout:    5 * time.Millisecond,
+		opt:              opt,
 		fsmChangedCh:     make(chan struct{}, 1),
-		opt: Options{
-			HeartbeatTimeout: heartbeatTimeout,
-		},
+		observers:        make(map[int]observer),
 	}
+	c.trace = Trace{
+		StateChanged:    c.onStateChanged,
+		ElectionStarted: c.onElectionStarted,
+		ElectionAborted: c.onElectionAborted,
+		ConfigChanged:   c.onConfigChanged,
+		ConfigCommitted: c.onConfigCommitted,
+		ConfigReverted:  c.onConfigReverted,
+		Unreachable:     c.onUnreachable,
+	}
+	return c
+}
+
+func (c *cluster) exclude(excludes ...*Raft) []*Raft {
+	var members []*Raft
+
+loop:
+	for _, r := range c.rr {
+		for _, exclude := range excludes {
+			if r == exclude {
+				continue loop
+			}
+		}
+		members = append(members, r)
+	}
+	return members
+}
+
+func (c *cluster) registerObserver(filter func(event) bool) observer {
+	c.observersMu.Lock()
+	defer c.observersMu.Unlock()
+	ob := observer{
+		filter: filter,
+		ch:     make(chan event, 1000),
+		id:     c.observerID,
+	}
+	c.observers[ob.id] = ob
+	c.observerID++
+	return ob
+}
+
+func (c *cluster) registerForEvent(typ eventType, rr ...*Raft) observer {
+	return c.registerObserver(func(e event) bool {
+		if e.typ == typ {
+			if len(rr) == 0 {
+				return true
+			}
+			for _, r := range rr {
+				if e.src == r.ID() {
+					return true
+				}
+			}
+		}
+		return false
+	})
+}
+
+func (c *cluster) unregisterObserver(ob observer) {
+	c.observersMu.Lock()
+	defer c.observersMu.Unlock()
+	delete(c.observers, ob.id)
+}
+
+func (c *cluster) sendEvent(e event) {
+	c.observersMu.RLock()
+	defer c.observersMu.RUnlock()
+	for _, ob := range c.observers {
+		if ob.filter(e) {
+			ob.ch <- e
+		}
+	}
+}
+
+func (c *cluster) onStateChanged(info Info) {
+	c.sendEvent(event{
+		src:   info.ID(),
+		typ:   stateChanged,
+		state: info.State(),
+	})
+}
+
+func (c *cluster) onElectionStarted(info Info) {
+	c.sendEvent(event{
+		src: info.ID(),
+		typ: electionStarted,
+	})
+}
+
+func (c *cluster) onElectionAborted(info Info, reason string) {
+	c.sendEvent(event{
+		src: info.ID(),
+		typ: electionAborted,
+	})
+}
+
+func (c *cluster) onConfigChanged(info Info) {
+	c.sendEvent(event{
+		src:     info.ID(),
+		typ:     configChanged,
+		configs: info.Configs(),
+	})
+}
+
+func (c *cluster) onConfigCommitted(info Info) {
+	c.sendEvent(event{
+		src:     info.ID(),
+		typ:     configCommitted,
+		configs: info.Configs(),
+	})
+}
+
+func (c *cluster) onConfigReverted(info Info) {
+	c.sendEvent(event{
+		src:     info.ID(),
+		typ:     configReverted,
+		configs: info.Configs(),
+	})
+}
+
+func (c *cluster) onUnreachable(info Info, id NodeID, since time.Time) {
+	c.sendEvent(event{
+		src:    info.ID(),
+		typ:    unreachable,
+		target: id,
+		since:  since,
+	})
 }
 
 func (c *cluster) launch(n int, bootstrap bool) {
@@ -622,7 +737,7 @@ func (c *cluster) launch(n int, bootstrap bool) {
 			}
 		}
 		fsm := &fsmMock{changedCh: c.fsmChangedCh}
-		r, err := New(node.ID, node.Addr, c.opt, fsm, storage, trace)
+		r, err := New(node.ID, node.Addr, c.opt, fsm, storage, c.trace)
 		if err != nil {
 			c.Fatal(err)
 		}
@@ -643,29 +758,22 @@ func (c *cluster) launch(n int, bootstrap bool) {
 	}
 }
 
-func (c *cluster) ensureStability(excludes ...NodeID) {
+func (c *cluster) waitForStability(members ...*Raft) {
 	c.Helper()
+	stateChanged := c.registerForEvent(stateChanged, members...)
+	defer c.unregisterObserver(stateChanged)
+	electionStarted := c.registerForEvent(electionStarted, members...)
+	defer c.unregisterObserver(electionStarted)
+
 	limitTimer := time.NewTimer(c.longTimeout)
 	electionTimer := time.NewTimer(4 * c.heartbeatTimeout)
-
-	select {
-	case <-stateChangedCh:
-	default:
-	}
-
-loop:
 	for {
 		select {
 		case <-limitTimer.C:
 			c.Fatal("cluster is not stable")
-		case <-stateChangedCh:
+		case <-stateChanged.ch:
 			electionTimer.Reset(4 * c.heartbeatTimeout)
-		case id := <-electionStartedCh:
-			for _, exclude := range excludes {
-				if id == exclude {
-					continue loop
-				}
-			}
+		case <-electionStarted.ch:
 			electionTimer.Reset(4 * c.heartbeatTimeout)
 		case <-electionTimer.C:
 			return
@@ -701,9 +809,9 @@ func (c *cluster) followers() []*Raft {
 	return followers
 }
 
-func (c *cluster) ensureHealthy() *Raft {
+func (c *cluster) waitForHealthy() *Raft {
 	c.Helper()
-	c.ensureStability()
+	c.waitForStability()
 	ldr := c.leader()
 	c.followers()
 	return ldr
@@ -718,10 +826,28 @@ func (c *cluster) ensureLeader(leaderID NodeID) {
 	}
 }
 
+// wait until state is one of given states
+func (c *cluster) waitForState(r *Raft, timeout time.Duration, states ...State) {
+	condition := func() bool {
+		got := r.Info().State()
+		for _, want := range states {
+			if got == want {
+				return true
+			}
+		}
+		return false
+	}
+	stateChanged := c.registerForEvent(stateChanged)
+	defer c.unregisterObserver(stateChanged)
+	if !stateChanged.waitFor(condition, timeout) {
+		c.Fatalf("waitForState(%s, %v) timeout", r.ID(), states)
+	}
+}
+
 func (c *cluster) waitForLeader(timeout time.Duration) {
 	c.Helper()
 
-	cond := func() bool {
+	condition := func() bool {
 		for _, r := range c.rr {
 			if r.Info().State() == Leader {
 				return true
@@ -729,8 +855,9 @@ func (c *cluster) waitForLeader(timeout time.Duration) {
 		}
 		return false
 	}
-
-	if !ensureTimeoutCh(cond, stateChangedCh, timeout) {
+	stateChanged := c.registerForEvent(stateChanged)
+	defer c.unregisterObserver(stateChanged)
+	if !stateChanged.waitFor(condition, timeout) {
 		c.Fatalf("waitForLeader timeout")
 	}
 }
@@ -744,7 +871,7 @@ func (c *cluster) fsmReplicated(len uint64) bool {
 	return true
 }
 
-func (c *cluster) ensureFSMReplicated(len uint64) {
+func (c *cluster) waitFSMLen(len uint64) {
 	c.Helper()
 	cond := func() bool {
 		return c.fsmReplicated(len)
@@ -787,20 +914,6 @@ func (c *cluster) shutdown() {
 }
 
 // ---------------------------------------------
-
-// wait until state is one of given states
-func waitForState(r *Raft, timeout time.Duration, states ...State) bool {
-	cond := func() bool {
-		got := r.Info().State()
-		for _, want := range states {
-			if got == want {
-				return true
-			}
-		}
-		return false
-	}
-	return ensureTimeoutCh(cond, stateChangedCh, timeout)
-}
 
 func fsm(r *Raft) *fsmMock {
 	return r.FSM().(*fsmMock)
@@ -876,54 +989,104 @@ func waitBarrier(r *Raft, timeout time.Duration) error {
 
 // trace ----------------------------------------------------------------------
 
-var (
-	stateChangedCh    = make(chan struct{}, 1)
-	configChangedCh   = make(chan struct{}, 1)
-	configCommittedCh = make(chan struct{}, 1)
-	configRevertedCh  = make(chan struct{}, 1)
+type eventType int
 
-	electionStartedCh = make(chan NodeID, 1)
-	electionAbortedCh = make(chan NodeID, 10)
-	unreachableCh     = make(chan struct{}, 1)
+const (
+	stateChanged eventType = iota
+	electionStarted
+	electionAborted
+	configChanged
+	configCommitted
+	configReverted
+	unreachable
 )
 
-func notifyTrace(ch chan<- struct{}) func(Info) {
-	return func(Info) {
-		notify(ch)
+type event struct {
+	src NodeID
+	typ eventType
+
+	state   State
+	configs Configs
+	target  NodeID
+	since   time.Time
+}
+
+type observer struct {
+	filter func(event) bool
+	ch     chan event
+	id     int
+}
+
+func (ob observer) waitFor(condition func() bool, timeout time.Duration) bool {
+	var timeoutCh <-chan time.Time
+	if timeout <= 0 {
+		timeoutCh = make(chan time.Time)
+	}
+	timeoutCh = time.After(timeout)
+
+	if condition() {
+		return true
+	}
+	for {
+		select {
+		case <-ob.ch:
+			if condition() {
+				return true
+			}
+		case <-timeoutCh:
+			return false
+		}
 	}
 }
 
-func electionStarted(info Info) {
-	select {
-	case electionAbortedCh <- info.ID():
-	default:
-	}
-}
-
-func electionAborted(info Info, reason string) {
-	Debug(info.ID(), info.Term(), string(info.State()), "|", "electionAborted", reason)
-	select {
-	case electionAbortedCh <- info.ID():
-	default:
-	}
-}
-
-func unreachable(Info, NodeID, time.Time) {
-	select {
-	case unreachableCh <- struct{}{}:
-	default:
-	}
-}
-
-var trace = Trace{
-	StateChanged:    notifyTrace(stateChangedCh),
-	ElectionStarted: electionStarted,
-	ElectionAborted: electionAborted,
-	ConfigChanged:   notifyTrace(configChangedCh),
-	ConfigCommitted: notifyTrace(configCommittedCh),
-	ConfigReverted:  notifyTrace(configRevertedCh),
-	Unreachable:     unreachable,
-}
+//var (
+//	stateChangedCh    = make(chan struct{}, 1)
+//	configChangedCh   = make(chan struct{}, 1)
+//	configCommittedCh = make(chan struct{}, 1)
+//	configRevertedCh  = make(chan struct{}, 1)
+//
+//	electionStartedCh = make(chan NodeID, 1)
+//	electionAbortedCh = make(chan NodeID, 10)
+//	unreachableCh     = make(chan struct{}, 1)
+//)
+//
+//func notifyTrace(ch chan<- struct{}) func(Info) {
+//	return func(Info) {
+//		notify(ch)
+//	}
+//}
+//
+//func electionStarted(info Info) {
+//	select {
+//	case electionAbortedCh <- info.ID():
+//	default:
+//	}
+//}
+//
+//func electionAborted(info Info, reason string) {
+//	Debug(info.ID(), info.Term(), string(info.State()), "|", "electionAborted", reason)
+//	select {
+//	case electionAbortedCh <- info.ID():
+//	default:
+//	}
+//}
+//
+//func unreachable(Info, NodeID, time.Time) {
+//	select {
+//	case unreachableCh <- struct{}{}:
+//	default:
+//	}
+//}
+//
+//var trace = Trace{
+//	StateChanged:    notifyTrace(stateChangedCh),
+//	ElectionStarted: electionStarted,
+//	ElectionAborted: electionAborted,
+//	ConfigChanged:   notifyTrace(configChangedCh),
+//	ConfigCommitted: notifyTrace(configCommittedCh),
+//	ConfigReverted:  notifyTrace(configRevertedCh),
+//	Unreachable:     unreachable,
+//}
 
 // ---------------------------------------------
 
