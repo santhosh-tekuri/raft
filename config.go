@@ -148,9 +148,9 @@ func (c Config) String() string {
 		if n.Voter {
 			voters = append(voters, fmt.Sprintf("%v[%s]", n.ID, n.Addr))
 		} else if n.Promote {
-			nonVoters = append(voters, fmt.Sprintf("%v[%s,promote]", n.ID, n.Addr))
+			nonVoters = append(nonVoters, fmt.Sprintf("%v[%s,promote]", n.ID, n.Addr))
 		} else {
-			nonVoters = append(voters, fmt.Sprintf("%v[%s]", n.ID, n.Addr))
+			nonVoters = append(nonVoters, fmt.Sprintf("%v[%s]", n.ID, n.Addr))
 		}
 	}
 	return fmt.Sprintf("voters: %v, nonVoters: %v", voters, nonVoters)
@@ -178,6 +178,7 @@ func (c Configs) IsCommitted() bool {
 }
 
 func (r *Raft) changeConfig(new Config) {
+	debug(r, "changeConfig", new)
 	r.configs.Committed, r.configs.Latest = r.configs.Latest, new
 	r.storage.setConfigs(r.configs)
 	if r.trace.ConfigChanged != nil {
@@ -186,6 +187,7 @@ func (r *Raft) changeConfig(new Config) {
 }
 
 func (r *Raft) commitConfig() {
+	debug(r, "commitConfig", r.configs.Latest)
 	r.configs.Committed = r.configs.Latest
 	r.storage.setConfigs(r.configs)
 	if r.trace.ConfigCommitted != nil {
@@ -194,6 +196,7 @@ func (r *Raft) commitConfig() {
 }
 
 func (r *Raft) revertConfig() {
+	debug(r, "revertConfig", r.configs.Committed)
 	r.configs.Latest = r.configs.Committed
 	r.storage.setConfigs(r.configs)
 	if r.trace.ConfigReverted != nil {
