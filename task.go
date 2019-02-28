@@ -269,6 +269,11 @@ func RemoveNode(id NodeID) Task {
 // ------------------------------------------------------------------------
 
 func (r *Raft) executeTask(t Task) {
+	if r.shutdownCalled() {
+		t.reply(ErrServerClosed)
+		return
+	}
+
 	switch t := t.(type) {
 	case bootstrap:
 		r.bootstrap(t)
@@ -281,6 +286,11 @@ func (r *Raft) executeTask(t Task) {
 }
 
 func (ldr *leadership) executeTask(t Task) {
+	if ldr.shutdownCalled() {
+		t.reply(ErrServerClosed)
+		return
+	}
+
 	switch t := t.(type) {
 	case NewEntry:
 		t.reply(errors.New("raft: use Raft.NewEntries() for NewEntry"))
