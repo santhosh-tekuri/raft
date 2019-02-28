@@ -256,7 +256,7 @@ func (ldr *leadership) checkLeaderLease() {
 	voters, reachable := 0, 0
 	now, firstFailure := time.Now(), time.Time{}
 	for _, node := range ldr.configs.Latest.Nodes {
-		if node.Type == Voter {
+		if node.Voter {
 			voters++
 			repl := ldr.repls[node.ID]
 			noContact := repl.status.noContact
@@ -301,7 +301,7 @@ func (ldr *leadership) majorityMatchIndex() uint64 {
 	numVoters := ldr.configs.Latest.numVoters()
 	if numVoters == 1 {
 		for _, node := range ldr.configs.Latest.Nodes {
-			if node.Type == Voter {
+			if node.Voter {
 				return ldr.repls[node.ID].status.matchIndex
 			}
 		}
@@ -310,7 +310,7 @@ func (ldr *leadership) majorityMatchIndex() uint64 {
 	matched := make(decrUint64Slice, numVoters)
 	i := 0
 	for _, node := range ldr.configs.Latest.Nodes {
-		if node.Type == Voter {
+		if node.Voter {
 			matched[i] = ldr.repls[node.ID].status.matchIndex
 			i++
 		}

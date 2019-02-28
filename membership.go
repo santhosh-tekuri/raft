@@ -56,8 +56,8 @@ func (ldr *leadership) addNode(t addNode) {
 		t.reply(fmt.Errorf("raft.addNode: node %s already exists", t.node.ID))
 		return
 	}
-	if t.node.Type == Voter {
-		t.reply(errors.New("raft.addNode: new node cannot be voter, add to staging"))
+	if t.node.Voter {
+		t.reply(errors.New("raft.addNode: new node cannot be voter"))
 		return
 	}
 	newConfig := ldr.configs.Latest.clone()

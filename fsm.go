@@ -33,7 +33,7 @@ func (r *Raft) applyCommitted(newEntries *list.List) {
 	// first commit latest config if not yet committed
 	if !r.configs.IsCommitted() && r.configs.Latest.Index <= r.commitIndex {
 		r.commitConfig()
-		if r.state == Leader && r.configs.Latest.typeOf(r.id) != Voter {
+		if r.state == Leader && !r.configs.Latest.isVoter(r.id) {
 			debug(r, "leader -> follower notVoter")
 			r.state = Follower
 			r.leader = ""

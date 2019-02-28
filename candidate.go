@@ -92,7 +92,7 @@ func (r *Raft) startElection() <-chan voteResult {
 		lastLogTerm:  r.lastLogTerm,
 	}
 	for _, n := range r.configs.Latest.Nodes {
-		if n.Type != Voter {
+		if !n.Voter {
 			continue
 		}
 		if n.ID == r.id {

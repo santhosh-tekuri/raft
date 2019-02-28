@@ -7,33 +7,11 @@ import (
 
 type NodeID string
 
-type NodeType byte
-
-const (
-	Voter    NodeType = 'V'
-	NonVoter          = 'N'
-	Staging           = 'S'
-	None              = '-'
-)
-
-func (nt NodeType) String() string {
-	switch nt {
-	case Voter:
-		return "voter"
-	case NonVoter:
-		return "nonVoter"
-	case Staging:
-		return "staging"
-	case None:
-		return "none"
-	}
-	return string(nt)
-}
-
 type Node struct {
-	ID   NodeID   `json:"-"`
-	Addr string   `json:"addr"`
-	Type NodeType `json:"type"`
+	ID      NodeID `json:"-"`
+	Addr    string `json:"addr"`
+	Voter   bool   `json:"voter"`
+	Promote bool   `json:"promote,omitempty"`
 }
 
 // -------------------------------------------------
@@ -44,17 +22,15 @@ type Config struct {
 	Term  uint64          `json:"term"`
 }
 
-func (c Config) typeOf(id NodeID) NodeType {
-	if node, ok := c.Nodes[id]; ok {
-		return node.Type
-	}
-	return None
+func (c Config) isVoter(id NodeID) bool {
+	node, ok := c.Nodes[id]
+	return ok && node.Voter
 }
 
 func (c Config) numVoters() int {
 	voters := 0
 	for _, node := range c.Nodes {
-		if node.Type == Voter {
+		if node.Voter {
 			voters++
 		}
 	}
@@ -86,7 +62,10 @@ func (c Config) encode() *entry {
 		if err := writeString(w, node.Addr); err != nil {
 			panic(err)
 		}
-		if err := writeUint8(w, uint8(node.Type)); err != nil {
+		if err := writeBool(w, node.Voter); err != nil {
+			panic(err)
+		}
+		if err := writeBool(w, node.Promote); err != nil {
 			panic(err)
 		}
 	}
@@ -118,11 +97,15 @@ func (c *Config) decode(e *entry) error {
 		if err != nil {
 			return err
 		}
-		suffrage, err := readUint8(r)
+		voter, err := readBool(r)
 		if err != nil {
 			return err
 		}
-		c.Nodes[NodeID(id)] = Node{ID: NodeID(id), Addr: addr, Type: NodeType(suffrage)}
+		promote, err := readBool(r)
+		if err != nil {
+			return err
+		}
+		c.Nodes[NodeID(id)] = Node{ID: NodeID(id), Addr: addr, Voter: voter, Promote: promote}
 	}
 	c.Index, c.Term = e.index, e.term
 	return nil
@@ -149,7 +132,7 @@ func (c Config) validate() error {
 		}
 		addrs[node.Addr] = true
 
-		if node.Type == Voter {
+		if node.Voter {
 			voters++
 		}
 	}
@@ -160,19 +143,17 @@ func (c Config) validate() error {
 }
 
 func (c Config) String() string {
-	var voters, staging, nonVoters []string
+	var voters, nonVoters []string
 	for _, n := range c.Nodes {
-		s := fmt.Sprintf("%v[%s]", n.ID, n.Addr)
-		switch n.Type {
-		case Voter:
-			voters = append(voters, s)
-		case Staging:
-			staging = append(staging, s)
-		case NonVoter:
-			nonVoters = append(nonVoters, s)
+		if n.Voter {
+			voters = append(voters, fmt.Sprintf("%v[%s]", n.ID, n.Addr))
+		} else if n.Promote {
+			nonVoters = append(voters, fmt.Sprintf("%v[%s,promote]", n.ID, n.Addr))
+		} else {
+			nonVoters = append(voters, fmt.Sprintf("%v[%s]", n.ID, n.Addr))
 		}
 	}
-	return fmt.Sprintf("voters: %v, staging: %v, nonVoters: %v", voters, staging, nonVoters)
+	return fmt.Sprintf("voters: %v, nonVoters: %v", voters, nonVoters)
 }
 
 // ---------------------------------------------------------

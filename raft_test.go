@@ -344,7 +344,7 @@ func TestRaft_Bootstrap(t *testing.T) {
 	// bootstrap one of the nodes
 	nodes := make(map[NodeID]Node, 3)
 	for id, r := range c.rr {
-		nodes[r.ID()] = Node{ID: r.ID(), Addr: id + ":8888", Type: Voter}
+		nodes[r.ID()] = Node{ID: r.ID(), Addr: id + ":8888", Voter: true}
 	}
 	if err := waitBootstrap(c.rr["M1"], nodes, c.longTimeout); err != nil {
 		t.Fatal(err)
@@ -718,7 +718,7 @@ func (c *cluster) launch(n int, bootstrap bool) {
 	nodes := make(map[NodeID]Node, n)
 	for i := 1; i <= n; i++ {
 		id := NodeID("M" + strconv.Itoa(i))
-		nodes[id] = Node{ID: id, Addr: string(id) + ":8888", Type: Voter}
+		nodes[id] = Node{ID: id, Addr: string(id) + ":8888", Voter: true}
 	}
 
 	i := 0

@@ -54,11 +54,11 @@ func (r *Raft) canStartElection() (can bool, reason string) {
 		return false, "no known peers"
 	}
 	if r.configs.IsCommitted() {
-		switch r.configs.Committed.typeOf(r.id) {
-		case None:
+		n, ok := r.configs.Latest.Nodes[r.id]
+		if !ok {
 			return false, "not part of cluster"
-		case Voter:
-		default:
+		}
+		if !n.Voter {
 			return false, "not voter"
 		}
 	}
