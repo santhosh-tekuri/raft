@@ -6,20 +6,23 @@ import (
 	"time"
 )
 
-// todo: add ConfigChangeInProgress, ConfigCommitted
-
 type Trace struct {
+	Starting        func(info Info)
 	StateChanged    func(info Info)
 	ElectionStarted func(info Info)
 	ElectionAborted func(info Info, reason string)
 	ConfigChanged   func(info Info)
 	ConfigCommitted func(info Info)
 	ConfigReverted  func(info Info)
-	Unreachable     func(info Info, id NodeID, since time.Time)
+	Unreachable     func(info Info, id NodeID, since time.Time) // todo: can we give err also
+	ShuttingDown    func(info Info)
 }
 
 func NewTraceWriter(w io.Writer) Trace {
 	return Trace{
+		Starting: func(info Info) {
+			_, _ = fmt.Fprintf(w, "[INFO] raft: starting with Config %s\n", info.Configs().Latest)
+		},
 		StateChanged: func(info Info) {
 			if info.State() == Leader {
 				_, _ = fmt.Fprintln(w, "[INFO] raft: cluster leadership acquired")
@@ -43,6 +46,9 @@ func NewTraceWriter(w io.Writer) Trace {
 			} else {
 				_, _ = fmt.Fprintf(w, "[INFO] raft: node %s is unreachable since %s\n", id, since)
 			}
+		},
+		ShuttingDown: func(info Info) {
+			_, _ = fmt.Fprintln(w, "[INFO] raft: shutting down")
 		},
 	}
 }

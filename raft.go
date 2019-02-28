@@ -157,6 +157,9 @@ func (r *Raft) Serve(l net.Listener) error {
 		return ErrServerClosed
 	}
 
+	if r.trace.Starting != nil {
+		r.trace.Starting(r.liveInfo())
+	}
 	go r.loop()
 	go r.fsmLoop()
 	return r.server.serve(l)
@@ -167,6 +170,9 @@ func (r *Raft) Shutdown() *sync.WaitGroup {
 	defer r.shutdownMu.Unlock()
 	if !r.shutdownCalled() {
 		debug(r.id, ">> shutdown()")
+		if r.trace.ShuttingDown != nil {
+			r.trace.ShuttingDown(r.liveInfo())
+		}
 		close(r.shutdownCh)
 	}
 	return &r.wg
