@@ -3,7 +3,6 @@ package raft
 import (
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"reflect"
 	"strconv"
@@ -78,8 +77,8 @@ func TestRaft_SingleNode(t *testing.T) {
 		t.Fatalf("fsm.lastCommand: got %s want test", cmd)
 	}
 
-	// shutdown and restart with fresh fsm and new addr
-	r := c.restart(ldr, "localhost:0")
+	// shutdown and restart with fresh fsm
+	r := c.restart(ldr, string(ldr.ID())+":7777")
 
 	// ensure that fsm has been restored from log
 	c.waitFSMLen(fsm(ldr).len(), r)
@@ -627,7 +626,7 @@ func TestRaft_AddNode(t *testing.T) {
 			t.Fatalf("got %s, want %s", e.src, ldr.ID())
 		}
 		if e.typ != configCommitted {
-			t.Fatalf("got %d, want %d", e.typ, configChanged)
+			t.Fatalf("got %d, want %d", e.typ, configCommitted)
 		}
 	default:
 		t.Fatal("expected configCommitted from ldr")
@@ -643,7 +642,7 @@ func TestRaft_AddNode(t *testing.T) {
 				t.Fatalf("got %s", e.src)
 			}
 			if e.typ != configCommitted {
-				t.Fatalf("got %d, want %d", e.typ, configChanged)
+				t.Fatalf("got %d, want %d", e.typ, configCommitted)
 			}
 			if set[e.src] {
 				t.Fatalf("duplicate configCommitted from %s", e.src)
@@ -653,13 +652,85 @@ func TestRaft_AddNode(t *testing.T) {
 		}
 	}
 
-	// ensure that leader has no config committed
+	// ensure that leader has now config committed
 	if !ldr.Info().Configs().IsCommitted() {
 		t.Fatal("config is not committed")
 	}
 
 	// ensure that M4 got its FSM replicated
 	c.waitFSMLen(10, m4)
+
+	// send 10 fsm updates, and wait for them to replicate
+	for i := 10; i < 20; i++ {
+		ldr.NewEntries() <- UpdateEntry([]byte(fmt.Sprintf("msg-%d", i)))
+	}
+	c.waitFSMLen(20)
+
+	// now disconnect nonVoter m4
+	unreachable := c.registerForEvent(unreachable, ldr)
+	defer c.unregisterObserver(unreachable)
+	m4StateChanged := c.registerForEvent(stateChanged, m4)
+	defer c.unregisterObserver(m4StateChanged)
+	c.disconnect(m4)
+
+	// ensure that m4 remains as follower and does not become candidate
+	select {
+	case e := <-m4StateChanged.ch:
+		t.Fatalf("m4 changed state to %s", e.state)
+	case <-time.After(5 * c.heartbeatTimeout):
+	}
+
+	// ensure that leader detected that m4 is unreachable
+	select {
+	case e := <-unreachable.ch:
+		if e.target != m4.ID() {
+			t.Fatalf("leader.unreachable: got %s, want m4", e.target)
+		}
+	case <-time.After(c.longTimeout):
+		t.Fatal("leader could not detect that m4 got disconnected")
+	}
+
+	// send 10 fsm updates, and wait for them to replicate to m1, m2, m3
+	for i := 20; i < 30; i++ {
+		ldr.NewEntries() <- UpdateEntry([]byte(fmt.Sprintf("msg-%d", i)))
+	}
+	c.waitFSMLen(30, c.exclude(m4)...)
+
+	// ensure that m4 did not get last 10 fsm updates
+	if got := fsm(m4).len(); got != 20 {
+		t.Fatalf("m4.fsmLen: got %d, want 20", got)
+	}
+
+	// now shutdown the leader
+	ldr.Shutdown().Wait()
+
+	// wait for newLeader
+	c.waitForLeader(c.longTimeout, c.exclude(ldr)...)
+
+	// now reconnect m4
+	c.connect()
+
+	// wait and ensure that m4 got last 10 entries from new leader
+	c.waitFSMLen(30, m4)
+
+	// restart m4, and check that he started with earlier config
+	before := m4.Info().Configs()
+	m4 = c.restart(m4, "")
+	after := m4.Info().Configs()
+	if !reflect.DeepEqual(before, after) {
+		t.Log("before:", before)
+		t.Log("after:", after)
+		t.Fatal("configs after restart did not match")
+	}
+
+	// ensure that m4's fsm restored after restart
+	c.waitFSMLen(30, m4)
+
+	// ensure that his config is committed
+	if !m4.Info().Configs().IsCommitted() {
+		t.Fatal("m4 configs should have been committed")
+	}
+
 }
 
 // todo: test that non voter does not start election
@@ -899,19 +970,24 @@ func (c *cluster) launch(n int, bootstrap bool) {
 }
 
 func (c *cluster) restart(r *Raft, addr string) *Raft {
+	c.Helper()
+	if addr == "" {
+		addr = r.Info().Addr()
+	}
 	r.Shutdown().Wait()
 	Debug(r.ID(), "<< shutdown()")
 
 	newFSM := &fsmMock{id: r.ID(), changed: c.onFMSChanded}
 	storage := c.storage[string(r.ID())]
-	newr, err := New(r.ID(), "localhost:0", c.opt, newFSM, storage, Trace{})
+	newr, err := New(r.ID(), addr, c.opt, newFSM, storage, Trace{})
 	if err != nil {
 		c.Fatal(err)
 	}
-	if addr == "" {
-		addr = string(r.ID()) + ":8888"
-	}
-	l, err := net.Listen("tcp", addr)
+
+	host := c.network.Host(string(r.ID()))
+	newr.dialFn = host.DialTimeout
+
+	l, err := host.Listen("tcp", addr)
 	if err != nil {
 		c.Fatal(err)
 	}
@@ -1006,10 +1082,13 @@ func (c *cluster) waitForState(r *Raft, timeout time.Duration, states ...State) 
 	}
 }
 
-func (c *cluster) waitForLeader(timeout time.Duration) {
+func (c *cluster) waitForLeader(timeout time.Duration, rr ...*Raft) {
 	c.Helper()
+	if len(rr) == 0 {
+		rr = c.exclude()
+	}
 	condition := func() bool {
-		for _, r := range c.rr {
+		for _, r := range rr {
 			if r.Info().State() == Leader {
 				return true
 			}
