@@ -1053,11 +1053,11 @@ func (c *cluster) waitForHealthy() *Raft {
 	return ldr
 }
 
-func (c *cluster) ensureLeader(leaderID NodeID) {
+func (c *cluster) ensureLeader(leader NodeID) {
 	c.Helper()
 	for _, r := range c.rr {
-		if got := r.Info().LeaderID(); got != leaderID {
-			c.Fatalf("leader of %s: got %s, want %s", r.ID(), got, leaderID)
+		if got := r.Info().Leader(); got != leader {
+			c.Fatalf("leader of %s: got %s, want %s", r.ID(), got, leader)
 		}
 	}
 }

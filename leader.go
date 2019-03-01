@@ -77,7 +77,7 @@ type leadership struct {
 }
 
 func (ldr *leadership) runLoop() {
-	assert(ldr.leader == ldr.addr, "%s ldr.leader: got %s, want %s", ldr, ldr.leader, ldr.addr)
+	assert(ldr.leader == ldr.id, "%s ldr.leader: got %s, want %s", ldr, ldr.leader, ldr.id)
 
 	ldr.startIndex = ldr.lastLogIndex + 1
 
@@ -97,13 +97,13 @@ func (ldr *leadership) runLoop() {
 			close(repl.stopCh)
 		}
 
-		if ldr.leader == ldr.addr {
+		if ldr.leader == ldr.id {
 			ldr.leader = ""
 		}
 
 		// respond to any pending user entries
 		for e := ldr.newEntries.Front(); e != nil; e = e.Next() {
-			e.Value.(NewEntry).task.reply(NotLeaderError{ldr.leader})
+			e.Value.(NewEntry).task.reply(NotLeaderError{ldr.leaderAddr()}) // todo: should we return leadshipLostError ?
 		}
 		ldr.wg.Wait()
 	}()
@@ -193,7 +193,7 @@ func (ldr *leadership) startReplication(node Node) {
 	// send initial empty AppendEntries RPCs (heartbeat) to each follower
 	req := &appendEntriesRequest{
 		term:           ldr.term,
-		leaderID:       ldr.addr,
+		leader:         ldr.id,
 		ldrCommitIndex: ldr.commitIndex,
 		prevLogIndex:   ldr.lastLogIndex,
 		prevLogTerm:    ldr.lastLogTerm,

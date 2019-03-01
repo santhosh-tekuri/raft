@@ -27,7 +27,7 @@ func (r *Raft) runCandidate() {
 
 		case vote := <-voteCh:
 			// todo: if quorum unreachable raise alert
-			if vote.voterID != r.addr {
+			if vote.voterID != r.addr() {
 				debug(r, "<< voteResponse", vote.voterID, vote.granted, vote.term, vote.err)
 			}
 
@@ -50,7 +50,7 @@ func (r *Raft) runCandidate() {
 				if votesNeeded == 0 {
 					debug(r, "candidate -> leader")
 					r.state = Leader
-					r.leader = r.addr
+					r.leader = r.id
 					r.stateChanged()
 					return
 				}
@@ -59,7 +59,7 @@ func (r *Raft) runCandidate() {
 			startElection = true
 
 		case ne := <-r.newEntryCh:
-			ne.reply(NotLeaderError{r.leader})
+			ne.reply(NotLeaderError{r.leaderAddr()})
 
 		case t := <-r.taskCh:
 			r.executeTask(t)
@@ -69,7 +69,7 @@ func (r *Raft) runCandidate() {
 
 type voteResult struct {
 	*voteResponse
-	voterID string
+	voterID string // todo: should we rename it to voterAddr
 	err     error
 }
 
@@ -87,7 +87,7 @@ func (r *Raft) startElection() <-chan voteResult {
 	// send RequestVote RPCs to all other servers
 	req := &voteRequest{
 		term:         r.term,
-		candidateID:  r.addr,
+		candidate:    r.id,
 		lastLogIndex: r.lastLogIndex,
 		lastLogTerm:  r.lastLogTerm,
 	}
@@ -97,13 +97,13 @@ func (r *Raft) startElection() <-chan voteResult {
 		}
 		if n.ID == r.id {
 			// vote for self
-			r.setVotedFor(r.addr)
+			r.setVotedFor(r.id)
 			resultsCh <- voteResult{
 				voteResponse: &voteResponse{
 					term:    r.term,
 					granted: true,
 				},
-				voterID: r.addr,
+				voterID: r.addr(),
 			}
 			continue
 		}

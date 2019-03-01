@@ -25,7 +25,7 @@ func (r *Raft) replyRPC(rpc rpc) bool {
 }
 
 func (r *Raft) onVoteRequest(req *voteRequest) *voteResponse {
-	debug(r, "onVoteRequest", req.term, req.candidateID, req.lastLogIndex, req.lastLogTerm)
+	debug(r, "onVoteRequest", req.term, req.candidate, req.lastLogIndex, req.lastLogTerm)
 	resp := &voteResponse{
 		term:    r.term,
 		granted: false,
@@ -33,7 +33,7 @@ func (r *Raft) onVoteRequest(req *voteRequest) *voteResponse {
 
 	switch {
 	case req.term < r.term: // reject: older term
-		debug(r, "rejectVoteTo", req.candidateID, "oldTerm")
+		debug(r, "rejectVoteTo", req.candidate, "oldTerm")
 		return resp
 	case req.term > r.term: // convert to follower
 		debug(r, "stateChange", req.term, Follower)
@@ -44,29 +44,29 @@ func (r *Raft) onVoteRequest(req *voteRequest) *voteResponse {
 
 	// if we have leader, we only vote for him
 	if r.leader != "" {
-		resp.granted = req.candidateID == r.leader
+		resp.granted = req.candidate == r.leader
 		return resp
 	}
 
 	if r.votedFor != "" { // we already voted in this election before
-		if r.votedFor == req.candidateID { // same candidate we votedFor
+		if r.votedFor == req.candidate { // same candidate we votedFor
 			resp.granted = true
-			debug(r, "grantVoteTo", req.candidateID)
+			debug(r, "grantVoteTo", req.candidate)
 		} else {
-			debug(r, "rejectVoteTo", req.candidateID, "alreadyVotedTo", r.votedFor)
+			debug(r, "rejectVoteTo", req.candidate, "alreadyVotedTo", r.votedFor)
 		}
 		return resp
 	}
 
 	// reject if candidate’s log is not at least as up-to-date as ours
 	if r.lastLogTerm > req.lastLogTerm || (r.lastLogTerm == req.lastLogTerm && r.lastLogIndex > req.lastLogIndex) {
-		debug(r, "rejectVoteTo", req.candidateID, "logNotUptoDate", r.lastLogIndex, r.lastLogTerm, req.lastLogIndex, req.lastLogTerm)
+		debug(r, "rejectVoteTo", req.candidate, "logNotUptoDate", r.lastLogIndex, r.lastLogTerm, req.lastLogIndex, req.lastLogTerm)
 		return resp
 	}
 
-	debug(r, "grantVoteTo", req.candidateID)
+	debug(r, "grantVoteTo", req.candidate)
 	resp.granted = true
-	r.setVotedFor(req.candidateID)
+	r.setVotedFor(req.candidate)
 
 	return resp
 }
@@ -91,7 +91,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesRequest) *appendEntriesR
 		r.stateChanged()
 	}
 
-	r.leader = req.leaderID
+	r.leader = req.leader
 
 	// reply false if log at req.prevLogIndex does not match
 	if req.prevLogIndex > 0 {

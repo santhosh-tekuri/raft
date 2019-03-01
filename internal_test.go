@@ -8,12 +8,12 @@ func Debug(args ...interface{}) {
 
 func RequestVote(from, to *Raft) (granted bool, err error) {
 	toAddr := to.Info().Addr()
-	t := Inspect(func(r Info) {
+	t := Inspect(func(info Info) {
 		req := &voteRequest{
-			term:         r.Term(),
-			lastLogIndex: r.LastLogIndex(),
-			lastLogTerm:  r.LastLogTerm(),
-			candidateID:  r.Addr(),
+			term:         info.Term(),
+			lastLogIndex: info.LastLogIndex(),
+			lastLogTerm:  info.LastLogTerm(),
+			candidate:    info.ID(),
 		}
 		connPool := from.getConnPool(toAddr)
 		resp, errr := from.requestVote(connPool, req)

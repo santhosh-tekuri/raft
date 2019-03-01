@@ -113,8 +113,7 @@ type json struct {
 	Addr         string                `json:"addr"`
 	Term         uint64                `json:"term"`
 	State        State                 `json:"state"`
-	LeaderID     NodeID                `json:"leaderID,omitempty"`
-	LeaderAddr   string                `json:"leaderAddr,omitempty"`
+	Leader       NodeID                `json:"leader,omitempty"`
 	LastLogIndex uint64                `json:"lastLogIndex"`
 	LastLogTerm  uint64                `json:"lastLogTerm"`
 	Committed    uint64                `json:"committed"`
@@ -128,8 +127,7 @@ type Info interface {
 	Addr() string
 	Term() uint64
 	State() State
-	LeaderID() NodeID
-	LeaderAddr() string
+	Leader() NodeID
 	LastLogIndex() uint64
 	LastLogTerm() uint64
 	Committed() uint64
@@ -146,25 +144,16 @@ type liveInfo struct {
 }
 
 func (info liveInfo) ID() NodeID           { return info.r.id }
-func (info liveInfo) Addr() string         { return info.r.addr }
+func (info liveInfo) Addr() string         { return info.r.addr() }
 func (info liveInfo) Term() uint64         { return info.r.term }
 func (info liveInfo) State() State         { return info.r.state }
-func (info liveInfo) LeaderAddr() string   { return info.r.leader }
+func (info liveInfo) Leader() NodeID       { return info.r.leader }
 func (info liveInfo) LastLogIndex() uint64 { return info.r.lastLogIndex }
 func (info liveInfo) LastLogTerm() uint64  { return info.r.lastLogTerm }
 func (info liveInfo) Committed() uint64    { return info.r.commitIndex }
 func (info liveInfo) LastApplied() uint64  { return info.r.lastApplied }
 func (info liveInfo) Configs() Configs     { return info.r.configs.clone() }
 func (info liveInfo) Trace() *Trace        { return &info.r.trace }
-
-func (info liveInfo) LeaderID() NodeID {
-	for _, node := range info.r.configs.Latest.Nodes {
-		if node.Addr == info.r.leader {
-			return node.ID
-		}
-	}
-	return NodeID("")
-}
 
 func (info liveInfo) Replication() map[NodeID]ReplStatus {
 	if info.ldr == nil {
@@ -186,8 +175,7 @@ func (info liveInfo) JSON() interface{} {
 		Addr:         info.Addr(),
 		Term:         info.Term(),
 		State:        info.State(),
-		LeaderID:     info.LeaderID(),
-		LeaderAddr:   info.LeaderAddr(),
+		Leader:       info.Leader(),
 		LastLogIndex: info.LastLogIndex(),
 		LastLogTerm:  info.LastLogTerm(),
 		Committed:    info.Committed(),
@@ -205,8 +193,7 @@ func (info cachedInfo) ID() NodeID                         { return info.json.ID
 func (info cachedInfo) Addr() string                       { return info.json.Addr }
 func (info cachedInfo) Term() uint64                       { return info.json.Term }
 func (info cachedInfo) State() State                       { return info.json.State }
-func (info cachedInfo) LeaderID() NodeID                   { return info.json.LeaderID }
-func (info cachedInfo) LeaderAddr() string                 { return info.json.LeaderAddr }
+func (info cachedInfo) Leader() NodeID                     { return info.json.Leader }
 func (info cachedInfo) LastLogIndex() uint64               { return info.json.LastLogIndex }
 func (info cachedInfo) LastLogTerm() uint64                { return info.json.LastLogTerm }
 func (info cachedInfo) Committed() uint64                  { return info.json.Committed }
@@ -281,7 +268,7 @@ func (r *Raft) executeTask(t Task) {
 		t.fn(liveInfo{r: r})
 		t.reply(nil)
 	default:
-		t.reply(NotLeaderError{r.leader})
+		t.reply(NotLeaderError{r.leaderAddr()})
 	}
 }
 

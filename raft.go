@@ -45,7 +45,6 @@ type Raft struct {
 	dialFn dialFn
 
 	id      NodeID
-	addr    string //todo: always get it from latest config
 	configs Configs
 	wg      sync.WaitGroup
 
@@ -55,9 +54,9 @@ type Raft struct {
 	storage *Storage
 	term    uint64
 	state   State
-	leader  string //todo: use id instead of addr
+	leader  NodeID
 
-	votedFor  string //todo: use id instead of addr
+	votedFor  NodeID
 	hbTimeout time.Duration
 
 	lastLogIndex uint64
@@ -100,19 +99,13 @@ func New(id NodeID, opt Options, fsm FSM, storage *Storage, trace Trace) (*Raft,
 		return nil, err
 	}
 
-	addr := ""
-	if self, ok := configs.Latest.Nodes[id]; ok {
-		addr = self.Addr
-	}
-
 	server := newServer(2 * opt.HeartbeatTimeout)
 	r := &Raft{
 		id:              id,
-		addr:            addr,
 		storage:         storage,
 		fsm:             fsm,
 		term:            term,
-		votedFor:        votedFor,
+		votedFor:        NodeID(votedFor),
 		lastLogIndex:    lastLogIndex,
 		lastLogTerm:     lastLogTerm,
 		configs:         configs,
@@ -133,6 +126,23 @@ func New(id NodeID, opt Options, fsm FSM, storage *Storage, trace Trace) (*Raft,
 
 func (r *Raft) ID() NodeID {
 	return r.id
+}
+
+func (r *Raft) addr() string {
+	if self, ok := r.configs.Latest.Nodes[r.id]; ok {
+		return self.Addr
+	}
+	return ""
+}
+
+func (r *Raft) leaderAddr() string {
+	if r.leader == "" {
+		return ""
+	}
+	if ldr, ok := r.configs.Latest.Nodes[r.leader]; ok {
+		return ldr.Addr
+	}
+	return ""
 }
 
 func (r *Raft) FSM() FSM {
@@ -214,8 +224,8 @@ func (r *Raft) setTerm(term uint64) {
 	r.term, r.votedFor = term, ""
 }
 
-func (r *Raft) setVotedFor(v string) {
-	if err := r.storage.vars.SetVote(r.term, v); err != nil {
+func (r *Raft) setVotedFor(v NodeID) {
+	if err := r.storage.vars.SetVote(r.term, string(v)); err != nil {
 		panic(fmt.Sprintf("save votedFor failed: %v", err))
 	}
 	r.votedFor = v

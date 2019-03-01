@@ -1,7 +1,7 @@
 package raft
 
 func (r *Raft) runFollower() {
-	assert(r.leader != r.addr, "%s r.leader: got %s, want !=%s", r, r.leader, r.addr)
+	assert(r.leader != r.id, "%s r.leader: got %s, want !=%s", r, r.leader, r.id)
 
 	// todo: use single timer by resetting
 	timeoutCh := afterRandomTimeout(r.hbTimeout)
@@ -38,7 +38,7 @@ func (r *Raft) runFollower() {
 			r.stateChanged()
 
 		case ne := <-r.newEntryCh:
-			ne.reply(NotLeaderError{r.leader})
+			ne.reply(NotLeaderError{r.leaderAddr()})
 
 		case t := <-r.taskCh:
 			before, _ := r.canStartElection()
