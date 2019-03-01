@@ -179,10 +179,27 @@ func (c Configs) IsCommitted() bool {
 	return c.Latest.Index == c.Committed.Index
 }
 
+func (r *Raft) updateAddrs(old, new Config) {
+	// update self addr
+	if self, ok := new.Nodes[r.id]; ok {
+		r.addr = self.Addr
+	}
+
+	// update leader addr
+	if r.leader != "" {
+		if ldr, ok := old.nodeForAddr(r.leader); ok {
+			if ldr, ok := new.Nodes[ldr.ID]; ok {
+				r.leader = ldr.Addr
+			}
+		}
+	}
+}
+
 func (r *Raft) changeConfig(new Config) {
 	debug(r, "changeConfig", new)
 	r.configs.Committed, r.configs.Latest = r.configs.Latest, new
 	r.storage.setConfigs(r.configs)
+	r.updateAddrs(r.configs.Committed, new)
 	if r.trace.ConfigChanged != nil {
 		r.trace.ConfigChanged(r.liveInfo())
 	}
@@ -199,8 +216,10 @@ func (r *Raft) commitConfig() {
 
 func (r *Raft) revertConfig() {
 	debug(r, "revertConfig", r.configs.Committed)
+	old, new := r.configs.Latest, r.configs.Committed
 	r.configs.Latest = r.configs.Committed
 	r.storage.setConfigs(r.configs)
+	r.updateAddrs(old, new)
 	if r.trace.ConfigReverted != nil {
 		r.trace.ConfigReverted(r.liveInfo())
 	}

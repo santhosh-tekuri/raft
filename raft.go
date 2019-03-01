@@ -45,7 +45,7 @@ type Raft struct {
 	dialFn dialFn
 
 	id      NodeID
-	addr    string
+	addr    string //todo: always get it from latest config
 	configs Configs
 	wg      sync.WaitGroup
 
@@ -55,9 +55,9 @@ type Raft struct {
 	storage *Storage
 	term    uint64
 	state   State
-	leader  string
+	leader  string //todo: use id instead of addr
 
-	votedFor  string
+	votedFor  string //todo: use id instead of addr
 	hbTimeout time.Duration
 
 	lastLogIndex uint64
@@ -76,7 +76,7 @@ type Raft struct {
 	shutdownCh      chan struct{}
 }
 
-func New(id NodeID, addr string, opt Options, fsm FSM, storage *Storage, trace Trace) (*Raft, error) {
+func New(id NodeID, opt Options, fsm FSM, storage *Storage, trace Trace) (*Raft, error) {
 	if err := storage.init(); err != nil {
 		return nil, err
 	}
@@ -98,6 +98,11 @@ func New(id NodeID, addr string, opt Options, fsm FSM, storage *Storage, trace T
 	configs, err := storage.getConfigs()
 	if err != nil {
 		return nil, err
+	}
+
+	addr := ""
+	if self, ok := configs.Latest.Nodes[id]; ok {
+		addr = self.Addr
 	}
 
 	server := newServer(2 * opt.HeartbeatTimeout)

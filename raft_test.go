@@ -78,7 +78,7 @@ func TestRaft_SingleNode(t *testing.T) {
 	}
 
 	// shutdown and restart with fresh fsm
-	r := c.restart(ldr, string(ldr.ID())+":7777")
+	r := c.restart(ldr)
 
 	// ensure that fsm has been restored from log
 	c.waitFSMLen(fsm(ldr).len(), r)
@@ -580,7 +580,7 @@ func TestRaft_AddNode(t *testing.T) {
 	defer c.unregisterObserver(configRelated)
 
 	// add M4 as nonVoter, wait for success reply
-	task := AddNode(Node{ID: m4.ID(), Addr: m4.Info().Addr(), Voter: false})
+	task := AddNode(Node{ID: m4.ID(), Addr: "M4:8888", Voter: false})
 	ldr.Tasks() <- task
 	<-task.Done()
 	if task.Err() != nil {
@@ -715,7 +715,7 @@ func TestRaft_AddNode(t *testing.T) {
 
 	// restart m4, and check that he started with earlier config
 	before := m4.Info().Configs()
-	m4 = c.restart(m4, "")
+	m4 = c.restart(m4)
 	after := m4.Info().Configs()
 	if !reflect.DeepEqual(before, after) {
 		t.Log("before:", before)
@@ -948,7 +948,7 @@ func (c *cluster) launch(n int, bootstrap bool) {
 			}
 		}
 		fsm := &fsmMock{id: node.ID, changed: c.onFMSChanded}
-		r, err := New(node.ID, node.Addr, c.opt, fsm, storage, c.trace)
+		r, err := New(node.ID, c.opt, fsm, storage, c.trace)
 		if err != nil {
 			c.Fatal(err)
 		}
@@ -969,17 +969,15 @@ func (c *cluster) launch(n int, bootstrap bool) {
 	}
 }
 
-func (c *cluster) restart(r *Raft, addr string) *Raft {
+func (c *cluster) restart(r *Raft) *Raft {
 	c.Helper()
-	if addr == "" {
-		addr = r.Info().Addr()
-	}
+	addr := r.Info().Addr()
 	r.Shutdown().Wait()
 	Debug(r.ID(), "<< shutdown()")
 
 	newFSM := &fsmMock{id: r.ID(), changed: c.onFMSChanded}
 	storage := c.storage[string(r.ID())]
-	newr, err := New(r.ID(), addr, c.opt, newFSM, storage, Trace{})
+	newr, err := New(r.ID(), c.opt, newFSM, storage, Trace{})
 	if err != nil {
 		c.Fatal(err)
 	}
