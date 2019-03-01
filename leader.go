@@ -79,7 +79,7 @@ type leadership struct {
 func (ldr *leadership) runLoop() {
 	assert(ldr.leader == ldr.id, "%s ldr.leader: got %s, want %s", ldr, ldr.leader, ldr.id)
 
-	ldr.startIndex = ldr.lastLogIndex + 1
+	ldr.startIndex = ldr.log.lastIndex + 1
 
 	// add a blank no-op entry into log at the start of its term
 	ldr.storeEntry(NewEntry{
@@ -181,15 +181,15 @@ func (ldr *leadership) runLoop() {
 
 func (ldr *leadership) startReplication(node Node) {
 	repl := &replication{
-		status:           replStatus{id: node.ID},
-		connPool:         ldr.getConnPool(node.ID),
-		heartbeatTimeout: ldr.hbTimeout,
-		storage:          ldr.storage,
-		stopCh:           make(chan struct{}),
-		replUpdatedCh:    ldr.replUpdatedCh,
-		newTermCh:        ldr.newTermCh,
-		ldrUpdateCh:      make(chan leaderUpdate, 1),
-		str:              fmt.Sprintf("%v %s", ldr, string(node.ID)),
+		status:        replStatus{id: node.ID},
+		connPool:      ldr.getConnPool(node.ID),
+		hbTimeout:     ldr.hbTimeout,
+		log:           ldr.log,
+		stopCh:        make(chan struct{}),
+		replUpdatedCh: ldr.replUpdatedCh,
+		newTermCh:     ldr.newTermCh,
+		ldrUpdateCh:   make(chan leaderUpdate, 1),
+		str:           fmt.Sprintf("%v %s", ldr, string(node.ID)),
 	}
 	ldr.repls[node.ID] = repl
 
@@ -198,8 +198,8 @@ func (ldr *leadership) startReplication(node Node) {
 		term:           ldr.term,
 		leader:         ldr.id,
 		ldrCommitIndex: ldr.commitIndex,
-		prevLogIndex:   ldr.lastLogIndex,
-		prevLogTerm:    ldr.lastLogTerm,
+		prevLogIndex:   ldr.log.lastIndex,
+		prevLogTerm:    ldr.log.lastTerm,
 	}
 
 	ldr.wg.Add(1)
@@ -235,13 +235,12 @@ func (ldr *leadership) startReplication(node Node) {
 }
 
 func (ldr *leadership) storeEntry(ne NewEntry) {
-	ne.entry.index, ne.entry.term = ldr.lastLogIndex+1, ldr.term
+	ne.entry.index, ne.entry.term = ldr.log.lastIndex+1, ldr.term
 
 	// append entry to local log
 	debug(ldr, "log.append", ne.typ, ne.index)
 	if ne.typ != entryQuery && ne.typ != entryBarrier {
-		ldr.storage.append(ne.entry)
-		ldr.lastLogIndex, ldr.lastLogTerm = ne.index, ne.term
+		ldr.log.append(ne.entry)
 	}
 	ldr.newEntries.PushBack(ne)
 
@@ -339,7 +338,7 @@ func (ldr *leadership) onMajorityCommit() {
 
 func (ldr *leadership) notifyReplicators() {
 	leaderUpdate := leaderUpdate{
-		lastIndex:   ldr.lastLogIndex,
+		lastIndex:   ldr.log.lastIndex,
 		commitIndex: ldr.commitIndex,
 	}
 	for _, repl := range ldr.repls {

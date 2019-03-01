@@ -59,8 +59,8 @@ func (r *Raft) onVoteRequest(req *voteRequest) *voteResponse {
 	}
 
 	// reject if candidate’s log is not at least as up-to-date as ours
-	if r.lastLogTerm > req.lastLogTerm || (r.lastLogTerm == req.lastLogTerm && r.lastLogIndex > req.lastLogIndex) {
-		debug(r, "rejectVoteTo", req.candidate, "logNotUptoDate", r.lastLogIndex, r.lastLogTerm, req.lastLogIndex, req.lastLogTerm)
+	if r.log.lastTerm > req.lastLogTerm || (r.log.lastTerm == req.lastLogTerm && r.log.lastIndex > req.lastLogIndex) {
+		debug(r, "rejectVoteTo", req.candidate, "logNotUptoDate", r.log.lastIndex, r.log.lastTerm, req.lastLogIndex, req.lastLogTerm)
 		return resp
 	}
 
@@ -75,7 +75,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesRequest) *appendEntriesR
 	resp := &appendEntriesResponse{
 		term:         r.term,
 		success:      false,
-		lastLogIndex: r.lastLogIndex,
+		lastLogIndex: r.log.lastIndex,
 	}
 
 	// reply false if older term
@@ -95,17 +95,17 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesRequest) *appendEntriesR
 
 	// reply false if log at req.prevLogIndex does not match
 	if req.prevLogIndex > 0 {
-		if req.prevLogIndex > r.lastLogIndex {
+		if req.prevLogIndex > r.log.lastIndex {
 			// no log found
 			return resp
 		}
 
 		var prevLogTerm uint64
-		if req.prevLogIndex == r.lastLogIndex {
-			prevLogTerm = r.lastLogTerm
+		if req.prevLogIndex == r.log.lastIndex {
+			prevLogTerm = r.log.lastTerm
 		} else {
 			prevEntry := &entry{}
-			r.storage.getEntry(req.prevLogIndex, prevEntry)
+			r.log.getEntry(req.prevLogIndex, prevEntry)
 			prevLogTerm = prevEntry.term
 		}
 
@@ -121,15 +121,15 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesRequest) *appendEntriesR
 
 		// if new entry conflicts, delete it and all that follow it
 		for i, ne := range req.entries {
-			if ne.index > r.lastLogIndex {
+			if ne.index > r.log.lastIndex {
 				newEntries = req.entries[i:]
 				break
 			}
 			e := &entry{}
-			r.storage.getEntry(ne.index, e)
+			r.log.getEntry(ne.index, e)
 			if e.term != ne.term { // conflicts
 				debug(r, "log.deleteGTE", ne.index)
-				r.storage.deleteGTE(ne.index)
+				r.log.deleteGTE(ne.index)
 				if ne.index <= r.configs.Latest.Index {
 					r.revertConfig()
 				}
@@ -142,7 +142,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesRequest) *appendEntriesR
 		if len(newEntries) > 0 {
 			debug(r, "log.appendN", "from:", newEntries[0].index, "n:", len(newEntries))
 			for _, e := range newEntries {
-				r.storage.append(e)
+				r.log.append(e)
 				if e.typ == entryConfig {
 					var newConfig Config
 					if err := newConfig.decode(e); err != nil {
@@ -151,16 +151,14 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesRequest) *appendEntriesR
 					r.changeConfig(newConfig)
 				}
 			}
-			last := newEntries[len(newEntries)-1]
-			r.lastLogIndex, r.lastLogTerm = last.index, last.term
 		}
 
-		resp.lastLogIndex = r.lastLogIndex
+		resp.lastLogIndex = r.log.lastIndex
 	}
 
 	// If leaderCommit > commitIndex, set commitIndex =
 	// min(leaderCommit, index of last new entry)
-	// note: req.ldrCommitIndex==0 for heatbeat requests
+	// note: req.ldrCommitIndex==0 for heartbeat requests
 	lastIndex, lastTerm := r.lastLog(req)
 	if lastTerm == req.term && req.ldrCommitIndex > r.commitIndex {
 		r.commitIndex = min(req.ldrCommitIndex, lastIndex)

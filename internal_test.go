@@ -22,3 +22,12 @@ func RequestVote(from, to *Raft) (granted bool, err error) {
 	<-t.Done()
 	return
 }
+
+func BootstrapStorage(storage Storage, nodes map[ID]Node) error {
+	store := newStorage(storage)
+	if err := store.init(); err != nil {
+		return err
+	}
+	_, err := store.bootstrap(nodes)
+	return err
+}

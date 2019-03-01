@@ -755,7 +755,7 @@ func TestMain(m *testing.M) {
 type cluster struct {
 	*testing.T
 	rr               map[string]*Raft
-	storage          map[string]*Storage
+	storage          map[string]Storage
 	network          *fnet.Network
 	heartbeatTimeout time.Duration
 	longTimeout      time.Duration
@@ -773,7 +773,7 @@ func newCluster(t *testing.T) *cluster {
 		T:                t,
 		network:          fnet.New(),
 		rr:               make(map[string]*Raft),
-		storage:          make(map[string]*Storage),
+		storage:          make(map[string]Storage),
 		heartbeatTimeout: heartbeatTimeout,
 		longTimeout:      5 * time.Second,
 		commitTimeout:    5 * time.Millisecond,
@@ -939,10 +939,9 @@ func (c *cluster) launch(n int, bootstrap bool) {
 	i := 0
 	for _, node := range nodes {
 		inMemStorage := new(inmem.Storage)
-		storage := NewStorage(inMemStorage, inMemStorage)
+		storage := Storage{Vars: inMemStorage, Log: inMemStorage}
 		if bootstrap {
-			_, err := storage.bootstrap(nodes)
-			if err != nil {
+			if err := BootstrapStorage(storage, nodes); err != nil {
 				c.Fatalf("Storage.bootstrap failed: %v", err)
 			}
 		}

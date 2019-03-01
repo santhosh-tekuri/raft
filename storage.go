@@ -3,8 +3,9 @@ package raft
 import (
 	"bytes"
 	"fmt"
-	"sync"
 )
+
+// -------------------------------------------------------------
 
 type Vars interface {
 	GetVote() (term uint64, vote string, err error)
@@ -12,6 +13,41 @@ type Vars interface {
 	GetConfig() (committed, latest uint64, err error)
 	SetConfig(committed, latest uint64) error
 }
+
+type vars struct {
+	storage  Vars
+	term     uint64
+	votedFor ID
+}
+
+func newVars(storage Vars) *vars {
+	return &vars{storage: storage}
+}
+
+func (v *vars) init() error {
+	term, vote, err := v.storage.GetVote()
+	if err != nil {
+		return fmt.Errorf("raft: Vars.GetVote failed: %v", err)
+	}
+	v.term, v.votedFor = term, ID(vote)
+	return nil
+}
+
+func (v *vars) setTerm(term uint64) {
+	if err := v.storage.SetVote(v.term, ""); err != nil {
+		panic(fmt.Sprintf("raft: Vars.SetVote failed: %v", err))
+	}
+	v.term, v.votedFor = term, ""
+}
+
+func (v *vars) setVotedFor(id ID) {
+	if err := v.storage.SetVote(v.term, string(id)); err != nil {
+		panic(fmt.Sprintf("raft: Vars.SetVote failed: %v", err))
+	}
+	v.votedFor = id
+}
+
+// ---------------------------------------------------------
 
 type Log interface {
 	Empty() (bool, error)
@@ -32,203 +68,214 @@ type Log interface {
 
 // todo: can we avoid panics on storage error
 
-type Storage struct {
-	vars Vars
-	log  Log
+type log struct {
+	storage  Log
+	lastTerm uint64
 
-	mu sync.RWMutex
-	// zero for no entries. note that we never have an entry with index zero
-	first, last uint64
+	firstIndex uint64
+	lastIndex  uint64
 }
 
-func NewStorage(vars Vars, log Log) *Storage {
-	return &Storage{vars: vars, log: log}
+func newLog(storage Log) *log {
+	return &log{storage: storage}
 }
 
-func (s *Storage) init() error {
-	if empty, err := s.log.Empty(); err != nil || empty {
-		return err
+func (log *log) init() error {
+	empty, err := log.storage.Empty()
+	if err != nil {
+		return fmt.Errorf("raft: Log.Empty failed: %v", err)
+
 	}
-	getIndex := func(get func() ([]byte, error)) (uint64, error) {
+	if empty {
+		log.firstIndex, log.lastIndex = 1, 0
+		log.lastTerm = 0
+		return nil
+	}
+
+	getEntry := func(get func() ([]byte, error)) (*entry, error) {
 		b, err := get()
 		if err != nil {
-			return 0, err
+			return nil, fmt.Errorf("raft: Log.GetFirst/GetLast failed: %v", err)
 		}
-		entry := &entry{}
-		if err = entry.decode(bytes.NewReader(b)); err != nil {
-			return 0, err
+		e := &entry{}
+		if err = e.decode(bytes.NewReader(b)); err != nil {
+			return nil, err
 		}
-		return entry.index, nil
+		return e, nil
 	}
 
-	var err error
-	var first, last uint64
-	if first, err = getIndex(s.log.First); err != nil {
+	var first, last *entry
+	if first, err = getEntry(log.storage.First); err != nil {
 		return err
 	}
-	if last, err = getIndex(s.log.Last); err != nil {
+	if last, err = getEntry(log.storage.Last); err != nil {
 		return err
 	}
-	s.mu.Lock()
-	s.first, s.last = first, last
-	s.mu.Unlock()
+	log.firstIndex = first.index
+	log.lastIndex = last.index
+	log.lastTerm = last.term
 
 	return nil
 }
 
-func (s *Storage) getConfigs() (Configs, error) {
-	configs := Configs{}
-	committed, latest, err := s.vars.GetConfig()
+func (log *log) count() uint64 {
+	if log.firstIndex > log.lastIndex {
+		return 0
+	}
+	return log.lastIndex - log.firstIndex + 1
+}
+
+// if empty returns nil
+func (log *log) lastEntry() (*entry, error) {
+	if log.count() == 0 {
+		return nil, nil
+	}
+	b, err := log.storage.Last()
 	if err != nil {
-		return configs, err
+		return nil, err
+	}
+	e := &entry{}
+	err = e.decode(bytes.NewReader(b))
+	return e, err
+}
+
+// called by raft.runLoop and repl.runLoop. append call can be called during this
+// never called with invalid index
+func (log *log) getEntry(index uint64, e *entry) {
+	offset := index - log.firstIndex
+
+	b, err := log.storage.Get(offset)
+	if err != nil {
+		panic(fmt.Sprintf("raft: log.get(%d) failed: %v", index, err))
+	}
+	if err = e.decode(bytes.NewReader(b)); err != nil {
+		panic(fmt.Sprintf("raft: entry.decode(%d) failed: %v", index, err))
+	}
+}
+
+// called by raft startup. no other calls made during this
+// never called with invalid index
+func (log *log) getConfig(index uint64) (Config, error) {
+	e := &entry{}
+	log.getEntry(index, e)
+	config := Config{}
+	err := config.decode(e)
+	return config, err
+}
+
+// called by raft.runLoop. getEntry call can be called during this
+func (log *log) append(e *entry) {
+	w := new(bytes.Buffer)
+	if err := e.encode(w); err != nil {
+		panic(fmt.Sprintf("raft: entry.encode(%d) failed: %v", e.index, err))
+	}
+	if err := log.storage.Append(w.Bytes()); err != nil {
+		panic(fmt.Sprintf("raft: log.append(%d): %v", e.index, err))
+	}
+
+	if e.index != log.lastIndex+1 {
+		panic("log.append: entry.index!=lastIndex+1")
+	}
+	log.lastIndex, log.lastTerm = e.index, e.term
+	log.lastTerm = e.term
+}
+
+// never called with invalid index
+func (log *log) deleteLTE(index uint64) {
+	if log.count() == 0 {
+		panic("raft: [BUG] Storage.deleteLTE on empty log")
+	}
+	if index < log.firstIndex || index > log.lastIndex {
+		panic(fmt.Sprintf("raft: [BUG] log.deleteLTE(%d) failed: out of bounds", index))
+	}
+	n := index - log.firstIndex + 1
+	if err := log.storage.DeleteFirst(n); err != nil {
+		panic(fmt.Sprintf("raft: log.deleteFirst(%d) failed: %v", n, err))
+	}
+	log.firstIndex = index + 1
+}
+
+// called by raft.runLoop. no other calls made during this
+// never called with invalid index
+func (log *log) deleteGTE(index uint64) {
+	n := log.lastIndex - index + 1
+	if err := log.storage.DeleteLast(n); err != nil {
+		panic(fmt.Sprintf("raft: log.deleteLast(%d) failed: %v", n, err))
+	}
+	log.lastIndex = index - 1 // lasTerm is updated on immediate append call
+}
+
+// -----------------------------------------------------------------------------------
+
+type Storage struct {
+	Vars Vars
+	Log  Log
+}
+
+type storage struct {
+	*vars
+	log     *log
+	configs Configs
+}
+
+func newStorage(s Storage) *storage {
+	return &storage{
+		vars: newVars(s.Vars),
+		log:  newLog(s.Log),
+	}
+}
+
+func (s *storage) init() error {
+	if err := s.vars.init(); err != nil {
+		return err
+	}
+	if err := s.log.init(); err != nil {
+		return err
+	}
+
+	// load configs
+	committed, latest, err := s.vars.storage.GetConfig()
+	if err != nil {
+		return err
 	}
 	if committed != 0 {
-		e := &entry{}
-		s.getEntry(committed, e)
-		if err := configs.Committed.decode(e); err != nil {
-			return configs, err
+		s.configs.Committed, err = s.log.getConfig(committed)
+		if err != nil {
+			return err
 		}
 	}
 	if latest != 0 {
-		e := &entry{}
-		s.getEntry(latest, e)
-		if err := configs.Latest.decode(e); err != nil {
-			return configs, err
+		s.configs.Latest, err = s.log.getConfig(latest)
+		if err != nil {
+			return err
 		}
 	}
 
 	// handle the case, where config is stored in log but
 	// crashed before saving in vars
-	last, err := s.lastEntry()
+	last, err := s.log.lastEntry()
 	if err != nil {
-		return configs, err
+		return err
 	}
 	if last != nil && last.typ == entryConfig && last.index > latest {
-		if err := configs.Latest.decode(last); err != nil {
-			return configs, err
+		if err := s.configs.Latest.decode(last); err != nil {
+			return err
 		}
 	}
 
-	return configs, nil
+	return nil
 }
 
-func (s *Storage) setConfigs(configs Configs) {
-	if err := s.vars.SetConfig(configs.Committed.Index, configs.Latest.Index); err != nil {
-		panic(err)
-	}
-}
-
-func (s *Storage) count() uint64 {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if s.first == 0 {
-		return 0
-	}
-	return s.last - s.first + 1
-}
-
-// if empty, returns 0
-func (s *Storage) getLast() uint64 {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.last
-}
-
-// if empty returns nil
-func (s *Storage) lastEntry() (*entry, error) {
-	if s.count() == 0 {
-		return nil, nil
-	}
-	b, err := s.log.Last()
-	if err != nil {
-		return nil, err
-	}
-	entry := &entry{}
-	err = entry.decode(bytes.NewReader(b))
-	return entry, err
-}
-
-// index must be valid. panic if empty
-func (s *Storage) getEntry(index uint64, entry *entry) {
-	if s.count() == 0 {
-		panic("raft: [BUG] Storage.getEntry on empty log")
-	}
-	s.mu.RLock()
-	offset := index - s.first
-	s.mu.RUnlock()
-
-	b, err := s.log.Get(offset)
-	if err != nil {
-		panic(fmt.Sprintf("raft: log.get(%d) failed: %v", index, err))
-	}
-	if err = entry.decode(bytes.NewReader(b)); err != nil {
-		panic(fmt.Sprintf("raft: entry.decode(%d) failed: %v", index, err))
+func (s *storage) saveConfigs() {
+	if err := s.vars.storage.SetConfig(s.configs.Committed.Index, s.configs.Latest.Index); err != nil {
+		panic(fmt.Sprintf("raft: Vars.SetConfigs failed: %v", err))
 	}
 }
 
-func (s *Storage) append(entry *entry) {
-	w := new(bytes.Buffer)
-	if err := entry.encode(w); err != nil {
-		panic(fmt.Sprintf("raft: entry.encode(%d) failed: %v", entry.index, err))
-	}
-	if err := s.log.Append(w.Bytes()); err != nil {
-		panic(fmt.Sprintf("raft: log.append(%d): %v", entry.index, err))
-	}
-
-	s.mu.Lock()
-	if s.first == 0 {
-		s.first = entry.index
-	}
-	s.last = entry.index
-	s.mu.Unlock()
-}
-
-func (s *Storage) deleteLTE(index uint64) {
-	if s.count() == 0 {
-		panic("raft: [BUG] Storage.deleteLTE on empty log")
-	}
-	n := index - s.first + 1
-	if n > s.count() {
-		panic(fmt.Sprintf("raft: [BUG] Storage.deleteLTE(%d) failed: not enough entries", index))
-	}
-	if err := s.log.DeleteFirst(n); err != nil {
-		panic(fmt.Sprintf("raft: log.deleteFirst(%d) failed: %v", n, err))
-	}
-
-	s.mu.Lock()
-	if index == s.last {
-		s.first, s.last = 0, 0
-	} else {
-		s.first = index + 1
-	}
-	s.mu.Unlock()
-}
-
-func (s *Storage) deleteGTE(index uint64) {
-	if s.count() == 0 {
-		panic("raft: [BUG] Storage.deleteGTE on empty log")
-	}
-	n := s.last - index + 1
-	if n > s.count() {
-		panic(fmt.Sprintf("raft: [BUG] Storage.deleteGTE(%d) failed: not enough entries", index))
-	}
-	if err := s.log.DeleteLast(n); err != nil {
-		panic(fmt.Sprintf("raft: log.deleteLast(%d) failed: %v", n, err))
-	}
-
-	s.mu.Lock()
-	if index == s.first {
-		s.first, s.last = 0, 0
-	} else {
-		s.last = index - 1
-	}
-	s.mu.Unlock()
-}
-
-func (s *Storage) bootstrap(nodes map[ID]Node) (Config, error) {
+func (s *storage) bootstrap(nodes map[ID]Node) (Config, error) {
 	// wipe out if log is not empty
-	if s.count() > 0 {
-		if err := s.log.DeleteFirst(s.count()); err != nil {
+	if count := s.log.count(); count > 0 {
+		if err := s.log.storage.DeleteFirst(count); err != nil {
 			return Config{}, err
 		}
 	}
@@ -238,12 +285,10 @@ func (s *Storage) bootstrap(nodes map[ID]Node) (Config, error) {
 		Index: 1,
 		Term:  1,
 	}
-	s.append(config.encode())
+	s.log.append(config.encode())
 
-	if err := s.vars.SetVote(1, ""); err != nil {
-		return config, err
-	}
-	if err := s.vars.SetConfig(0, 1); err != nil {
+	s.vars.setTerm(1)
+	if err := s.vars.storage.SetConfig(0, 1); err != nil {
 		return config, err
 	}
 	return config, nil

@@ -55,27 +55,25 @@ func DefaultOptions() Options {
 type Raft struct {
 	id     ID
 	server *server
-	trace  Trace
 
 	fsm        FSM
 	fsmApplyCh chan NewEntry
 
-	storage      *Storage
-	term         uint64
-	votedFor     ID
-	lastLogIndex uint64
-	lastLogTerm  uint64
-	configs      Configs
+	// persistent state
+	*storage
 
-	state  State
-	leader ID
-
+	// volatile state
+	state       State
+	leader      ID
 	commitIndex uint64
 	lastApplied uint64
 
+	// options
 	hbTimeout       time.Duration
 	ldrLeaseTimeout time.Duration
+	trace           Trace
 
+	// dialing peers
 	resolver  *resolver
 	dialFn    dialFn // used for mocking in tests
 	connPools map[ID]*connPool
@@ -89,27 +87,9 @@ type Raft struct {
 	shutdownCh chan struct{}
 }
 
-func New(id ID, opt Options, fsm FSM, storage *Storage) (*Raft, error) {
-	if err := storage.init(); err != nil {
-		return nil, err
-	}
-
-	term, votedFor, err := storage.vars.GetVote()
-	if err != nil {
-		return nil, err
-	}
-
-	var lastLogIndex, lastLogTerm uint64
-	last, err := storage.lastEntry()
-	if err != nil {
-		return nil, err
-	}
-	if last != nil {
-		lastLogIndex, lastLogTerm = last.index, last.term
-	}
-
-	configs, err := storage.getConfigs()
-	if err != nil {
+func New(id ID, opt Options, fsm FSM, storage Storage) (*Raft, error) {
+	store := newStorage(storage)
+	if err := store.init(); err != nil {
 		return nil, err
 	}
 
@@ -117,18 +97,13 @@ func New(id ID, opt Options, fsm FSM, storage *Storage) (*Raft, error) {
 		delegate: opt.Resolver,
 		addrs:    make(map[ID]string),
 	}
-	resolver.update(configs.Latest)
+	resolver.update(store.configs.Latest)
 
 	server := newServer(2 * opt.HeartbeatTimeout)
 	r := &Raft{
 		id:              id,
-		storage:         storage,
+		storage:         store,
 		fsm:             fsm,
-		term:            term,
-		votedFor:        ID(votedFor),
-		lastLogIndex:    lastLogIndex,
-		lastLogTerm:     lastLogTerm,
-		configs:         configs,
 		state:           Follower,
 		hbTimeout:       opt.HeartbeatTimeout,
 		ldrLeaseTimeout: opt.LeaderLeaseTimeout,
@@ -237,20 +212,6 @@ func (r *Raft) loop() {
 			r.runLeader()
 		}
 	}
-}
-
-func (r *Raft) setTerm(term uint64) {
-	if err := r.storage.vars.SetVote(term, ""); err != nil {
-		panic(fmt.Sprintf("stable.Set failed: %v", err))
-	}
-	r.term, r.votedFor = term, ""
-}
-
-func (r *Raft) setVotedFor(v ID) {
-	if err := r.storage.vars.SetVote(r.term, string(v)); err != nil {
-		panic(fmt.Sprintf("save votedFor failed: %v", err))
-	}
-	r.votedFor = v
 }
 
 func (r *Raft) getConnPool(id ID) *connPool {

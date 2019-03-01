@@ -47,20 +47,12 @@ func (r *Raft) bootstrap(t bootstrap) {
 		return
 	}
 
+	debug(r, "bootstrapping....")
 	config, err := r.storage.bootstrap(t.nodes)
 	if err != nil {
 		t.reply(err)
 		return
 	}
-	term, votedFor, err := r.storage.vars.GetVote()
-	if err != nil {
-		t.reply(err)
-		return
-	}
-
-	debug(r, "bootstrapping....")
-	r.term, r.votedFor = term, ID(votedFor)
-	r.lastLogIndex, r.lastLogTerm = config.Index, config.Term
 	r.changeConfig(config)
 	t.reply(nil)
 }

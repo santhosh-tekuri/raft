@@ -13,10 +13,10 @@ type replication struct {
 	// this is owned by ldr goroutine
 	status replStatus
 
-	connPool         *connPool
-	storage          *Storage
-	heartbeatTimeout time.Duration
-	conn             *netConn
+	connPool  *connPool
+	log       *log
+	hbTimeout time.Duration
+	conn      *netConn
 
 	// leader notifies replication with update
 	ldrUpdateCh chan leaderUpdate
@@ -55,7 +55,7 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 			req.prevLogIndex, req.prevLogTerm = ldrLastIndex, req.term
 		} else {
 			prevEntry := &entry{}
-			repl.storage.getEntry(nextIndex-1, prevEntry)
+			repl.log.getEntry(nextIndex-1, prevEntry)
 			req.prevLogIndex, req.prevLogTerm = prevEntry.index, prevEntry.term
 		}
 		var n uint64 // number of entries to be sent
@@ -68,7 +68,7 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 			req.entries = make([]*entry, n)
 			for i := range req.entries {
 				req.entries[i] = &entry{}
-				repl.storage.getEntry(nextIndex+uint64(i), req.entries[i])
+				repl.log.getEntry(nextIndex+uint64(i), req.entries[i])
 			}
 		}
 
@@ -138,7 +138,7 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 			case update := <-repl.ldrUpdateCh:
 				ldrLastIndex, req.ldrCommitIndex = update.lastIndex, update.commitIndex
 				debug(repl, "{last:", ldrLastIndex, "commit:", req.ldrCommitIndex, "} <-ldrUpdateCh")
-			case <-afterRandomTimeout(repl.heartbeatTimeout / 10):
+			case <-afterRandomTimeout(repl.hbTimeout / 10):
 			}
 		} else {
 			// check signal if any, without blocking

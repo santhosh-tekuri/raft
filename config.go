@@ -197,7 +197,7 @@ func (r *Raft) changeConfig(new Config) {
 	debug(r, "changeConfig", new)
 	r.configs.Committed = r.configs.Latest
 	r.setLatest(new)
-	r.storage.setConfigs(r.configs)
+	r.storage.saveConfigs()
 	if r.trace.ConfigChanged != nil {
 		r.trace.ConfigChanged(r.liveInfo())
 	}
@@ -206,7 +206,7 @@ func (r *Raft) changeConfig(new Config) {
 func (r *Raft) commitConfig() {
 	debug(r, "commitConfig", r.configs.Latest)
 	r.configs.Committed = r.configs.Latest
-	r.storage.setConfigs(r.configs)
+	r.storage.saveConfigs()
 	if r.trace.ConfigCommitted != nil {
 		r.trace.ConfigCommitted(r.liveInfo())
 	}
@@ -215,7 +215,7 @@ func (r *Raft) commitConfig() {
 func (r *Raft) revertConfig() {
 	debug(r, "revertConfig", r.configs.Committed)
 	r.setLatest(r.configs.Committed)
-	r.storage.setConfigs(r.configs)
+	r.storage.saveConfigs()
 	if r.trace.ConfigReverted != nil {
 		r.trace.ConfigReverted(r.liveInfo())
 	}

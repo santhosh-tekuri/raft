@@ -148,8 +148,8 @@ func (info liveInfo) Addr() string         { return info.r.addr() }
 func (info liveInfo) Term() uint64         { return info.r.term }
 func (info liveInfo) State() State         { return info.r.state }
 func (info liveInfo) Leader() ID           { return info.r.leader }
-func (info liveInfo) LastLogIndex() uint64 { return info.r.lastLogIndex }
-func (info liveInfo) LastLogTerm() uint64  { return info.r.lastLogTerm }
+func (info liveInfo) LastLogIndex() uint64 { return info.r.log.lastIndex }
+func (info liveInfo) LastLogTerm() uint64  { return info.r.log.lastTerm }
 func (info liveInfo) Committed() uint64    { return info.r.commitIndex }
 func (info liveInfo) LastApplied() uint64  { return info.r.lastApplied }
 func (info liveInfo) Configs() Configs     { return info.r.configs.clone() }

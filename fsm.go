@@ -72,7 +72,7 @@ func (r *Raft) applyCommitted(newEntries *list.List) {
 			}
 			if ne.entry == nil {
 				ne.entry = &entry{}
-				r.storage.getEntry(r.lastApplied+1, ne.entry)
+				r.log.getEntry(r.lastApplied+1, ne.entry)
 			}
 
 			switch ne.typ {
