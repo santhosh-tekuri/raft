@@ -1298,12 +1298,14 @@ type fsmMock struct {
 	changed func(id NodeID, len uint64)
 }
 
+var _ FSM = (*fsmMock)(nil)
+
 type fsmReply struct {
 	msg   string
 	index int
 }
 
-func (fsm *fsmMock) Apply(cmd []byte) interface{} {
+func (fsm *fsmMock) Execute(cmd []byte) interface{} {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
 	s := string(cmd)

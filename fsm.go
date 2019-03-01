@@ -4,10 +4,8 @@ import (
 	"container/list"
 )
 
-// todo: add availability methods
-
 type FSM interface {
-	Apply(cmd []byte) interface{}
+	Execute(cmd []byte) interface{}
 }
 
 func (r *Raft) fsmLoop() {
@@ -16,7 +14,7 @@ func (r *Raft) fsmLoop() {
 		debug(r.id, "fsm.apply", ne.typ, ne.index)
 		var resp interface{}
 		if ne.typ == entryUpdate || ne.typ == entryQuery {
-			resp = r.fsm.Apply(ne.entry.data)
+			resp = r.fsm.Execute(ne.entry.data)
 		}
 		ne.task.reply(resp)
 	}
