@@ -527,26 +527,26 @@ func TestRaft_AddNode(t *testing.T) {
 
 	// adding node with empty id should fail
 	n := Node{Addr: "localhost:8888", Voter: false}
-	if _, err := waitTask(ldr, AddNode(n), 0); err == nil {
+	if _, err := waitTask(ldr, AddNonvoter(n), 0); err == nil {
 		t.Fatal(err)
 	}
 
 	// adding node with empty addr should fail
 	n = Node{ID: NodeID("M10"), Voter: false}
-	if _, err := waitTask(ldr, AddNode(n), 0); err == nil {
+	if _, err := waitTask(ldr, AddNonvoter(n), 0); err == nil {
 		t.Fatal(err)
 	}
 
 	// adding voter should fail
 	n = Node{ID: NodeID("M11"), Addr: "M10:8888", Voter: true}
-	if _, err := waitTask(ldr, AddNode(n), 0); err == nil {
+	if _, err := waitTask(ldr, AddNonvoter(n), 0); err == nil {
 		t.Fatal(err)
 	}
 
 	// adding node with existing id should fail
 	for _, n := range ldr.Info().Configs().Latest.Nodes {
 		n := Node{ID: n.ID, Addr: "localhost:8888", Voter: false}
-		if _, err := waitTask(ldr, AddNode(n), 0); err == nil {
+		if _, err := waitTask(ldr, AddNonvoter(n), 0); err == nil {
 			t.Fatal(err)
 		}
 	}
@@ -554,7 +554,7 @@ func TestRaft_AddNode(t *testing.T) {
 	// adding node with existing addr should fail
 	for _, n := range ldr.Info().Configs().Latest.Nodes {
 		n := Node{ID: "M12", Addr: n.Addr, Voter: false}
-		if _, err := waitTask(ldr, AddNode(n), 0); err == nil {
+		if _, err := waitTask(ldr, AddNonvoter(n), 0); err == nil {
 			t.Fatal(err)
 		}
 	}
@@ -579,8 +579,8 @@ func TestRaft_AddNode(t *testing.T) {
 	configRelated := c.registerForEvent(configRelated, c.exclude(m4)...)
 	defer c.unregisterObserver(configRelated)
 
-	// add M4 as nonVoter, wait for success reply
-	task := AddNode(Node{ID: m4.ID(), Addr: "M4:8888", Voter: false})
+	// add M4 as nonvoter, wait for success reply
+	task := AddNonvoter(Node{ID: m4.ID(), Addr: "M4:8888", Voter: false})
 	ldr.Tasks() <- task
 	<-task.Done()
 	if task.Err() != nil {
@@ -666,7 +666,7 @@ func TestRaft_AddNode(t *testing.T) {
 	}
 	c.waitFSMLen(20)
 
-	// now disconnect nonVoter m4
+	// now disconnect nonvoter m4
 	unreachable := c.registerForEvent(unreachable, ldr)
 	defer c.unregisterObserver(unreachable)
 	m4StateChanged := c.registerForEvent(stateChanged, m4)

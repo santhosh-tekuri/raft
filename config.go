@@ -145,17 +145,17 @@ func (c *Config) decode(e *entry) error {
 }
 
 func (c Config) String() string {
-	var voters, nonVoters []string
+	var voters, nonvoters []string
 	for _, n := range c.Nodes {
 		if n.Voter {
 			voters = append(voters, fmt.Sprintf("%v[%s]", n.ID, n.Addr))
 		} else if n.Promote {
-			nonVoters = append(nonVoters, fmt.Sprintf("%v[%s,promote]", n.ID, n.Addr))
+			nonvoters = append(nonvoters, fmt.Sprintf("%v[%s,promote]", n.ID, n.Addr))
 		} else {
-			nonVoters = append(nonVoters, fmt.Sprintf("%v[%s]", n.ID, n.Addr))
+			nonvoters = append(nonvoters, fmt.Sprintf("%v[%s]", n.ID, n.Addr))
 		}
 	}
-	return fmt.Sprintf("voters: %v, nonVoters: %v", voters, nonVoters)
+	return fmt.Sprintf("voters: %v, nonvoters: %v", voters, nonvoters)
 }
 
 // ---------------------------------------------------------

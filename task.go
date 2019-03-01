@@ -229,13 +229,13 @@ func (r *Raft) Info() Info {
 
 // ------------------------------------------------------------------------
 
-type addNode struct {
+type addNonvoter struct {
 	*task
 	node Node
 }
 
-func AddNode(node Node) Task {
-	return addNode{
+func AddNonvoter(node Node) Task {
+	return addNonvoter{
 		task: &task{done: make(chan struct{})},
 		node: node,
 	}
@@ -281,8 +281,8 @@ func (ldr *leadership) executeTask(t Task) {
 	switch t := t.(type) {
 	case NewEntry:
 		t.reply(errors.New("raft: use Raft.NewEntries() for NewEntry"))
-	case addNode:
-		ldr.addNode(t)
+	case addNonvoter:
+		ldr.addNonvoter(t)
 	case inspect:
 		t.fn(liveInfo{r: ldr.Raft, ldr: ldr})
 		t.reply(nil)

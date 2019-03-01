@@ -78,7 +78,7 @@ func (r *Raft) canChangeConfig() error {
 	return nil
 }
 
-func (ldr *leadership) addNode(t addNode) {
+func (ldr *leadership) addNonvoter(t addNonvoter) {
 	// validate
 	if err := ldr.canChangeConfig(); err != nil {
 		t.reply(err)
@@ -89,7 +89,7 @@ func (ldr *leadership) addNode(t addNode) {
 			return err
 		}
 		if t.node.Voter {
-			return errors.New("must be nonVoter")
+			return errors.New("must be nonvoter")
 		}
 		if _, ok := ldr.configs.Latest.Nodes[t.node.ID]; ok {
 			return fmt.Errorf("node %s already exists", t.node.ID)
@@ -100,14 +100,14 @@ func (ldr *leadership) addNode(t addNode) {
 		return nil
 	}()
 	if err != nil {
-		t.reply(fmt.Errorf("raft.AddNode: %v", err))
+		t.reply(fmt.Errorf("raft.AddNonvoter: %v", err))
 		return
 	}
 
 	config := ldr.configs.Latest.clone()
 	config.Nodes[t.node.ID] = t.node
 	ldr.storeConfig(t.task, config)
-	debug(ldr, "addNode", t.node)
+	debug(ldr, "addNonvoter", t.node)
 	ldr.startReplication(t.node)
 }
 
