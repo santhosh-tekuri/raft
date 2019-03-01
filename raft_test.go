@@ -762,7 +762,6 @@ type cluster struct {
 	commitTimeout    time.Duration
 	opt              Options
 
-	trace       Trace
 	observersMu sync.RWMutex
 	observerID  int
 	observers   map[int]observer
@@ -770,9 +769,6 @@ type cluster struct {
 
 func newCluster(t *testing.T) *cluster {
 	heartbeatTimeout := 50 * time.Millisecond
-	opt := Options{
-		HeartbeatTimeout: heartbeatTimeout,
-	}
 	c := &cluster{
 		T:                t,
 		network:          fnet.New(),
@@ -781,17 +777,20 @@ func newCluster(t *testing.T) *cluster {
 		heartbeatTimeout: heartbeatTimeout,
 		longTimeout:      5 * time.Second,
 		commitTimeout:    5 * time.Millisecond,
-		opt:              opt,
 		observers:        make(map[int]observer),
 	}
-	c.trace = Trace{
-		StateChanged:    c.onStateChanged,
-		ElectionStarted: c.onElectionStarted,
-		ElectionAborted: c.onElectionAborted,
-		ConfigChanged:   c.onConfigChanged,
-		ConfigCommitted: c.onConfigCommitted,
-		ConfigReverted:  c.onConfigReverted,
-		Unreachable:     c.onUnreachable,
+	c.opt = Options{
+		HeartbeatTimeout:   heartbeatTimeout,
+		LeaderLeaseTimeout: heartbeatTimeout,
+		Trace: Trace{
+			StateChanged:    c.onStateChanged,
+			ElectionStarted: c.onElectionStarted,
+			ElectionAborted: c.onElectionAborted,
+			ConfigChanged:   c.onConfigChanged,
+			ConfigCommitted: c.onConfigCommitted,
+			ConfigReverted:  c.onConfigReverted,
+			Unreachable:     c.onUnreachable,
+		},
 	}
 	return c
 }
@@ -948,7 +947,7 @@ func (c *cluster) launch(n int, bootstrap bool) {
 			}
 		}
 		fsm := &fsmMock{id: node.ID, changed: c.onFMSChanded}
-		r, err := New(node.ID, c.opt, fsm, storage, c.trace)
+		r, err := New(node.ID, c.opt, fsm, storage)
 		if err != nil {
 			c.Fatal(err)
 		}
@@ -977,7 +976,7 @@ func (c *cluster) restart(r *Raft) *Raft {
 
 	newFSM := &fsmMock{id: r.ID(), changed: c.onFMSChanded}
 	storage := c.storage[string(r.ID())]
-	newr, err := New(r.ID(), c.opt, newFSM, storage, Trace{})
+	newr, err := New(r.ID(), c.opt, newFSM, storage)
 	if err != nil {
 		c.Fatal(err)
 	}

@@ -31,13 +31,24 @@ func (s State) String() string {
 type Options struct {
 	HeartbeatTimeout   time.Duration
 	LeaderLeaseTimeout time.Duration
+	Trace              Trace
 	Resolver           Resolver
 }
 
 func DefaultOptions() Options {
+	var mu sync.Mutex
+	logger := func(prefix string) func(format string, v ...interface{}) {
+		return func(format string, v ...interface{}) {
+			mu.Lock()
+			defer mu.Unlock()
+			fmt.Print(prefix)
+			fmt.Printf(format, v...)
+		}
+	}
 	return Options{
 		HeartbeatTimeout:   1000 * time.Millisecond,
 		LeaderLeaseTimeout: 1000 * time.Millisecond,
+		Trace:              DefaultTrace(logger("[INFO] "), logger("[WARN] ")),
 	}
 }
 
@@ -77,7 +88,7 @@ type Raft struct {
 	shutdownCh      chan struct{}
 }
 
-func New(id ID, opt Options, fsm FSM, storage *Storage, trace Trace) (*Raft, error) {
+func New(id ID, opt Options, fsm FSM, storage *Storage) (*Raft, error) {
 	if err := storage.init(); err != nil {
 		return nil, err
 	}
@@ -127,7 +138,7 @@ func New(id ID, opt Options, fsm FSM, storage *Storage, trace Trace) (*Raft, err
 		fsmApplyCh:      make(chan NewEntry, 128), // todo configurable capacity
 		newEntryCh:      make(chan NewEntry, 100), // todo configurable capacity
 		taskCh:          make(chan Task, 100),     // todo configurable capacity
-		trace:           trace,
+		trace:           opt.Trace,
 		shutdownCh:      make(chan struct{}),
 	}
 	resolver.trace = &r.trace

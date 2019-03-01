@@ -1,8 +1,6 @@
 package raft
 
 import (
-	"fmt"
-	"io"
 	"time"
 )
 
@@ -19,40 +17,40 @@ type Trace struct {
 	ShuttingDown    func(info Info)
 }
 
-func NewTraceWriter(w io.Writer) Trace {
+func DefaultTrace(infof, warnf func(format string, v ...interface{})) Trace {
 	return Trace{
 		Starting: func(info Info) {
-			_, _ = fmt.Fprintf(w, "[INFO] raft: starting with Config %s\n", info.Configs().Latest)
+			infof("raft: starting with Config %s\n", info.Configs().Latest)
 		},
 		LookupIDFailed: func(id ID, err error, fallbackAddr string) {
-			_, _ = fmt.Fprintf(w, "[INFO] raft: lookupID(%s) failed, using fallback addr %s: %v\n", id, fallbackAddr, err)
+			warnf("raft: lookupID(%s) failed, using fallback addr %s: %v\n", id, fallbackAddr, err)
 		},
 		StateChanged: func(info Info) {
 			if info.State() == Leader {
-				_, _ = fmt.Fprintln(w, "[INFO] raft: cluster leadership acquired")
+				infof("raft: cluster leadership acquired\n")
 			}
 		},
 		ElectionAborted: func(info Info, reason string) {
-			_, _ = fmt.Fprintf(w, "[INFO] raft: %s, aborting election\n", reason)
+			infof("raft: %s, aborting election\n", reason)
 		},
 		ConfigChanged: func(info Info) {
-			_, _ = fmt.Fprintf(w, "[INFO] raft: config changed to %s\n", info.Configs().Latest)
+			infof("raft: config changed to %s\n", info.Configs().Latest)
 		},
 		ConfigCommitted: func(info Info) {
-			_, _ = fmt.Fprintln(w, "[INFO] raft: config committed")
+			infof("raft: config committed\n")
 		},
 		ConfigReverted: func(info Info) {
-			_, _ = fmt.Fprintf(w, "[INFO] raft: config reverted to %s\n", info.Configs().Latest)
+			infof("raft: config reverted to %s\n", info.Configs().Latest)
 		},
 		Unreachable: func(info Info, id ID, since time.Time) {
 			if since.IsZero() {
-				_, _ = fmt.Fprintf(w, "[INFO] raft: node %s is reachable\n", id)
+				infof("raft: node %s is reachable\n", id)
 			} else {
-				_, _ = fmt.Fprintf(w, "[INFO] raft: node %s is unreachable since %s\n", id, since)
+				warnf("raft: node %s is unreachable since %s\n", id, since)
 			}
 		},
 		ShuttingDown: func(info Info) {
-			_, _ = fmt.Fprintln(w, "[INFO] raft: shutting down")
+			infof("raft: shutting down\n")
 		},
 	}
 }
