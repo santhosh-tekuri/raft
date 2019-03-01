@@ -10,7 +10,7 @@ func (r *Raft) runFollower() {
 		case <-r.shutdownCh:
 			return
 
-		case rpc := <-r.rpcCh:
+		case rpc := <-r.server.rpcCh:
 			if validReq := r.replyRPC(rpc); validReq {
 				if yes, _ := r.canStartElection(); yes {
 					// a server remains in follower state as long as it receives valid

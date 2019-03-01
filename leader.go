@@ -132,7 +132,7 @@ func (ldr *leadership) runLoop() {
 			ldr.stateChanged()
 			return
 
-		case rpc := <-ldr.rpcCh:
+		case rpc := <-ldr.server.rpcCh:
 			ldr.replyRPC(rpc)
 
 		case replUpdate := <-ldr.replUpdatedCh:

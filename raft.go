@@ -53,7 +53,7 @@ func DefaultOptions() Options {
 }
 
 type Raft struct {
-	*server
+	server   *server
 	resolver *resolver
 	dialFn   dialFn // used for mocking in tests
 
