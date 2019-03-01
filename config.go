@@ -2,7 +2,10 @@ package raft
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"net"
+	"strconv"
 )
 
 type NodeID string
@@ -14,12 +17,42 @@ type Node struct {
 	Promote bool   `json:"promote,omitempty"`
 }
 
+func (n Node) validate() error {
+	if n.ID == "" {
+		return errors.New("empty node id")
+	}
+	if n.Addr == "" {
+		return errors.New("empty address")
+	}
+	_, sport, err := net.SplitHostPort(n.Addr)
+	if err != nil {
+		return fmt.Errorf("invalid address %s: %v", n.Addr, err)
+	}
+	port, err := strconv.Atoi(sport)
+	if err != nil {
+		return errors.New("port must be specified in address")
+	}
+	if port <= 0 {
+		return errors.New("invalid port")
+	}
+	return nil
+}
+
 // -------------------------------------------------
 
 type Config struct {
 	Nodes map[NodeID]Node `json:"nodes"`
 	Index uint64          `json:"index"`
 	Term  uint64          `json:"term"`
+}
+
+func (c Config) nodeForAddr(addr string) (Node, bool) {
+	for _, node := range c.Nodes {
+		if node.Addr == addr {
+			return node, true
+		}
+	}
+	return Node{}, false
 }
 
 func (c Config) isVoter(id NodeID) bool {
@@ -108,37 +141,6 @@ func (c *Config) decode(e *entry) error {
 		c.Nodes[NodeID(id)] = Node{ID: NodeID(id), Addr: addr, Voter: voter, Promote: promote}
 	}
 	c.Index, c.Term = e.index, e.term
-	return nil
-}
-
-func (c Config) validate() error {
-	ids := make(map[NodeID]bool)
-	addrs := make(map[string]bool)
-	voters := 0
-	for _, node := range c.Nodes {
-		if node.ID == "" {
-			return fmt.Errorf("raft: Conf.validate failed: empty node id")
-		}
-		if ids[node.ID] {
-			return fmt.Errorf("raft: Conf.validate failed: duplicate id %s", node.ID)
-		}
-		ids[node.ID] = true
-
-		if node.Addr == "" {
-			return fmt.Errorf("raft: Conf.validate failed: empty address")
-		}
-		if addrs[node.Addr] {
-			return fmt.Errorf("raft: Conf.validate failed: duplicate address %s", node.Addr)
-		}
-		addrs[node.Addr] = true
-
-		if node.Voter {
-			voters++
-		}
-	}
-	if voters == 0 {
-		return fmt.Errorf("raft: Conf.validate failed: no voter")
-	}
 	return nil
 }
 

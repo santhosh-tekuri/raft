@@ -226,22 +226,25 @@ func (s *Storage) deleteGTE(index uint64) {
 }
 
 func (s *Storage) bootstrap(nodes map[NodeID]Node) (Config, error) {
-	conf := Config{
+	// wipe out if log is not empty
+	if s.count() > 0 {
+		if err := s.log.DeleteFirst(s.count()); err != nil {
+			return Config{}, err
+		}
+	}
+
+	config := Config{
 		Nodes: nodes,
 		Index: 1,
 		Term:  1,
 	}
-	if err := conf.validate(); err != nil {
-		return conf, err
-	}
-
-	s.append(conf.encode())
+	s.append(config.encode())
 
 	if err := s.vars.SetVote(1, ""); err != nil {
-		return conf, err
+		return config, err
 	}
 	if err := s.vars.SetConfig(0, 1); err != nil {
-		return conf, err
+		return config, err
 	}
-	return conf, nil
+	return config, nil
 }

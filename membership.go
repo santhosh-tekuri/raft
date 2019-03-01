@@ -5,35 +5,49 @@ import (
 	"fmt"
 )
 
-var ErrCantBootstrap = errors.New("raft: bootstrap only works on new clusters")
+var ErrAlreadyBootstrapped = errors.New("raft.Bootstrap: already bootstrapped")
+var ErrConfigChangeInProgress = errors.New("raft: configChange is in progress")
+var ErrNotCommitReady = errors.New("raft: not ready to commit")
 
 func (r *Raft) bootstrap(t bootstrap) {
-	debug(r, "bootstrapping....")
-
-	// validations
-	self, ok := t.nodes[r.id]
-	if !ok {
-		t.reply(fmt.Errorf("bootstrap: myself %s must be part of cluster", r.id))
+	// validate
+	if !r.configs.IsBootstrap() {
+		t.reply(ErrAlreadyBootstrapped)
 		return
 	}
-	if self.Addr != r.addr { // todo: allow changing advertise address
-		t.reply(fmt.Errorf("bootstrap: my address does not match"))
-		return
-	}
-
-	// todo: check whether bootstrap is allowed ?
-	if r.term != 0 || r.lastLogIndex != 0 {
-		t.reply(ErrCantBootstrap)
-		return
-	}
-
-	// persist config change
-	configEntry, err := r.storage.bootstrap(t.nodes)
+	err := func() error {
+		addrs := make(map[string]bool)
+		for id, node := range t.nodes {
+			if err := node.validate(); err != nil {
+				return err
+			}
+			if id != node.ID {
+				return fmt.Errorf("id mismatch for %s", node.ID)
+			}
+			if addrs[node.Addr] {
+				return fmt.Errorf("duplicate address %s", node.Addr)
+			}
+			addrs[node.Addr] = true
+			if node.Voter {
+				node.Promote = false
+				t.nodes[id] = node
+			}
+		}
+		self, ok := t.nodes[r.id]
+		if !ok {
+			return fmt.Errorf("self %s does not exist", r.id)
+		}
+		if !self.Voter {
+			return fmt.Errorf("self %s must be voter", r.id)
+		}
+		return nil
+	}()
 	if err != nil {
-		t.reply(err)
+		t.reply(fmt.Errorf("raft.Bootstrap: %v", err))
 		return
 	}
-	e, err := r.storage.lastEntry()
+
+	config, err := r.storage.bootstrap(t.nodes)
 	if err != nil {
 		t.reply(err)
 		return
@@ -44,66 +58,99 @@ func (r *Raft) bootstrap(t bootstrap) {
 		return
 	}
 
-	// everything is ok. bootstrapping now...
+	debug(r, "bootstrapping....")
+	r.addr = t.nodes[r.id].Addr
 	r.term, r.votedFor = term, votedFor
-	r.lastLogIndex, r.lastLogTerm = e.index, e.term
-	r.configs.Latest = configEntry
+	r.lastLogIndex, r.lastLogTerm = config.Index, config.Term
+	r.configs.Latest = config
+	if r.trace.ConfigChanged != nil {
+		r.trace.ConfigChanged(r.liveInfo())
+	}
 	t.reply(nil)
 }
 
+func (r *Raft) canChangeConfig() error {
+	if !r.configs.IsCommitted() {
+		return ErrConfigChangeInProgress
+	}
+	if r.ldr.commitIndex < r.ldr.startIndex {
+		return ErrNotCommitReady
+	}
+	return nil
+}
+
 func (ldr *leadership) addNode(t addNode) {
-	if _, ok := ldr.configs.Latest.Nodes[t.node.ID]; ok {
-		t.reply(fmt.Errorf("raft.addNode: node %s already exists", t.node.ID))
-		return
-	}
-	if t.node.Voter {
-		t.reply(errors.New("raft.addNode: new node cannot be voter"))
-		return
-	}
-	newConfig := ldr.configs.Latest.clone()
-	newConfig.Nodes[t.node.ID] = t.node
-	if err := ldr.storeConfig(t.task, newConfig); err != nil {
+	// validate
+	if err := ldr.canChangeConfig(); err != nil {
 		t.reply(err)
 		return
 	}
+	err := func() error {
+		if err := t.node.validate(); err != nil {
+			return err
+		}
+		if t.node.Voter {
+			return errors.New("must be nonVoter")
+		}
+		if _, ok := ldr.configs.Latest.Nodes[t.node.ID]; ok {
+			return fmt.Errorf("node %s already exists", t.node.ID)
+		}
+		if n, ok := ldr.configs.Latest.nodeForAddr(t.node.Addr); ok {
+			return fmt.Errorf("address %s, already used by %s", n.Addr, n.ID)
+		}
+		return nil
+	}()
+	if err != nil {
+		t.reply(fmt.Errorf("raft.AddNode: %v", err))
+		return
+	}
+
+	config := ldr.configs.Latest.clone()
+	config.Nodes[t.node.ID] = t.node
+	ldr.storeConfig(t.task, config)
 	debug(ldr, "addNode", t.node)
 	ldr.startReplication(t.node)
 }
 
 func (ldr *leadership) removeNode(t removeNode) {
-	if _, ok := ldr.configs.Latest.Nodes[t.id]; !ok {
-		t.reply(fmt.Errorf("raft.removeNode: node %s does not exist", t.id))
-		return
-	}
-	newConfig := ldr.configs.Latest.clone()
-	delete(newConfig.Nodes, t.id)
-	if err := ldr.storeConfig(t.task, newConfig); err != nil {
+	// validate
+	if err := ldr.canChangeConfig(); err != nil {
 		t.reply(err)
 		return
 	}
+	err := func() error {
+		if t.id == "" {
+			return errors.New("empty node id")
+		}
+		n, ok := ldr.configs.Latest.Nodes[t.id]
+		if !ok {
+			return fmt.Errorf("node %s does not exist", t.id)
+		}
+		if n.Voter && ldr.configs.Latest.numVoters() == 1 {
+			return errors.New("last voter cannot be removed")
+		}
+		return nil
+	}()
+	if err != nil {
+		t.reply(fmt.Errorf("raft.RemoveNode: %v", err))
+		return
+	}
+
+	config := ldr.configs.Latest.clone()
+	delete(config.Nodes, t.id)
+	ldr.storeConfig(t.task, config)
 
 	// stop replication
 	debug(ldr, "removeNode", t.id)
 	repl := ldr.repls[t.id]
-	delete(ldr.repls, t.id)
 	close(repl.stopCh)
+	delete(ldr.repls, t.id)
 
 	// now majority might have changed. needs to be recalculated
 	ldr.onMajorityCommit()
 }
 
-func (ldr *leadership) storeConfig(t *task, newConfig Config) error {
-	// validate
-	if !ldr.configs.IsCommitted() {
-		return errors.New("raft: configChange is in progress")
-	}
-	if ldr.commitIndex < ldr.startIndex {
-		return errors.New("raft: noop entry is not yet committed")
-	}
-	if err := newConfig.validate(); err != nil {
-		return err
-	}
-
+func (ldr *leadership) storeConfig(t *task, newConfig Config) {
 	// append to log
 	ne := NewEntry{
 		entry: newConfig.encode(),
@@ -112,5 +159,4 @@ func (ldr *leadership) storeConfig(t *task, newConfig Config) error {
 	ldr.storeEntry(ne)
 	newConfig.Index, newConfig.Term = ne.index, ne.term
 	ldr.changeConfig(newConfig)
-	return nil
 }

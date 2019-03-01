@@ -348,11 +348,11 @@ func TestRaft_Bootstrap(t *testing.T) {
 	c.ensureFSMSame([]string{"hello"})
 
 	// ensure bootstrap fails if already bootstrapped
-	if err := waitBootstrap(c.rr["M1"], nodes, c.longTimeout); err != ErrCantBootstrap {
-		t.Fatalf("got %v, want %v", err, ErrCantBootstrap)
+	if err := waitBootstrap(c.rr["M1"], nodes, c.longTimeout); err != ErrAlreadyBootstrapped {
+		t.Fatalf("got %v, want %v", err, ErrAlreadyBootstrapped)
 	}
-	if err := waitBootstrap(c.rr["M2"], nodes, c.longTimeout); err != ErrCantBootstrap {
-		t.Fatalf("got %v, want %v", err, ErrCantBootstrap)
+	if err := waitBootstrap(c.rr["M2"], nodes, c.longTimeout); err != ErrAlreadyBootstrapped {
+		t.Fatalf("got %v, want %v", err, ErrAlreadyBootstrapped)
 	}
 
 	// disconnect leader, and ensure that new leader is chosen
