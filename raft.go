@@ -31,6 +31,7 @@ func (s State) String() string {
 type Options struct {
 	HeartbeatTimeout   time.Duration
 	LeaderLeaseTimeout time.Duration
+	Resolver           Resolver
 }
 
 func DefaultOptions() Options {
@@ -42,7 +43,8 @@ func DefaultOptions() Options {
 
 type Raft struct {
 	*server
-	dialFn dialFn
+	resolver *resolver
+	dialFn   dialFn // used for mocking in tests
 
 	id      ID
 	configs Configs
@@ -64,7 +66,7 @@ type Raft struct {
 	commitIndex  uint64
 	lastApplied  uint64
 
-	connPools map[string]*connPool
+	connPools map[ID]*connPool
 
 	ldrLeaseTimeout time.Duration
 	ldr             *leadership
@@ -99,6 +101,12 @@ func New(id ID, opt Options, fsm FSM, storage *Storage, trace Trace) (*Raft, err
 		return nil, err
 	}
 
+	resolver := &resolver{
+		delegate: opt.Resolver,
+		addrs:    make(map[ID]string),
+	}
+	resolver.update(configs.Latest)
+
 	server := newServer(2 * opt.HeartbeatTimeout)
 	r := &Raft{
 		id:              id,
@@ -112,15 +120,17 @@ func New(id ID, opt Options, fsm FSM, storage *Storage, trace Trace) (*Raft, err
 		state:           Follower,
 		hbTimeout:       opt.HeartbeatTimeout,
 		ldrLeaseTimeout: opt.LeaderLeaseTimeout,
+		resolver:        resolver,
 		dialFn:          net.DialTimeout,
 		server:          server,
-		connPools:       make(map[string]*connPool),
+		connPools:       make(map[ID]*connPool),
 		fsmApplyCh:      make(chan NewEntry, 128), // todo configurable capacity
 		newEntryCh:      make(chan NewEntry, 100), // todo configurable capacity
 		taskCh:          make(chan Task, 100),     // todo configurable capacity
 		trace:           trace,
 		shutdownCh:      make(chan struct{}),
 	}
+	resolver.trace = &r.trace
 	return r, nil
 }
 
@@ -231,16 +241,17 @@ func (r *Raft) setVotedFor(v ID) {
 	r.votedFor = v
 }
 
-func (r *Raft) getConnPool(addr string) *connPool {
-	pool, ok := r.connPools[addr]
+func (r *Raft) getConnPool(id ID) *connPool {
+	pool, ok := r.connPools[id]
 	if !ok {
 		pool = &connPool{
-			addr:    addr,
-			dialFn:  r.dialFn,
-			timeout: 10 * time.Second, // todo
-			max:     3,                //todo
+			id:       id,
+			resolver: r.resolver,
+			dialFn:   r.dialFn,
+			timeout:  10 * time.Second, // todo
+			max:      3,                //todo
 		}
-		r.connPools[addr] = pool
+		r.connPools[id] = pool
 	}
 	return pool
 }

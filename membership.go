@@ -61,10 +61,7 @@ func (r *Raft) bootstrap(t bootstrap) {
 	debug(r, "bootstrapping....")
 	r.term, r.votedFor = term, ID(votedFor)
 	r.lastLogIndex, r.lastLogTerm = config.Index, config.Term
-	r.configs.Latest = config
-	if r.trace.ConfigChanged != nil {
-		r.trace.ConfigChanged(r.liveInfo())
-	}
+	r.changeConfig(config)
 	t.reply(nil)
 }
 

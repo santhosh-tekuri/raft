@@ -27,8 +27,8 @@ func (r *Raft) runCandidate() {
 
 		case vote := <-voteCh:
 			// todo: if quorum unreachable raise alert
-			if vote.voterID != r.addr() {
-				debug(r, "<< voteResponse", vote.voterID, vote.granted, vote.term, vote.err)
+			if vote.from != r.id {
+				debug(r, "<< voteResponse", vote.from, vote.granted, vote.term, vote.err)
 			}
 
 			if vote.err != nil {
@@ -69,8 +69,8 @@ func (r *Raft) runCandidate() {
 
 type voteResult struct {
 	*voteResponse
-	voterID string // todo: should we rename it to voterAddr
-	err     error
+	from ID
+	err  error
 }
 
 func (r *Raft) startElection() <-chan voteResult {
@@ -103,18 +103,18 @@ func (r *Raft) startElection() <-chan voteResult {
 					term:    r.term,
 					granted: true,
 				},
-				voterID: r.addr(),
+				from: r.id,
 			}
 			continue
 		}
-		connPool := r.getConnPool(n.Addr)
+		connPool := r.getConnPool(n.ID)
 		go func() {
 			result := voteResult{
 				voteResponse: &voteResponse{
 					term:    req.term,
 					granted: false,
 				},
-				voterID: connPool.addr,
+				from: connPool.id,
 			}
 			defer func() {
 				resultsCh <- result
@@ -131,7 +131,7 @@ func (r *Raft) startElection() <-chan voteResult {
 }
 
 func (r *Raft) requestVote(pool *connPool, req *voteRequest) (*voteResponse, error) {
-	debug(r.id, ">> requestVote", pool.addr)
+	debug(r.id, ">> requestVote", pool.id)
 	conn, err := pool.getConn()
 	if err != nil {
 		return nil, err

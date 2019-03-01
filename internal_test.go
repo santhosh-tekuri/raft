@@ -7,7 +7,6 @@ func Debug(args ...interface{}) {
 }
 
 func RequestVote(from, to *Raft) (granted bool, err error) {
-	toAddr := to.Info().Addr()
 	t := Inspect(func(info Info) {
 		req := &voteRequest{
 			term:         info.Term(),
@@ -15,7 +14,7 @@ func RequestVote(from, to *Raft) (granted bool, err error) {
 			lastLogTerm:  info.LastLogTerm(),
 			candidate:    info.ID(),
 		}
-		connPool := from.getConnPool(toAddr)
+		connPool := from.getConnPool(to.id)
 		resp, errr := from.requestVote(connPool, req)
 		granted, err = resp.granted, errr
 	})

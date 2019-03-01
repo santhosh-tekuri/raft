@@ -8,6 +8,7 @@ import (
 
 type Trace struct {
 	Starting        func(info Info)
+	LookupIDFailed  func(id ID, err error, fallbackAddr string)
 	StateChanged    func(info Info)
 	ElectionStarted func(info Info)
 	ElectionAborted func(info Info, reason string)
@@ -22,6 +23,9 @@ func NewTraceWriter(w io.Writer) Trace {
 	return Trace{
 		Starting: func(info Info) {
 			_, _ = fmt.Fprintf(w, "[INFO] raft: starting with Config %s\n", info.Configs().Latest)
+		},
+		LookupIDFailed: func(id ID, err error, fallbackAddr string) {
+			_, _ = fmt.Fprintf(w, "[INFO] raft: lookupID(%s) failed, using fallback addr %s: %v\n", id, fallbackAddr, err)
 		},
 		StateChanged: func(info Info) {
 			if info.State() == Leader {
