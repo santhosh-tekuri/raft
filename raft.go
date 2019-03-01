@@ -245,12 +245,29 @@ func (r *Raft) getConnPool(addr string) *connPool {
 	return pool
 }
 
+// NotLeaderError is returned by non-leader node if it cannot
+// complete a request or node lost its leadership before
+// completing the operation.
+//
+// It includes leader address(if known), whom you can send
+// the request.
 type NotLeaderError struct {
+	// Leader is address of leader.
+	//
+	// It is empty string, if this node does not know current leader.
 	Leader string
+	lost   bool
 }
 
 func (e NotLeaderError) Error() string {
-	return "node is not the leader"
+	var contact string
+	if e.Leader != "" {
+		contact = ", contact " + e.Leader
+	}
+	if e.lost {
+		return "raft: lost leadership" + contact
+	}
+	return "raft: this node is not the leader" + contact
 }
 
 func afterRandomTimeout(min time.Duration) <-chan time.Time {

@@ -268,7 +268,7 @@ func (r *Raft) executeTask(t Task) {
 		t.fn(liveInfo{r: r})
 		t.reply(nil)
 	default:
-		t.reply(NotLeaderError{r.leaderAddr()})
+		t.reply(NotLeaderError{r.leaderAddr(), false})
 	}
 }
 

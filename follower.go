@@ -38,7 +38,7 @@ func (r *Raft) runFollower() {
 			r.stateChanged()
 
 		case ne := <-r.newEntryCh:
-			ne.reply(NotLeaderError{r.leaderAddr()})
+			ne.reply(NotLeaderError{r.leaderAddr(), false})
 
 		case t := <-r.taskCh:
 			before, _ := r.canStartElection()

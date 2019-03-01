@@ -59,7 +59,7 @@ func (r *Raft) runCandidate() {
 			startElection = true
 
 		case ne := <-r.newEntryCh:
-			ne.reply(NotLeaderError{r.leaderAddr()})
+			ne.reply(NotLeaderError{r.leaderAddr(), false})
 
 		case t := <-r.taskCh:
 			r.executeTask(t)

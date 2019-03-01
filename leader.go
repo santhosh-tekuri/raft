@@ -102,9 +102,12 @@ func (ldr *leadership) runLoop() {
 		}
 
 		// respond to any pending user entries
+		lostLeaderShip := NotLeaderError{ldr.leaderAddr(), true}
 		for e := ldr.newEntries.Front(); e != nil; e = e.Next() {
-			e.Value.(NewEntry).task.reply(NotLeaderError{ldr.leaderAddr()}) // todo: should we return leadshipLostError ?
+			e.Value.(NewEntry).task.reply(lostLeaderShip)
 		}
+
+		// wait for replicators to finish
 		ldr.wg.Wait()
 	}()
 
