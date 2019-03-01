@@ -53,39 +53,40 @@ func DefaultOptions() Options {
 }
 
 type Raft struct {
-	server   *server
-	resolver *resolver
-	dialFn   dialFn // used for mocking in tests
+	id     ID
+	server *server
+	trace  Trace
 
-	id      ID
-	configs Configs
-	wg      sync.WaitGroup
-
-	fsmApplyCh chan NewEntry
 	fsm        FSM
+	fsmApplyCh chan NewEntry
 
-	storage *Storage
-	term    uint64
-	state   State
-	leader  ID
-
-	votedFor  ID
-	hbTimeout time.Duration
-
+	storage      *Storage
+	term         uint64
+	votedFor     ID
 	lastLogIndex uint64
 	lastLogTerm  uint64
-	commitIndex  uint64
-	lastApplied  uint64
+	configs      Configs
 
+	state  State
+	leader ID
+
+	commitIndex uint64
+	lastApplied uint64
+
+	hbTimeout       time.Duration
+	ldrLeaseTimeout time.Duration
+
+	resolver  *resolver
+	dialFn    dialFn // used for mocking in tests
 	connPools map[ID]*connPool
 
-	ldrLeaseTimeout time.Duration
-	ldr             *leadership
-	taskCh          chan Task
-	newEntryCh      chan NewEntry
-	trace           Trace
-	shutdownMu      sync.Mutex
-	shutdownCh      chan struct{}
+	ldr        *leadership
+	taskCh     chan Task
+	newEntryCh chan NewEntry
+
+	wg         sync.WaitGroup
+	shutdownMu sync.Mutex
+	shutdownCh chan struct{}
 }
 
 func New(id ID, opt Options, fsm FSM, storage *Storage) (*Raft, error) {
