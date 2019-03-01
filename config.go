@@ -8,13 +8,27 @@ import (
 	"strconv"
 )
 
+// NodeID is a unique string identifying a node for all time.
 type NodeID string
 
+// Node represents a single node in raft configuration.
 type Node struct {
-	ID      NodeID `json:"-"`
-	Addr    string `json:"addr"`
-	Voter   bool   `json:"voter"`
-	Promote bool   `json:"promote,omitempty"`
+	// ID is a unique string identifying this node for all time.
+	ID NodeID `json:"-"`
+
+	// Addr is its network address that other nodes can contact.
+	Addr string `json:"addr"`
+
+	// Voter determines whether it can participate in elections and
+	// its matchIndex is used in advancing leader's commitIndex.
+	Voter bool `json:"voter"`
+
+	// Promote determines whether this node should be promoted to
+	// voter. Leader promotes such node, when it has caught
+	// up with rest of cluster.
+	//
+	// This is applicable only if it is nonvoter.
+	Promote bool `json:"promote,omitempty"`
 }
 
 func (n Node) validate() error {
