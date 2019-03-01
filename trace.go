@@ -14,7 +14,7 @@ type Trace struct {
 	ConfigChanged   func(info Info)
 	ConfigCommitted func(info Info)
 	ConfigReverted  func(info Info)
-	Unreachable     func(info Info, id NodeID, since time.Time) // todo: can we give err also
+	Unreachable     func(info Info, id ID, since time.Time) // todo: can we give err also
 	ShuttingDown    func(info Info)
 }
 
@@ -40,7 +40,7 @@ func NewTraceWriter(w io.Writer) Trace {
 		ConfigReverted: func(info Info) {
 			_, _ = fmt.Fprintf(w, "[INFO] raft: config reverted to %s\n", info.Configs().Latest)
 		},
-		Unreachable: func(info Info, id NodeID, since time.Time) {
+		Unreachable: func(info Info, id ID, since time.Time) {
 			if since.IsZero() {
 				_, _ = fmt.Fprintf(w, "[INFO] raft: node %s is reachable\n", id)
 			} else {

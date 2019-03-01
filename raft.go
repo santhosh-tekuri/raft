@@ -44,7 +44,7 @@ type Raft struct {
 	*server
 	dialFn dialFn
 
-	id      NodeID
+	id      ID
 	configs Configs
 	wg      sync.WaitGroup
 
@@ -54,9 +54,9 @@ type Raft struct {
 	storage *Storage
 	term    uint64
 	state   State
-	leader  NodeID
+	leader  ID
 
-	votedFor  NodeID
+	votedFor  ID
 	hbTimeout time.Duration
 
 	lastLogIndex uint64
@@ -75,7 +75,7 @@ type Raft struct {
 	shutdownCh      chan struct{}
 }
 
-func New(id NodeID, opt Options, fsm FSM, storage *Storage, trace Trace) (*Raft, error) {
+func New(id ID, opt Options, fsm FSM, storage *Storage, trace Trace) (*Raft, error) {
 	if err := storage.init(); err != nil {
 		return nil, err
 	}
@@ -105,7 +105,7 @@ func New(id NodeID, opt Options, fsm FSM, storage *Storage, trace Trace) (*Raft,
 		storage:         storage,
 		fsm:             fsm,
 		term:            term,
-		votedFor:        NodeID(votedFor),
+		votedFor:        ID(votedFor),
 		lastLogIndex:    lastLogIndex,
 		lastLogTerm:     lastLogTerm,
 		configs:         configs,
@@ -124,7 +124,7 @@ func New(id NodeID, opt Options, fsm FSM, storage *Storage, trace Trace) (*Raft,
 	return r, nil
 }
 
-func (r *Raft) ID() NodeID {
+func (r *Raft) ID() ID {
 	return r.id
 }
 
@@ -224,7 +224,7 @@ func (r *Raft) setTerm(term uint64) {
 	r.term, r.votedFor = term, ""
 }
 
-func (r *Raft) setVotedFor(v NodeID) {
+func (r *Raft) setVotedFor(v ID) {
 	if err := r.storage.vars.SetVote(r.term, string(v)); err != nil {
 		panic(fmt.Sprintf("save votedFor failed: %v", err))
 	}

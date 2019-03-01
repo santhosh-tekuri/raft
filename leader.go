@@ -15,7 +15,7 @@ func (r *Raft) runLeader() {
 		Raft:       r,
 		leaseTimer: time.NewTimer(time.Hour),
 		newEntries: list.New(),
-		repls:      make(map[NodeID]*replication),
+		repls:      make(map[ID]*replication),
 	}
 	ldr.leaseTimer.Stop() // we start it on detecting failures
 	r.ldr = ldr
@@ -32,7 +32,7 @@ type replUpdate struct {
 }
 
 type replStatus struct {
-	id NodeID
+	id ID
 
 	// owned exclusively by leader goroutine
 	// used to compute majorityMatchIndex
@@ -66,7 +66,7 @@ type leadership struct {
 	newEntries *list.List
 
 	// holds running replications, key is addr
-	repls map[NodeID]*replication
+	repls map[ID]*replication
 	wg    sync.WaitGroup
 
 	// to receive new term notifications from replicators

@@ -59,7 +59,7 @@ func (r *Raft) bootstrap(t bootstrap) {
 	}
 
 	debug(r, "bootstrapping....")
-	r.term, r.votedFor = term, NodeID(votedFor)
+	r.term, r.votedFor = term, ID(votedFor)
 	r.lastLogIndex, r.lastLogTerm = config.Index, config.Term
 	r.configs.Latest = config
 	if r.trace.ConfigChanged != nil {

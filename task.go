@@ -90,10 +90,10 @@ func BarrierEntry() NewEntry {
 
 type bootstrap struct {
 	*task
-	nodes map[NodeID]Node
+	nodes map[ID]Node
 }
 
-func Bootstrap(nodes map[NodeID]Node) Task {
+func Bootstrap(nodes map[ID]Node) Task {
 	return bootstrap{
 		task:  &task{done: make(chan struct{})},
 		nodes: nodes,
@@ -103,37 +103,37 @@ func Bootstrap(nodes map[NodeID]Node) Task {
 // ------------------------------------------------------------------------
 
 type ReplStatus struct {
-	ID          NodeID    `json:"-"`
+	ID          ID        `json:"-"`
 	MatchIndex  uint64    `json:"matchIndexes"`
 	Unreachable time.Time `json:"unreachable,omitempty"`
 }
 
 type json struct {
-	ID           NodeID                `json:"id"`
-	Addr         string                `json:"addr"`
-	Term         uint64                `json:"term"`
-	State        State                 `json:"state"`
-	Leader       NodeID                `json:"leader,omitempty"`
-	LastLogIndex uint64                `json:"lastLogIndex"`
-	LastLogTerm  uint64                `json:"lastLogTerm"`
-	Committed    uint64                `json:"committed"`
-	LastApplied  uint64                `json:"lastApplied"`
-	Configs      Configs               `json:"configs"`
-	Replication  map[NodeID]ReplStatus `json:"replication,omitempty"`
+	ID           ID                `json:"id"`
+	Addr         string            `json:"addr"`
+	Term         uint64            `json:"term"`
+	State        State             `json:"state"`
+	Leader       ID                `json:"leader,omitempty"`
+	LastLogIndex uint64            `json:"lastLogIndex"`
+	LastLogTerm  uint64            `json:"lastLogTerm"`
+	Committed    uint64            `json:"committed"`
+	LastApplied  uint64            `json:"lastApplied"`
+	Configs      Configs           `json:"configs"`
+	Replication  map[ID]ReplStatus `json:"replication,omitempty"`
 }
 
 type Info interface {
-	ID() NodeID
+	ID() ID
 	Addr() string
 	Term() uint64
 	State() State
-	Leader() NodeID
+	Leader() ID
 	LastLogIndex() uint64
 	LastLogTerm() uint64
 	Committed() uint64
 	LastApplied() uint64
 	Configs() Configs
-	Replication() map[NodeID]ReplStatus
+	Replication() map[ID]ReplStatus
 	Trace() *Trace
 	JSON() interface{}
 }
@@ -143,11 +143,11 @@ type liveInfo struct {
 	ldr *leadership
 }
 
-func (info liveInfo) ID() NodeID           { return info.r.id }
+func (info liveInfo) ID() ID               { return info.r.id }
 func (info liveInfo) Addr() string         { return info.r.addr() }
 func (info liveInfo) Term() uint64         { return info.r.term }
 func (info liveInfo) State() State         { return info.r.state }
-func (info liveInfo) Leader() NodeID       { return info.r.leader }
+func (info liveInfo) Leader() ID           { return info.r.leader }
 func (info liveInfo) LastLogIndex() uint64 { return info.r.lastLogIndex }
 func (info liveInfo) LastLogTerm() uint64  { return info.r.lastLogTerm }
 func (info liveInfo) Committed() uint64    { return info.r.commitIndex }
@@ -155,11 +155,11 @@ func (info liveInfo) LastApplied() uint64  { return info.r.lastApplied }
 func (info liveInfo) Configs() Configs     { return info.r.configs.clone() }
 func (info liveInfo) Trace() *Trace        { return &info.r.trace }
 
-func (info liveInfo) Replication() map[NodeID]ReplStatus {
+func (info liveInfo) Replication() map[ID]ReplStatus {
 	if info.ldr == nil {
 		return nil
 	}
-	m := make(map[NodeID]ReplStatus)
+	m := make(map[ID]ReplStatus)
 	for id, repl := range info.ldr.repls {
 		m[id] = ReplStatus{
 			MatchIndex:  repl.status.matchIndex,
@@ -189,19 +189,19 @@ type cachedInfo struct {
 	json json
 }
 
-func (info cachedInfo) ID() NodeID                         { return info.json.ID }
-func (info cachedInfo) Addr() string                       { return info.json.Addr }
-func (info cachedInfo) Term() uint64                       { return info.json.Term }
-func (info cachedInfo) State() State                       { return info.json.State }
-func (info cachedInfo) Leader() NodeID                     { return info.json.Leader }
-func (info cachedInfo) LastLogIndex() uint64               { return info.json.LastLogIndex }
-func (info cachedInfo) LastLogTerm() uint64                { return info.json.LastLogTerm }
-func (info cachedInfo) Committed() uint64                  { return info.json.Committed }
-func (info cachedInfo) LastApplied() uint64                { return info.json.LastApplied }
-func (info cachedInfo) Configs() Configs                   { return info.json.Configs }
-func (info cachedInfo) Replication() map[NodeID]ReplStatus { return info.json.Replication }
-func (info cachedInfo) Trace() *Trace                      { return nil }
-func (info cachedInfo) JSON() interface{}                  { return info.json }
+func (info cachedInfo) ID() ID                         { return info.json.ID }
+func (info cachedInfo) Addr() string                   { return info.json.Addr }
+func (info cachedInfo) Term() uint64                   { return info.json.Term }
+func (info cachedInfo) State() State                   { return info.json.State }
+func (info cachedInfo) Leader() ID                     { return info.json.Leader }
+func (info cachedInfo) LastLogIndex() uint64           { return info.json.LastLogIndex }
+func (info cachedInfo) LastLogTerm() uint64            { return info.json.LastLogTerm }
+func (info cachedInfo) Committed() uint64              { return info.json.Committed }
+func (info cachedInfo) LastApplied() uint64            { return info.json.LastApplied }
+func (info cachedInfo) Configs() Configs               { return info.json.Configs }
+func (info cachedInfo) Replication() map[ID]ReplStatus { return info.json.Replication }
+func (info cachedInfo) Trace() *Trace                  { return nil }
+func (info cachedInfo) JSON() interface{}              { return info.json }
 
 type inspect struct {
 	*task
@@ -243,10 +243,10 @@ func AddNonvoter(node Node) Task {
 
 type removeNode struct {
 	*task
-	id NodeID
+	id ID
 }
 
-func RemoveNode(id NodeID) Task {
+func RemoveNode(id ID) Task {
 	return removeNode{
 		task: &task{done: make(chan struct{})},
 		id:   id,

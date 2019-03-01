@@ -8,13 +8,13 @@ import (
 	"strconv"
 )
 
-// NodeID is a unique string identifying a node for all time.
-type NodeID string
+// ID is a unique string identifying a node for all time.
+type ID string
 
 // Node represents a single node in raft configuration.
 type Node struct {
 	// ID is a unique string identifying this node for all time.
-	ID NodeID `json:"-"`
+	ID ID `json:"-"`
 
 	// Addr is its network address that other nodes can contact.
 	Addr string `json:"addr"`
@@ -55,9 +55,9 @@ func (n Node) validate() error {
 // -------------------------------------------------
 
 type Config struct {
-	Nodes map[NodeID]Node `json:"nodes"`
-	Index uint64          `json:"index"`
-	Term  uint64          `json:"term"`
+	Nodes map[ID]Node `json:"nodes"`
+	Index uint64      `json:"index"`
+	Term  uint64      `json:"term"`
 }
 
 func (c Config) nodeForAddr(addr string) (Node, bool) {
@@ -69,7 +69,7 @@ func (c Config) nodeForAddr(addr string) (Node, bool) {
 	return Node{}, false
 }
 
-func (c Config) isVoter(id NodeID) bool {
+func (c Config) isVoter(id ID) bool {
 	node, ok := c.Nodes[id]
 	return ok && node.Voter
 }
@@ -89,7 +89,7 @@ func (c Config) quorum() int {
 }
 
 func (c Config) clone() Config {
-	nodes := make(map[NodeID]Node)
+	nodes := make(map[ID]Node)
 	for id, node := range c.Nodes {
 		nodes[id] = node
 	}
@@ -134,7 +134,7 @@ func (c *Config) decode(e *entry) error {
 	if err != nil {
 		return err
 	}
-	c.Nodes = make(map[NodeID]Node)
+	c.Nodes = make(map[ID]Node)
 	for ; size > 0; size-- {
 		id, err := readString(r)
 		if err != nil {
@@ -152,7 +152,7 @@ func (c *Config) decode(e *entry) error {
 		if err != nil {
 			return err
 		}
-		c.Nodes[NodeID(id)] = Node{ID: NodeID(id), Addr: addr, Voter: voter, Promote: promote}
+		c.Nodes[ID(id)] = Node{ID: ID(id), Addr: addr, Voter: voter, Promote: promote}
 	}
 	c.Index, c.Term = e.index, e.term
 	return nil

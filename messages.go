@@ -89,7 +89,7 @@ func (e *entry) encode(w io.Writer) error {
 
 type voteRequest struct {
 	term         uint64 // candidate's term
-	candidate    NodeID // candidate requesting vote
+	candidate    ID     // candidate requesting vote
 	lastLogIndex uint64 // index of candidate's last log entry
 	lastLogTerm  uint64 // term of candidate's last log entry
 }
@@ -107,7 +107,7 @@ func (req *voteRequest) decode(r io.Reader) error {
 	if s, err := readString(r); err != nil {
 		return err
 	} else {
-		req.candidate = NodeID(s)
+		req.candidate = ID(s)
 	}
 	if req.lastLogIndex, err = readUint64(r); err != nil {
 		return err
@@ -167,7 +167,7 @@ func (resp *voteResponse) encode(w io.Writer) error {
 
 type appendEntriesRequest struct {
 	term           uint64
-	leader         NodeID
+	leader         ID
 	prevLogIndex   uint64
 	prevLogTerm    uint64
 	entries        []*entry
@@ -187,7 +187,7 @@ func (req *appendEntriesRequest) decode(r io.Reader) error {
 	if s, err := readString(r); err != nil {
 		return err
 	} else {
-		req.leader = NodeID(s)
+		req.leader = ID(s)
 	}
 	if req.prevLogIndex, err = readUint64(r); err != nil {
 		return err

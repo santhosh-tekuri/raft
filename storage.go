@@ -225,7 +225,7 @@ func (s *Storage) deleteGTE(index uint64) {
 	s.mu.Unlock()
 }
 
-func (s *Storage) bootstrap(nodes map[NodeID]Node) (Config, error) {
+func (s *Storage) bootstrap(nodes map[ID]Node) (Config, error) {
 	// wipe out if log is not empty
 	if s.count() > 0 {
 		if err := s.log.DeleteFirst(s.count()); err != nil {

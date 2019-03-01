@@ -313,7 +313,7 @@ func TestRaft_Bootstrap(t *testing.T) {
 
 	// all nodes should must abort election and only once
 	timeout := time.After(c.longTimeout)
-	aborted := make(map[NodeID]bool)
+	aborted := make(map[ID]bool)
 	for i := 0; i < 3; i++ {
 		select {
 		case e := <-electionAborted.ch:
@@ -327,7 +327,7 @@ func TestRaft_Bootstrap(t *testing.T) {
 	}
 
 	// bootstrap one of the nodes
-	nodes := make(map[NodeID]Node, 3)
+	nodes := make(map[ID]Node, 3)
 	for id, r := range c.rr {
 		nodes[r.ID()] = Node{ID: r.ID(), Addr: id + ":8888", Voter: true}
 	}
@@ -394,7 +394,7 @@ func TestRaft_LeaderLeaseExpire(t *testing.T) {
 
 	// Ensure both have cleared their leader
 	c.waitForState(followers[0], 2*c.heartbeatTimeout, Candidate)
-	c.ensureLeader(NodeID(""))
+	c.ensureLeader(ID(""))
 }
 
 func TestRaft_Barrier(t *testing.T) {
@@ -532,13 +532,13 @@ func TestRaft_AddNode(t *testing.T) {
 	}
 
 	// adding node with empty addr should fail
-	n = Node{ID: NodeID("M10"), Voter: false}
+	n = Node{ID: ID("M10"), Voter: false}
 	if _, err := waitTask(ldr, AddNonvoter(n), 0); err == nil {
 		t.Fatal(err)
 	}
 
 	// adding voter should fail
-	n = Node{ID: NodeID("M11"), Addr: "M10:8888", Voter: true}
+	n = Node{ID: ID("M11"), Addr: "M10:8888", Voter: true}
 	if _, err := waitTask(ldr, AddNonvoter(n), 0); err == nil {
 		t.Fatal(err)
 	}
@@ -601,7 +601,7 @@ func TestRaft_AddNode(t *testing.T) {
 	}
 
 	// ensure that followers raised configChange, exactly once
-	set := make(map[NodeID]bool)
+	set := make(map[ID]bool)
 	for i := 0; i < 2; i++ {
 		select {
 		case e := <-configRelated.ch:
@@ -634,7 +634,7 @@ func TestRaft_AddNode(t *testing.T) {
 
 	// wait and ensure that followers raised configCommitted
 	limit := time.After(2 * c.heartbeatTimeout)
-	set = make(map[NodeID]bool)
+	set = make(map[ID]bool)
 	for i := 0; i < 2; i++ {
 		select {
 		case e := <-configRelated.ch:
@@ -866,7 +866,7 @@ func (c *cluster) sendEvent(e event) {
 	}
 }
 
-func (c *cluster) onFMSChanded(id NodeID, len uint64) {
+func (c *cluster) onFMSChanded(id ID, len uint64) {
 	c.sendEvent(event{
 		src:    id,
 		typ:    fsmChanged,
@@ -920,7 +920,7 @@ func (c *cluster) onConfigReverted(info Info) {
 	})
 }
 
-func (c *cluster) onUnreachable(info Info, id NodeID, since time.Time) {
+func (c *cluster) onUnreachable(info Info, id ID, since time.Time) {
 	c.sendEvent(event{
 		src:    info.ID(),
 		typ:    unreachable,
@@ -931,9 +931,9 @@ func (c *cluster) onUnreachable(info Info, id NodeID, since time.Time) {
 
 func (c *cluster) launch(n int, bootstrap bool) {
 	c.Helper()
-	nodes := make(map[NodeID]Node, n)
+	nodes := make(map[ID]Node, n)
 	for i := 1; i <= n; i++ {
-		id := NodeID("M" + strconv.Itoa(i+len(c.rr)))
+		id := ID("M" + strconv.Itoa(i+len(c.rr)))
 		nodes[id] = Node{ID: id, Addr: string(id) + ":8888", Voter: true}
 	}
 
@@ -1053,7 +1053,7 @@ func (c *cluster) waitForHealthy() *Raft {
 	return ldr
 }
 
-func (c *cluster) ensureLeader(leader NodeID) {
+func (c *cluster) ensureLeader(leader ID) {
 	c.Helper()
 	for _, r := range c.rr {
 		if got := r.Info().Leader(); got != leader {
@@ -1181,7 +1181,7 @@ func waitTask(r *Raft, t Task, timeout time.Duration) (interface{}, error) {
 	}
 }
 
-func waitBootstrap(r *Raft, nodes map[NodeID]Node, timeout time.Duration) error {
+func waitBootstrap(r *Raft, nodes map[ID]Node, timeout time.Duration) error {
 	_, err := waitTask(r, Bootstrap(nodes), timeout)
 	return err
 }
@@ -1248,13 +1248,13 @@ const (
 )
 
 type event struct {
-	src NodeID
+	src ID
 	typ eventType
 
 	fsmLen  uint64
 	state   State
 	configs Configs
-	target  NodeID
+	target  ID
 	since   time.Time
 }
 
@@ -1292,10 +1292,10 @@ var errNoCommands = errors.New("no commands")
 var errNoCommandAt = errors.New("no command at index")
 
 type fsmMock struct {
-	id      NodeID
+	id      ID
 	mu      sync.RWMutex
 	cmds    []string
-	changed func(id NodeID, len uint64)
+	changed func(id ID, len uint64)
 }
 
 var _ FSM = (*fsmMock)(nil)
