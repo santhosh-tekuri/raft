@@ -253,6 +253,18 @@ func RemoveNode(id ID) Task {
 	}
 }
 
+type changeAddrs struct {
+	*task
+	addrs map[ID]string
+}
+
+func ChangeAddrs(addrs map[ID]string) Task {
+	return changeAddrs{
+		task:  &task{done: make(chan struct{})},
+		addrs: addrs,
+	}
+}
+
 // ------------------------------------------------------------------------
 
 func (r *Raft) executeTask(t Task) {
@@ -283,6 +295,10 @@ func (ldr *leadership) executeTask(t Task) {
 		t.reply(errors.New("raft: use Raft.NewEntries() for NewEntry"))
 	case addNonvoter:
 		ldr.addNonvoter(t)
+	case removeNode:
+		ldr.removeNode(t)
+	case changeAddrs:
+		ldr.changeAddrs(t)
 	case inspect:
 		t.fn(liveInfo{r: ldr.Raft, ldr: ldr})
 		t.reply(nil)

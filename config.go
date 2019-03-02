@@ -35,12 +35,16 @@ func (n Node) validate() error {
 	if n.ID == "" {
 		return errors.New("empty node id")
 	}
-	if n.Addr == "" {
+	return validateAddr(n.Addr)
+}
+
+func validateAddr(addr string) error {
+	if addr == "" {
 		return errors.New("empty address")
 	}
-	_, sport, err := net.SplitHostPort(n.Addr)
+	_, sport, err := net.SplitHostPort(addr)
 	if err != nil {
-		return fmt.Errorf("invalid address %s: %v", n.Addr, err)
+		return fmt.Errorf("invalid address %s: %v", addr, err)
 	}
 	port, err := strconv.Atoi(sport)
 	if err != nil {

@@ -138,6 +138,53 @@ func (ldr *leadership) removeNode(t removeNode) {
 	ldr.onMajorityCommit()
 }
 
+func (ldr *leadership) changeAddrs(t changeAddrs) {
+	// validate
+	if err := ldr.canChangeConfig(); err != nil {
+		t.reply(err)
+		return
+	}
+	err := func() error {
+		addrs := make(map[string]bool)
+		for id, addr := range t.addrs {
+			if id == "" {
+				return errors.New("empty node id")
+			}
+			if _, ok := ldr.configs.Latest.Nodes[id]; !ok {
+				return fmt.Errorf("node %s does not exist", id)
+			}
+			if err := validateAddr(addr); err != nil {
+				return err
+			}
+			if addrs[addr] {
+				return fmt.Errorf("duplicate address %s", addr)
+			}
+			addrs[addr] = true
+		}
+		for _, n := range ldr.configs.Latest.Nodes {
+			if _, ok := t.addrs[n.ID]; !ok {
+				if addrs[n.Addr] {
+					return fmt.Errorf("address %s is already used by node %s", n.Addr, n.ID)
+				}
+				addrs[n.Addr] = true
+			}
+		}
+		return nil
+	}()
+	if err != nil {
+		t.reply(fmt.Errorf("raft.ChangeAddrs: %v", err))
+		return
+	}
+
+	config := ldr.configs.Latest.clone()
+	for id, addr := range t.addrs {
+		n := config.Nodes[id]
+		n.Addr = addr
+		config.Nodes[id] = n
+	}
+	ldr.storeConfig(t.task, config)
+}
+
 func (ldr *leadership) storeConfig(t *task, newConfig Config) {
 	// append to log
 	ne := NewEntry{
