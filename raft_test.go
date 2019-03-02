@@ -1,8 +1,12 @@
 package raft
 
 import (
+	"bytes"
+	"encoding/gob"
 	"errors"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"os"
 	"reflect"
 	"strconv"
@@ -13,7 +17,6 @@ import (
 
 	"github.com/fortytw2/leaktest"
 	"github.com/santhosh-tekuri/fnet"
-	"github.com/santhosh-tekuri/raft/inmem"
 )
 
 func TestRaft_Voting(t *testing.T) {
@@ -717,20 +720,98 @@ func TestRaft_AddNode(t *testing.T) {
 	before := m4.Info().Configs()
 	m4 = c.restart(m4)
 	after := m4.Info().Configs()
-	if !reflect.DeepEqual(before, after) {
-		t.Log("before:", before)
-		t.Log("after:", after)
-		t.Fatal("configs after restart did not match")
+	if !reflect.DeepEqual(before.Latest, after.Latest) {
+		t.Log("before.latest:", before.Latest)
+		t.Log(" after.latest:", after.Latest)
+		t.Fatal("latest config after restart did not match")
 	}
 
 	// ensure that m4's fsm restored after restart
 	c.waitFSMLen(30, m4)
+
+	after = m4.Info().Configs()
+	if !reflect.DeepEqual(before, after) {
+		t.Log("before:", before)
+		t.Log(" after:", after)
+		t.Fatal("configs after restart did not match")
+	}
 
 	// ensure that his config is committed
 	if !m4.Info().Configs().IsCommitted() {
 		t.Fatal("m4 configs should have been committed")
 	}
 
+}
+
+func TestRaft_SnapshotRestore(t *testing.T) {
+	Debug("\nTestRaft_SnapshotRestore --------------------------")
+	defer leaktest.Check(t)()
+
+	// launch 3 node cluster M1, M2, M3
+	c := newCluster(t)
+	c.launch(1, true)
+	defer c.shutdown()
+	ldr := c.waitForHealthy()
+	c.ensureLeader(ldr.ID())
+
+	// with nothing committed, asking for a snapshot should return an error.
+	takeSnap := TakeSnapshot(0)
+	ldr.Tasks() <- takeSnap
+	<-takeSnap.Done()
+	if takeSnap.Err() != ErrNoUpdates {
+		t.Fatalf("got %s, want ErrNoStateToSnapshot", takeSnap.Err())
+	}
+
+	// commit a log of things
+	var ne NewEntry
+	for i := 0; i < 1000; i++ {
+		ne = UpdateEntry([]byte(fmt.Sprintf("msg-%d", i)))
+		ldr.NewEntries() <- ne
+	}
+	<-ne.Done()
+	if ne.Err() != nil {
+		t.Fatal(ne.Err())
+	}
+
+	// if threshold is not reached, asking for a snapshot should return an error.
+	takeSnap = TakeSnapshot(2000)
+	ldr.Tasks() <- takeSnap
+	<-takeSnap.Done()
+	if takeSnap.Err() != ErrSnapshotThreshold {
+		t.Fatalf("got %s, want ErrSnapshotThreshold", takeSnap.Err())
+	}
+
+	// now take proper snapshot
+	takeSnap = TakeSnapshot(10)
+	ldr.Tasks() <- takeSnap
+	<-takeSnap.Done()
+	if takeSnap.Err() != nil {
+		t.Fatalf("got %s, want nil", takeSnap.Err())
+	}
+
+	// ensure #snapshots is one
+	snaps, _ := ldr.snapshots.List()
+	if len(snaps) != 1 {
+		t.Fatalf("got %d, want 1", len(snaps))
+	}
+
+	// log should have zero entries
+	count := uint64(111)
+	waitInspect(ldr, func(info Info) {
+		count = ldr.log.count()
+	})
+	if count != 0 {
+		t.Fatalf("got %d, want 0", count)
+	}
+
+	// shutdown and restart with fresh fsm
+	r := c.restart(ldr)
+
+	// ensure that fsm has been restored from log
+	c.waitFSMLen(fsm(ldr).len(), r)
+	if cmd := fsm(r).lastCommand(); cmd != "msg-999" {
+		t.Fatalf("fsm.lastCommand: got %s want test", cmd)
+	}
 }
 
 // todo: test that non voter does not start election
@@ -938,8 +1019,8 @@ func (c *cluster) launch(n int, bootstrap bool) {
 
 	i := 0
 	for _, node := range nodes {
-		inMemStorage := new(inmem.Storage)
-		storage := Storage{Vars: inMemStorage, Log: inMemStorage}
+		s := new(inmemStorage)
+		storage := Storage{Vars: s, Log: s, Snapshots: s}
 		if bootstrap {
 			if err := BootstrapStorage(storage, nodes); err != nil {
 				c.Fatalf("Storage.bootstrap failed: %v", err)
@@ -1356,6 +1437,192 @@ func (fsm *fsmMock) commands() []string {
 	fsm.mu.RLock()
 	defer fsm.mu.RUnlock()
 	return append([]string(nil), fsm.cmds...)
+}
+
+type stateMock struct {
+	cmds []string
+}
+
+func (state stateMock) WriteTo(w io.Writer) error {
+	if err := gob.NewEncoder(w).Encode(state.cmds); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (state stateMock) Release() {}
+
+func (fsm *fsmMock) Snapshot() (FSMState, error) {
+	fsm.mu.RLock()
+	defer fsm.mu.RUnlock()
+	return stateMock{fsm.cmds}, nil
+}
+
+func (fsm *fsmMock) RestoreFrom(r io.Reader) error {
+	var cmds []string
+	if err := gob.NewDecoder(r).Decode(&cmds); err != nil {
+		return err
+	}
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
+	fsm.cmds = cmds
+	if fsm.changed != nil {
+		fsm.changed(fsm.id, uint64(len(cmds)))
+	}
+	return nil
+}
+
+// ------------------------------------------------------------------
+
+var (
+	ErrNotFound   = errors.New("not found")
+	ErrOutOfRange = errors.New("out of range")
+)
+
+type inmemStorage struct {
+	muStable      sync.RWMutex
+	term          uint64
+	vote          string
+	confCommitted uint64
+	confLatest    uint64
+
+	muLog sync.RWMutex
+	list  [][]byte
+
+	snapMeta SnapshotMeta
+	snapshot *bytes.Buffer
+}
+
+func (s *inmemStorage) GetVote() (term uint64, vote string, err error) {
+	s.muStable.RLock()
+	defer s.muStable.RUnlock()
+	return s.term, s.vote, nil
+}
+
+func (s *inmemStorage) SetVote(term uint64, vote string) error {
+	s.muStable.Lock()
+	defer s.muStable.Unlock()
+	s.term, s.vote = term, vote
+	return nil
+}
+
+func (s *inmemStorage) GetConfig() (committed, latest uint64, err error) {
+	s.muStable.RLock()
+	defer s.muStable.RUnlock()
+	return s.confCommitted, s.confLatest, nil
+}
+
+func (s *inmemStorage) SetConfig(committed, latest uint64) error {
+	s.muStable.Lock()
+	defer s.muStable.Unlock()
+	s.confCommitted, s.confLatest = committed, latest
+	return nil
+}
+
+func (s *inmemStorage) Empty() (bool, error) {
+	s.muLog.RLock()
+	defer s.muLog.RUnlock()
+	return len(s.list) == 0, nil
+}
+
+func (s *inmemStorage) First() ([]byte, error) {
+	s.muLog.RLock()
+	defer s.muLog.RUnlock()
+	if len(s.list) == 0 {
+		return nil, ErrNotFound
+	}
+	return s.list[0], nil
+}
+
+func (s *inmemStorage) Last() ([]byte, error) {
+	s.muLog.RLock()
+	defer s.muLog.RUnlock()
+	if len(s.list) == 0 {
+		return nil, ErrNotFound
+	}
+	return s.list[len(s.list)-1], nil
+}
+
+func (s *inmemStorage) Get(offset uint64) ([]byte, error) {
+	s.muLog.RLock()
+	defer s.muLog.RUnlock()
+	if offset >= uint64(len(s.list)) {
+		return nil, ErrNotFound
+	}
+	return s.list[offset], nil
+}
+
+func (s *inmemStorage) Append(entry []byte) error {
+	s.muLog.Lock()
+	defer s.muLog.Unlock()
+	s.list = append(s.list, entry)
+	return nil
+}
+
+func (s *inmemStorage) DeleteFirst(n uint64) error {
+	s.muLog.Lock()
+	defer s.muLog.Unlock()
+	if n > uint64(len(s.list)) {
+		return ErrOutOfRange
+	}
+	s.list = s.list[n:]
+	return nil
+}
+
+func (s *inmemStorage) DeleteLast(n uint64) error {
+	s.muLog.Lock()
+	defer s.muLog.Unlock()
+	if n > uint64(len(s.list)) {
+		return ErrOutOfRange
+	}
+	s.list = s.list[:len(s.list)-int(n)]
+	return nil
+}
+
+type inmemSink struct {
+	s    *inmemStorage
+	meta SnapshotMeta
+	*bytes.Buffer
+}
+
+func (s *inmemSink) Done(err error) {
+	if err == nil {
+		s.s.snapMeta = s.meta
+		s.s.snapshot = s.Buffer
+	}
+}
+
+func (s *inmemStorage) New(index, term uint64, config Config) (SnapshotSink, error) {
+	return &inmemSink{
+		s: s,
+		meta: SnapshotMeta{
+			Index:  index,
+			Term:   term,
+			Config: config,
+		},
+		Buffer: new(bytes.Buffer),
+	}, nil
+}
+
+func (s *inmemStorage) List() ([]uint64, error) {
+	if s.snapMeta.Index == 0 {
+		return nil, nil
+	}
+	return []uint64{s.snapMeta.Index}, nil
+}
+
+func (s *inmemStorage) Meta(index uint64) (SnapshotMeta, error) {
+	if index != s.snapMeta.Index {
+		return SnapshotMeta{}, fmt.Errorf("no snapshot found for index %d", index)
+	}
+	return s.snapMeta, nil
+}
+
+func (s *inmemStorage) Open(index uint64) (io.ReadCloser, error) {
+	if index != s.snapMeta.Index {
+		return nil, fmt.Errorf("no snapshot found for index %d", index)
+	}
+	return ioutil.NopCloser(bytes.NewReader(s.snapshot.Bytes())), nil
 }
 
 // ------------------------------------------------------------------

@@ -31,6 +31,7 @@ func (s State) String() string {
 type Options struct {
 	HeartbeatTimeout   time.Duration
 	LeaderLeaseTimeout time.Duration
+	SnapshotThreshold  uint64
 	Trace              Trace
 	Resolver           Resolver
 }
@@ -56,8 +57,11 @@ type Raft struct {
 	id     ID
 	server *server
 
-	fsm        FSM
-	fsmApplyCh chan NewEntry
+	fsm           FSM
+	fsmApplyCh    chan NewEntry
+	fsmSnapCh     chan *snapFSM
+	userSnapCh    chan takeSnapshot
+	snapThreshold uint64
 
 	// persistent state
 	*storage
@@ -93,31 +97,47 @@ func New(id ID, opt Options, fsm FSM, storage Storage) (*Raft, error) {
 		return nil, err
 	}
 
-	resolver := &resolver{
-		delegate: opt.Resolver,
-		addrs:    make(map[ID]string),
-	}
-	resolver.update(store.configs.Latest)
-
-	server := newServer(2 * opt.HeartbeatTimeout)
 	r := &Raft{
 		id:              id,
-		storage:         store,
+		server:          newServer(2 * opt.HeartbeatTimeout),
 		fsm:             fsm,
+		fsmApplyCh:      make(chan NewEntry, 128), // todo configurable capacity
+		fsmSnapCh:       make(chan *snapFSM),
+		userSnapCh:      make(chan takeSnapshot),
+		snapThreshold:   opt.SnapshotThreshold,
+		storage:         store,
 		state:           Follower,
 		hbTimeout:       opt.HeartbeatTimeout,
 		ldrLeaseTimeout: opt.LeaderLeaseTimeout,
-		resolver:        resolver,
-		dialFn:          net.DialTimeout,
-		server:          server,
-		connPools:       make(map[ID]*connPool),
-		fsmApplyCh:      make(chan NewEntry, 128), // todo configurable capacity
-		newEntryCh:      make(chan NewEntry, 100), // todo configurable capacity
-		taskCh:          make(chan Task, 100),     // todo configurable capacity
 		trace:           opt.Trace,
+		dialFn:          net.DialTimeout,
+		connPools:       make(map[ID]*connPool),
+		taskCh:          make(chan Task, 100),     // todo configurable capacity
+		newEntryCh:      make(chan NewEntry, 100), // todo configurable capacity
 		shutdownCh:      make(chan struct{}),
 	}
-	resolver.trace = &r.trace
+
+	r.resolver = &resolver{
+		delegate: opt.Resolver,
+		addrs:    make(map[ID]string),
+		trace:    &r.trace,
+	}
+	r.resolver.update(store.configs.Latest)
+
+	// restore fsm from last snapshot, if present
+	if store.snapIndex > 0 {
+		sr, err := r.snapshots.Open(store.snapIndex)
+		if err != nil {
+			return nil, err
+		}
+		defer sr.Close()
+		if err = r.fsm.RestoreFrom(sr); err != nil {
+			return nil, err
+		}
+		r.commitIndex, r.lastApplied = store.snapIndex, store.snapIndex
+		debug(r, "restored snapshot ", store.snapIndex)
+	}
+
 	return r, nil
 }
 
@@ -162,7 +182,7 @@ func (r *Raft) Serve(l net.Listener) error {
 	r.shutdownMu.Lock()
 	shutdownCalled := r.shutdownCalled()
 	if !shutdownCalled {
-		r.wg.Add(2)
+		r.wg.Add(3)
 	}
 	r.shutdownMu.Unlock()
 	if shutdownCalled {
@@ -172,8 +192,9 @@ func (r *Raft) Serve(l net.Listener) error {
 	if r.trace.Starting != nil {
 		r.trace.Starting(r.liveInfo())
 	}
-	go r.loop()
+	go r.stateLoop()
 	go r.fsmLoop()
+	go r.snapLoop()
 	return r.server.serve(l)
 }
 
@@ -190,15 +211,14 @@ func (r *Raft) Shutdown() *sync.WaitGroup {
 	return &r.wg
 }
 
-func (r *Raft) loop() {
+func (r *Raft) stateLoop() {
 	defer r.wg.Done()
 	for {
 		select {
 		case <-r.shutdownCh:
-			debug(r, "loop shutdown")
+			debug(r, "stateLoop shutdown")
 			r.server.shutdown()
 			debug(r, "server shutdown")
-			close(r.fsmApplyCh)
 			return
 		default:
 		}

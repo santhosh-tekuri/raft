@@ -173,7 +173,7 @@ func (c Config) String() string {
 			nonvoters = append(nonvoters, fmt.Sprintf("%v[%s]", n.ID, n.Addr))
 		}
 	}
-	return fmt.Sprintf("voters: %v, nonvoters: %v", voters, nonvoters)
+	return fmt.Sprintf("index: %d, voters: %v, nonvoters: %v", c.Index, voters, nonvoters)
 }
 
 // ---------------------------------------------------------

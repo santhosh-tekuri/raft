@@ -3,6 +3,7 @@ package raft
 import (
 	"bytes"
 	"fmt"
+	"io"
 )
 
 // -------------------------------------------------------------
@@ -142,6 +143,7 @@ func (log *log) lastEntry() (*entry, error) {
 // called by raft.runLoop and repl.runLoop. append call can be called during this
 // never called with invalid index
 func (log *log) getEntry(index uint64, e *entry) {
+	log.validate(index)
 	offset := index - log.firstIndex
 
 	b, err := log.storage.Get(offset)
@@ -181,23 +183,20 @@ func (log *log) append(e *entry) {
 }
 
 // never called with invalid index
-func (log *log) deleteLTE(index uint64) {
-	if log.count() == 0 {
-		panic("raft: [BUG] Storage.deleteLTE on empty log")
-	}
-	if index < log.firstIndex || index > log.lastIndex {
-		panic(fmt.Sprintf("raft: [BUG] log.deleteLTE(%d) failed: out of bounds", index))
-	}
+func (log *log) deleteLTE(index uint64) error {
+	log.validate(index)
 	n := index - log.firstIndex + 1
 	if err := log.storage.DeleteFirst(n); err != nil {
-		panic(fmt.Sprintf("raft: log.deleteFirst(%d) failed: %v", n, err))
+		return fmt.Errorf("raft: log.deleteFirst(%d) failed: %v", n, err)
 	}
 	log.firstIndex = index + 1
+	return nil
 }
 
 // called by raft.runLoop. no other calls made during this
 // never called with invalid index
 func (log *log) deleteGTE(index, prevTerm uint64) {
+	log.validate(index)
 	n := log.lastIndex - index + 1
 	if err := log.storage.DeleteLast(n); err != nil {
 		panic(fmt.Sprintf("raft: log.deleteLast(%d) failed: %v", n, err))
@@ -206,62 +205,112 @@ func (log *log) deleteGTE(index, prevTerm uint64) {
 	log.lastTerm = prevTerm
 }
 
+func (log *log) validate(index uint64) {
+	//if log.count() == 0 {
+	//	panic("raft: [BUG] index on empty log")
+	//}
+	//if index < log.firstIndex || index > log.lastIndex {
+	//	panic(fmt.Sprintf("raft: [BUG] first %d, last %d, index %d: out of bounds", log.firstIndex, log.lastIndex, index))
+	//}
+}
+
+// -----------------------------------------------------------------------------------
+
+type Snapshots interface {
+	New(index, term uint64, config Config) (SnapshotSink, error)
+	List() ([]uint64, error)
+	Meta(index uint64) (SnapshotMeta, error)
+	Open(index uint64) (io.ReadCloser, error)
+}
+
+type SnapshotMeta struct {
+	Index  uint64
+	Term   uint64
+	Config Config
+	Size   int64
+}
+
+type SnapshotSink interface {
+	io.Writer
+	Done(err error)
+}
+
 // -----------------------------------------------------------------------------------
 
 type Storage struct {
-	Vars Vars
-	Log  Log
+	Vars      Vars
+	Log       Log
+	Snapshots Snapshots
 }
 
 type storage struct {
 	*vars
-	log     *log
-	configs Configs
+	log       *log
+	snapIndex uint64
+	snapTerm  uint64
+	snapshots Snapshots
+	configs   Configs
 }
 
 func newStorage(s Storage) *storage {
 	return &storage{
-		vars: newVars(s.Vars),
-		log:  newLog(s.Log),
+		vars:      newVars(s.Vars),
+		log:       newLog(s.Log),
+		snapshots: s.Snapshots,
 	}
 }
 
 func (s *storage) init() error {
-	if err := s.vars.init(); err != nil {
-		return err
-	}
-	if err := s.log.init(); err != nil {
+	var err error
+	if err = s.vars.init(); err != nil {
 		return err
 	}
 
-	// load configs
-	committed, latest, err := s.vars.storage.GetConfig()
+	snaps, err := s.snapshots.List()
 	if err != nil {
 		return err
 	}
-	if committed != 0 {
-		s.configs.Committed, err = s.log.getConfig(committed)
+	var snapMeta SnapshotMeta
+	if len(snaps) > 0 {
+		snapMeta, err = s.snapshots.Meta(snaps[0])
 		if err != nil {
 			return err
 		}
-	}
-	if latest != 0 {
-		s.configs.Latest, err = s.log.getConfig(latest)
-		if err != nil {
-			return err
-		}
+		s.snapIndex, s.snapTerm = snapMeta.Index, snapMeta.Term
 	}
 
-	// handle the case, where config is stored in log but
-	// crashed before saving in vars
-	last, err := s.log.lastEntry()
-	if err != nil {
+	// init log ----------------
+	if err = s.log.init(); err != nil {
 		return err
 	}
-	if last != nil && last.typ == entryConfig && last.index > latest {
-		if err := s.configs.Latest.decode(last); err != nil {
-			return err
+	if s.snapIndex > 0 {
+		s.log.firstIndex, s.log.lastIndex = s.snapIndex+1, s.snapIndex
+		s.log.lastTerm = s.snapTerm
+	}
+
+	// load configs ----------------
+	need := 2
+	for i := s.log.lastIndex; i >= s.log.firstIndex; i-- {
+		e := &entry{}
+		s.log.getEntry(i, e)
+		if e.typ == entryConfig {
+			var err error
+			if need == 2 {
+				err = s.configs.Latest.decode(e)
+			} else {
+				err = s.configs.Committed.decode(e)
+			}
+			if err != nil {
+				return err
+			}
+			need--
+			if need == 0 {
+				break
+			}
 		}
+	}
+	if need == 1 && s.snapIndex > 0 {
+		s.configs.Committed = snapMeta.Config
 	}
 
 	return nil
