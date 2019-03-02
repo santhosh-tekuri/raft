@@ -118,7 +118,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesRequest) *appendEntriesR
 	// we came here, it means we got valid request
 	if len(req.entries) > 0 {
 		var newEntries []*entry
-
+		var prevLogTerm = req.prevLogTerm
 		// if new entry conflicts, delete it and all that follow it
 		for i, ne := range req.entries {
 			if ne.index > r.log.lastIndex {
@@ -129,13 +129,14 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesRequest) *appendEntriesR
 			r.log.getEntry(ne.index, e)
 			if e.term != ne.term { // conflicts
 				debug(r, "log.deleteGTE", ne.index)
-				r.log.deleteGTE(ne.index)
+				r.log.deleteGTE(ne.index, prevLogTerm)
 				if ne.index <= r.configs.Latest.Index {
 					r.revertConfig()
 				}
 				newEntries = req.entries[i:]
 				break
 			}
+			prevLogTerm = ne.term
 		}
 
 		// append new entries not already in the log

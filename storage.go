@@ -197,12 +197,13 @@ func (log *log) deleteLTE(index uint64) {
 
 // called by raft.runLoop. no other calls made during this
 // never called with invalid index
-func (log *log) deleteGTE(index uint64) {
+func (log *log) deleteGTE(index, prevTerm uint64) {
 	n := log.lastIndex - index + 1
 	if err := log.storage.DeleteLast(n); err != nil {
 		panic(fmt.Sprintf("raft: log.deleteLast(%d) failed: %v", n, err))
 	}
-	log.lastIndex = index - 1 // lasTerm is updated on immediate append call
+	log.lastIndex = index - 1
+	log.lastTerm = prevTerm
 }
 
 // -----------------------------------------------------------------------------------
