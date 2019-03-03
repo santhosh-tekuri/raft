@@ -14,7 +14,7 @@ type replication struct {
 	status replStatus
 
 	connPool  *connPool
-	log       *log
+	storage   *storage
 	hbTimeout time.Duration
 	conn      *netConn
 
@@ -55,7 +55,7 @@ func (repl *replication) runLoop(req *appendEntriesReq) {
 			req.prevLogIndex, req.prevLogTerm = ldrLastIndex, req.term
 		} else {
 			prevEntry := &entry{}
-			repl.log.getEntry(nextIndex-1, prevEntry)
+			repl.storage.getEntry(nextIndex-1, prevEntry)
 			req.prevLogIndex, req.prevLogTerm = prevEntry.index, prevEntry.term
 		}
 		var n uint64 // number of entries to be sent
@@ -68,7 +68,7 @@ func (repl *replication) runLoop(req *appendEntriesReq) {
 			req.entries = make([]*entry, n)
 			for i := range req.entries {
 				req.entries[i] = &entry{}
-				repl.log.getEntry(nextIndex+uint64(i), req.entries[i])
+				repl.storage.getEntry(nextIndex+uint64(i), req.entries[i])
 			}
 		}
 

@@ -142,7 +142,7 @@ func (r *Raft) applyCommitted(newEntries *list.List) {
 			}
 			if ne.entry == nil {
 				ne.entry = &entry{}
-				r.log.getEntry(r.lastApplied+1, ne.entry)
+				r.storage.getEntry(r.lastApplied+1, ne.entry)
 			}
 
 			switch ne.typ {
@@ -239,5 +239,5 @@ func (r *Raft) takeSnapshot(t takeSnapshot) {
 		err = doneErr
 		return
 	}
-	err = r.log.deleteLTE(resp.index)
+	err = r.storage.deleteLTE(resp.index)
 }

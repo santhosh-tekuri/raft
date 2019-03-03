@@ -62,7 +62,7 @@ func TestRaft_SnapshotRestore(t *testing.T) {
 	// log should have zero entries
 	count := uint64(111)
 	waitInspect(ldr, func(info Info) {
-		count = ldr.log.count()
+		count = ldr.storage.entryCount()
 	})
 	if count != 0 {
 		t.Fatalf("got %d, want 0", count)
