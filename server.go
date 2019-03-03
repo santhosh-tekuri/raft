@@ -122,13 +122,13 @@ func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) erro
 	// decode request
 	switch typ {
 	case rpcVote:
-		req := &voteRequest{}
+		req := &voteReq{}
 		rpc.req = req
 	case rpcAppendEntries:
-		req := &appendEntriesRequest{}
+		req := &appendEntriesReq{}
 		rpc.req = req
 	case rpcInstallSnap:
-		req := &installSnapRequest{}
+		req := &installSnapReq{}
 		rpc.req = req
 	default:
 		return fmt.Errorf("unknown rpcType: %d", typ)

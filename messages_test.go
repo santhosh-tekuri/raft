@@ -22,24 +22,24 @@ func TestMessages(t *testing.T) {
 
 	tests := []message{
 		&entry{index: 3, term: 5, typ: 2, data: []byte("sleep")},
-		&voteRequest{term: 5, candidate: "localhost:1234", lastLogIndex: 3, lastLogTerm: 5},
-		&voteResponse{term: 5, granted: true},
-		&appendEntriesRequest{
+		&voteReq{term: 5, candidate: "localhost:1234", lastLogIndex: 3, lastLogTerm: 5},
+		&voteResp{term: 5, granted: true},
+		&appendEntriesReq{
 			term: 5, leader: "localhost:5678", prevLogIndex: 3, prevLogTerm: 5,
 			entries: []*entry{
 				{index: 3, term: 5, typ: 2, data: []byte("sleep")},
 				{index: 4, term: 5, typ: 3, data: []byte("wakeup")},
 			}, ldrCommitIndex: 7,
 		},
-		&appendEntriesResponse{term: 5, success: true, lastLogIndex: 9},
-		&installSnapRequest{
+		&appendEntriesResp{term: 5, success: true, lastLogIndex: 9},
+		&installSnapReq{
 			term: 5, leader: "localhost:5678", lastIndex: 3, lastTerm: 5,
 			lastConfig: Config{
 				Nodes: nodes,
 				Index: 1, Term: 2,
 			}, size: math.MaxInt64,
 		},
-		&installSnapResponse{term: 5, success: true},
+		&installSnapResp{term: 5, success: true},
 	}
 	for _, test := range tests {
 		name := fmt.Sprintf("message(%T)", test)

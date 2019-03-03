@@ -28,7 +28,7 @@ func (r *Raft) runCandidate() {
 		case vote := <-voteCh:
 			// todo: if quorum unreachable raise alert
 			if vote.from != r.id {
-				debug(r, "<< voteResponse", vote.from, vote.granted, vote.term, vote.err)
+				debug(r, "<< voteResp", vote.from, vote.granted, vote.term, vote.err)
 			}
 
 			if vote.err != nil {
@@ -68,7 +68,7 @@ func (r *Raft) runCandidate() {
 }
 
 type voteResult struct {
-	*voteResponse
+	*voteResp
 	from ID
 	err  error
 }
@@ -85,7 +85,7 @@ func (r *Raft) startElection() <-chan voteResult {
 	}
 
 	// send RequestVote RPCs to all other servers
-	req := &voteRequest{
+	req := &voteReq{
 		term:         r.term,
 		candidate:    r.id,
 		lastLogIndex: r.log.lastIndex,
@@ -99,7 +99,7 @@ func (r *Raft) startElection() <-chan voteResult {
 			// vote for self
 			r.setVotedFor(r.id)
 			resultsCh <- voteResult{
-				voteResponse: &voteResponse{
+				voteResp: &voteResp{
 					term:    r.term,
 					granted: true,
 				},
@@ -110,7 +110,7 @@ func (r *Raft) startElection() <-chan voteResult {
 		connPool := r.getConnPool(n.ID)
 		go func() {
 			result := voteResult{
-				voteResponse: &voteResponse{
+				voteResp: &voteResp{
 					term:    req.term,
 					granted: false,
 				},
@@ -124,19 +124,19 @@ func (r *Raft) startElection() <-chan voteResult {
 				result.err = err
 				return
 			}
-			result.voteResponse = resp
+			result.voteResp = resp
 		}()
 	}
 	return resultsCh
 }
 
-func (r *Raft) requestVote(pool *connPool, req *voteRequest) (*voteResponse, error) {
+func (r *Raft) requestVote(pool *connPool, req *voteReq) (*voteResp, error) {
 	debug(r.id, ">> requestVote", pool.id)
 	conn, err := pool.getConn()
 	if err != nil {
 		return nil, err
 	}
-	resp := new(voteResponse)
+	resp := new(voteResp)
 	if err = conn.doRPC(rpcVote, req, resp); err != nil {
 		_ = conn.close()
 		return resp, err

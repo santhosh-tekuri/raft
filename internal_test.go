@@ -8,7 +8,7 @@ func Debug(args ...interface{}) {
 
 func RequestVote(from, to *Raft) (granted bool, err error) {
 	t := Inspect(func(info Info) {
-		req := &voteRequest{
+		req := &voteReq{
 			term:         info.Term(),
 			lastLogIndex: info.LastLogIndex(),
 			lastLogTerm:  info.LastLogTerm(),

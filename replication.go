@@ -31,7 +31,7 @@ type replication struct {
 
 const maxAppendEntries = 64 // todo: should be configurable
 
-func (repl *replication) runLoop(req *appendEntriesRequest) {
+func (repl *replication) runLoop(req *appendEntriesReq) {
 	defer func() {
 		if repl.conn != nil {
 			repl.connPool.returnConn(repl.conn)
@@ -73,7 +73,7 @@ func (repl *replication) runLoop(req *appendEntriesRequest) {
 		}
 
 		// send request ----------------------------------
-		var resp *appendEntriesResponse
+		var resp *appendEntriesResp
 		var err error
 		var failures uint64
 		for {
@@ -162,7 +162,7 @@ func (repl *replication) notifyLdr(matchIndex uint64, noContact time.Time) {
 	}
 }
 
-func (repl *replication) appendEntries(req *appendEntriesRequest) (*appendEntriesResponse, error) {
+func (repl *replication) appendEntries(req *appendEntriesReq) (*appendEntriesResp, error) {
 	if repl.conn == nil {
 		conn, err := repl.connPool.getConn()
 		if err != nil {
@@ -170,7 +170,7 @@ func (repl *replication) appendEntries(req *appendEntriesRequest) (*appendEntrie
 		}
 		repl.conn = conn
 	}
-	resp := new(appendEntriesResponse)
+	resp := new(appendEntriesResp)
 	err := repl.conn.doRPC(rpcAppendEntries, req, resp)
 	if err != nil {
 		_ = repl.conn.close()

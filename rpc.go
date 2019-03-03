@@ -14,12 +14,12 @@ import (
 func (r *Raft) replyRPC(rpc *rpc) bool {
 	var resetElectionTimer = true
 	switch req := rpc.req.(type) {
-	case *voteRequest:
+	case *voteReq:
 		reply := r.onVoteRequest(req)
 		rpc.resp, resetElectionTimer = reply, reply.granted
-	case *appendEntriesRequest:
+	case *appendEntriesReq:
 		rpc.resp = r.onAppendEntriesRequest(req)
-	case *installSnapRequest:
+	case *installSnapReq:
 		rpc.resp, rpc.readErr = r.onInstallSnapRequest(req, rpc.reader)
 	default:
 		// todo
@@ -28,9 +28,9 @@ func (r *Raft) replyRPC(rpc *rpc) bool {
 	return resetElectionTimer
 }
 
-func (r *Raft) onVoteRequest(req *voteRequest) *voteResponse {
+func (r *Raft) onVoteRequest(req *voteReq) *voteResp {
 	debug(r, "onVoteRequest", req.term, req.candidate, req.lastLogIndex, req.lastLogTerm)
-	resp := &voteResponse{
+	resp := &voteResp{
 		term:    r.term,
 		granted: false,
 	}
@@ -75,8 +75,8 @@ func (r *Raft) onVoteRequest(req *voteRequest) *voteResponse {
 	return resp
 }
 
-func (r *Raft) onAppendEntriesRequest(req *appendEntriesRequest) *appendEntriesResponse {
-	resp := &appendEntriesResponse{
+func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp {
+	resp := &appendEntriesResp{
 		term:         r.term,
 		success:      false,
 		lastLogIndex: r.log.lastIndex,
@@ -174,7 +174,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesRequest) *appendEntriesR
 	return resp
 }
 
-func (r *Raft) lastLog(req *appendEntriesRequest) (index uint64, term uint64) {
+func (r *Raft) lastLog(req *appendEntriesReq) (index uint64, term uint64) {
 	switch n := len(req.entries); {
 	case n == 0:
 		return req.prevLogIndex, req.prevLogTerm
@@ -184,7 +184,7 @@ func (r *Raft) lastLog(req *appendEntriesRequest) (index uint64, term uint64) {
 	}
 }
 
-func (r *Raft) onInstallSnapRequest(req *installSnapRequest, reader io.Reader) (resp *installSnapResponse, readErr error) {
+func (r *Raft) onInstallSnapRequest(req *installSnapReq, reader io.Reader) (resp *installSnapResp, readErr error) {
 	debug(r, "onInstallSnapRequest", req.term, req.lastIndex, req.lastTerm, req.lastConfig)
 
 	reader = io.LimitReader(reader, int64(req.size))
@@ -194,7 +194,7 @@ func (r *Raft) onInstallSnapRequest(req *installSnapRequest, reader io.Reader) (
 			readErr = err
 		}
 	}()
-	resp = &installSnapResponse{term: r.term, success: false}
+	resp = &installSnapResp{term: r.term, success: false}
 
 	// reply false if older term
 	if req.term < r.term {

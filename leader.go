@@ -194,7 +194,7 @@ func (ldr *leadership) startReplication(node Node) {
 	ldr.repls[node.ID] = repl
 
 	// send initial empty AppendEntries RPCs (heartbeat) to each follower
-	req := &appendEntriesRequest{
+	req := &appendEntriesReq{
 		term:           ldr.term,
 		leader:         ldr.id,
 		ldrCommitIndex: ldr.commitIndex,
