@@ -11,8 +11,6 @@ import (
 type Vars interface {
 	GetVote() (term uint64, vote string, err error)
 	SetVote(term uint64, vote string) error
-	GetConfig() (committed, latest uint64, err error)
-	SetConfig(committed, latest uint64) error
 }
 
 type vars struct {
@@ -316,12 +314,6 @@ func (s *storage) init() error {
 	return nil
 }
 
-func (s *storage) saveConfigs() {
-	if err := s.vars.storage.SetConfig(s.configs.Committed.Index, s.configs.Latest.Index); err != nil {
-		panic(fmt.Sprintf("raft: Vars.SetConfigs failed: %v", err))
-	}
-}
-
 func (s *storage) bootstrap(nodes map[ID]Node) (Config, error) {
 	// wipe out if log is not empty
 	if count := s.log.count(); count > 0 {
@@ -338,8 +330,5 @@ func (s *storage) bootstrap(nodes map[ID]Node) (Config, error) {
 	s.log.append(config.encode())
 
 	s.vars.setTerm(1)
-	if err := s.vars.storage.SetConfig(0, 1); err != nil {
-		return config, err
-	}
 	return config, nil
 }
