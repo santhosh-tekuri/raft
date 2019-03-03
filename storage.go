@@ -13,39 +13,6 @@ type Vars interface {
 	SetVote(term uint64, vote string) error
 }
 
-type vars struct {
-	storage  Vars
-	term     uint64
-	votedFor ID
-}
-
-func newVars(storage Vars) *vars {
-	return &vars{storage: storage}
-}
-
-func (v *vars) init() error {
-	term, vote, err := v.storage.GetVote()
-	if err != nil {
-		return fmt.Errorf("raft: Vars.GetVote failed: %v", err)
-	}
-	v.term, v.votedFor = term, ID(vote)
-	return nil
-}
-
-func (v *vars) setTerm(term uint64) {
-	if err := v.storage.SetVote(v.term, ""); err != nil {
-		panic(fmt.Sprintf("raft: Vars.SetVote failed: %v", err))
-	}
-	v.term, v.votedFor = term, ""
-}
-
-func (v *vars) setVotedFor(id ID) {
-	if err := v.storage.SetVote(v.term, string(id)); err != nil {
-		panic(fmt.Sprintf("raft: Vars.SetVote failed: %v", err))
-	}
-	v.votedFor = id
-}
-
 // ---------------------------------------------------------
 
 type Log interface {
@@ -124,20 +91,6 @@ func (log *log) count() uint64 {
 	return log.lastIndex - log.firstIndex + 1
 }
 
-// if empty returns nil
-func (log *log) lastEntry() (*entry, error) {
-	if log.count() == 0 {
-		return nil, nil
-	}
-	b, err := log.storage.Last()
-	if err != nil {
-		return nil, err
-	}
-	e := &entry{}
-	err = e.decode(bytes.NewReader(b))
-	return e, err
-}
-
 // called by raft.runLoop and repl.runLoop. append call can be called during this
 // never called with invalid index
 func (log *log) getEntry(index uint64, e *entry) {
@@ -151,16 +104,6 @@ func (log *log) getEntry(index uint64, e *entry) {
 	if err = e.decode(bytes.NewReader(b)); err != nil {
 		panic(fmt.Sprintf("raft: entry.decode(%d) failed: %v", index, err))
 	}
-}
-
-// called by raft startup. no other calls made during this
-// never called with invalid index
-func (log *log) getConfig(index uint64) (Config, error) {
-	e := &entry{}
-	log.getEntry(index, e)
-	config := Config{}
-	err := config.decode(e)
-	return config, err
 }
 
 // called by raft.runLoop. getEntry call can be called during this
@@ -242,7 +185,10 @@ type Storage struct {
 }
 
 type storage struct {
-	*vars
+	vars     Vars
+	term     uint64
+	votedFor ID
+
 	log       *log
 	snapIndex uint64
 	snapTerm  uint64
@@ -252,7 +198,7 @@ type storage struct {
 
 func newStorage(s Storage) *storage {
 	return &storage{
-		vars:      newVars(s.Vars),
+		vars:      s.Vars,
 		log:       newLog(s.Log),
 		snapshots: s.Snapshots,
 	}
@@ -260,9 +206,13 @@ func newStorage(s Storage) *storage {
 
 func (s *storage) init() error {
 	var err error
-	if err = s.vars.init(); err != nil {
-		return err
+
+	// init vars --------------
+	term, vote, err := s.vars.GetVote()
+	if err != nil {
+		return fmt.Errorf("raft: Vars.GetVote failed: %v", err)
 	}
+	s.term, s.votedFor = term, ID(vote)
 
 	snaps, err := s.snapshots.List()
 	if err != nil {
@@ -314,6 +264,20 @@ func (s *storage) init() error {
 	return nil
 }
 
+func (s *storage) setTerm(term uint64) {
+	if err := s.vars.SetVote(s.term, ""); err != nil {
+		panic(fmt.Sprintf("raft: Vars.SetVote failed: %v", err))
+	}
+	s.term, s.votedFor = term, ""
+}
+
+func (s *storage) setVotedFor(id ID) {
+	if err := s.vars.SetVote(s.term, string(id)); err != nil {
+		panic(fmt.Sprintf("raft: Vars.SetVote failed: %v", err))
+	}
+	s.votedFor = id
+}
+
 func (s *storage) bootstrap(nodes map[ID]Node) (Config, error) {
 	// wipe out if log is not empty
 	if count := s.log.count(); count > 0 {
@@ -329,6 +293,6 @@ func (s *storage) bootstrap(nodes map[ID]Node) (Config, error) {
 	}
 	s.log.append(config.encode())
 
-	s.vars.setTerm(1)
+	s.setTerm(1)
 	return config, nil
 }
