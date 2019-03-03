@@ -254,8 +254,9 @@ func ChangeAddrs(addrs map[ID]string) Task {
 // result is of type SnapshotMeta
 type takeSnapshot struct {
 	*task
-	threshold uint64
-	config    Config
+	lastSnapIndex uint64
+	threshold     uint64
+	config        Config
 }
 
 func TakeSnapshot(threshold uint64) Task {
@@ -290,6 +291,7 @@ func (r *Raft) executeTask(t Task) {
 	case bootstrap:
 		r.bootstrap(t)
 	case takeSnapshot:
+		t.lastSnapIndex = r.snapIndex
 		t.config = r.configs.Committed
 		r.snapTaskCh <- t
 	case inspect:

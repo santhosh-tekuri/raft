@@ -179,43 +179,21 @@ func (r *Raft) snapLoop() {
 			debug(r, "snapLoop shutdown")
 			return
 		case t := <-r.snapTaskCh:
-			r.takeSnapshot(t)
+			t.reply(r.takeSnapshot(t))
 		}
 	}
 }
 
-func (r *Raft) takeSnapshot(t takeSnapshot) {
-	var req fsmSnapReq
-	var meta SnapshotMeta
-	var err error
-	defer func() {
-		if err != nil {
-			t.reply(err)
-		} else if req.Err() != nil {
-			t.reply(req.Err())
-		} else {
-			t.reply(meta)
-		}
-	}()
-
-	snaps, err := r.snapshots.List()
-	if err != nil {
-		return
-	}
-	latestSnap := uint64(0)
-	if len(snaps) > 0 {
-		latestSnap = snaps[0]
-	}
-	req = fsmSnapReq{task: newTask(), index: latestSnap + t.threshold}
+func (r *Raft) takeSnapshot(t takeSnapshot) interface{} {
+	req := fsmSnapReq{task: newTask(), index: t.lastSnapIndex + t.threshold}
 	r.fsmTaskCh <- req
 	select {
 	case <-r.shutdownCh:
-		err = ErrServerClosed
-		return
+		return ErrServerClosed
 	case <-req.Done():
 	}
 	if req.Err() != nil {
-		return
+		return req.Err()
 	}
 	resp := req.Result().(fsmSnapResp)
 	defer resp.state.Release()
@@ -224,20 +202,23 @@ func (r *Raft) takeSnapshot(t takeSnapshot) {
 	if err != nil {
 		debug(r, "snapshots.New failed", err)
 		// send to trace
-		return
+		return err
 	}
 	err = resp.state.WriteTo(sink)
 	meta, doneErr := sink.Done(err)
 	if err != nil {
 		debug(r, "FSMState.WriteTo failed", resp.index, err)
 		// send to trace
-		return
+		return err
 	}
 	if doneErr != nil {
 		debug(r, "FSMState.Done failed", resp.index, err)
 		// send to trace
 		err = doneErr
-		return
+		return err
 	}
-	err = r.storage.deleteLTE(resp.index)
+	if err = r.storage.deleteLTE(resp.index); err != nil {
+		return err
+	}
+	return meta
 }
