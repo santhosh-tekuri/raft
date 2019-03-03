@@ -1134,11 +1134,11 @@ func (s *inmemStorage) Meta(index uint64) (SnapshotMeta, error) {
 	return s.snapMeta, nil
 }
 
-func (s *inmemStorage) Open(index uint64) (io.ReadCloser, error) {
+func (s *inmemStorage) Open(index uint64) (SnapshotMeta, io.ReadCloser, error) {
 	if index != s.snapMeta.Index {
-		return nil, fmt.Errorf("no snapshot found for index %d", index)
+		return SnapshotMeta{}, nil, fmt.Errorf("no snapshot found for index %d", index)
 	}
-	return ioutil.NopCloser(bytes.NewReader(s.snapshot.Bytes())), nil
+	return s.snapMeta, ioutil.NopCloser(bytes.NewReader(s.snapshot.Bytes())), nil
 }
 
 // ------------------------------------------------------------------

@@ -62,7 +62,7 @@ func (r *Raft) fsmLoop() {
 					state: state,
 				})
 			case fsmRestoreReq:
-				sr, err := r.snapshots.Open(t.index)
+				meta, sr, err := r.snapshots.Open(t.index)
 				if err != nil {
 					debug(r, "snapshots.Open failed", t.index, err)
 					// send to trace
@@ -72,13 +72,6 @@ func (r *Raft) fsmLoop() {
 				defer sr.Close()
 				if err = r.fsm.RestoreFrom(sr); err != nil {
 					debug(r, "fsm.restore failed", t.index, err)
-					// send to trace
-					t.reply(err)
-					continue
-				}
-				meta, err := r.snapshots.Meta(t.index)
-				if err != nil {
-					debug(r, "snapshots.Meta failed", t.index, err)
 					// send to trace
 					t.reply(err)
 					continue

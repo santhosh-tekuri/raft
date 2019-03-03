@@ -33,7 +33,7 @@ type Snapshots interface {
 	New(index, term uint64, config Config) (SnapshotSink, error)
 	List() ([]uint64, error)
 	Meta(index uint64) (SnapshotMeta, error)
-	Open(index uint64) (io.ReadCloser, error)
+	Open(index uint64) (SnapshotMeta, io.ReadCloser, error)
 }
 
 type SnapshotMeta struct {
@@ -193,6 +193,10 @@ func (s *storage) entryCount() uint64 {
 		return 0
 	}
 	return s.lastLogIndex - s.firstLogIndex + 1
+}
+
+func (s *storage) hasEntry(index uint64) bool {
+	return index >= s.firstLogIndex
 }
 
 func (s *storage) getEntryTerm(index uint64) uint64 {
