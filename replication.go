@@ -13,10 +13,11 @@ type replication struct {
 	// this is owned by ldr goroutine
 	status replStatus
 
-	connPool  *connPool
-	storage   *storage
-	hbTimeout time.Duration
-	conn      *netConn
+	ldrStartIndex uint64
+	connPool      *connPool
+	storage       *storage
+	hbTimeout     time.Duration
+	conn          *netConn
 
 	// leader notifies replication with update
 	ldrUpdateCh chan leaderUpdate
@@ -49,14 +50,17 @@ func (repl *replication) runLoop(req *appendEntriesReq) {
 
 	for {
 		// prepare request ----------------------------
-		if nextIndex == 1 {
-			req.prevLogIndex, req.prevLogTerm = 0, 0
-		} else if nextIndex-1 == ldrLastIndex {
-			req.prevLogIndex, req.prevLogTerm = ldrLastIndex, req.term
+		req.prevLogIndex = nextIndex - 1
+		if req.prevLogIndex == 0 {
+			req.prevLogTerm = 0
+		} else if req.prevLogIndex >= repl.ldrStartIndex {
+			req.prevLogTerm = req.term
+		} else if req.prevLogIndex == repl.storage.snapIndex {
+			req.prevLogTerm = repl.storage.snapTerm
 		} else {
 			prevEntry := &entry{}
-			repl.storage.getEntry(nextIndex-1, prevEntry)
-			req.prevLogIndex, req.prevLogTerm = prevEntry.index, prevEntry.term
+			repl.storage.getEntry(req.prevLogIndex, prevEntry)
+			req.prevLogTerm = prevEntry.term
 		}
 		var n uint64 // number of entries to be sent
 		if matchIndex+1 == nextIndex {

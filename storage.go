@@ -195,6 +195,12 @@ func (s *storage) entryCount() uint64 {
 	return s.lastLogIndex - s.firstLogIndex + 1
 }
 
+func (s *storage) getEntryTerm(index uint64) uint64 {
+	e := &entry{}
+	s.getEntry(index, e)
+	return e.term
+}
+
 // called by raft.runLoop and repl.runLoop. append call can be called during this
 // never called with invalid index
 func (s *storage) getEntry(index uint64, e *entry) {

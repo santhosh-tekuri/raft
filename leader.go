@@ -182,6 +182,7 @@ func (ldr *leadership) runLoop() {
 func (ldr *leadership) startReplication(node Node) {
 	repl := &replication{
 		status:        replStatus{id: node.ID},
+		ldrStartIndex: ldr.startIndex,
 		connPool:      ldr.getConnPool(node.ID),
 		hbTimeout:     ldr.hbTimeout,
 		storage:       ldr.storage,

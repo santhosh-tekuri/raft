@@ -107,12 +107,11 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp 
 		var prevLogTerm uint64
 		if req.prevLogIndex == r.lastLogIndex {
 			prevLogTerm = r.lastLogTerm
+		} else if req.prevLogIndex == r.snapIndex {
+			prevLogTerm = r.snapTerm
 		} else {
-			prevEntry := &entry{}
-			r.storage.getEntry(req.prevLogIndex, prevEntry)
-			prevLogTerm = prevEntry.term
+			prevLogTerm = r.storage.getEntryTerm(req.prevLogIndex)
 		}
-
 		if req.prevLogTerm != prevLogTerm {
 			// term did not match
 			return resp
@@ -163,7 +162,6 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp 
 
 	// If leaderCommit > commitIndex, set commitIndex =
 	// min(leaderCommit, index of last new entry)
-	// note: req.ldrCommitIndex==0 for heartbeat requests
 	lastIndex, lastTerm := r.lastLog(req)
 	if lastTerm == req.term && req.ldrCommitIndex > r.commitIndex {
 		r.commitIndex = min(req.ldrCommitIndex, lastIndex)
