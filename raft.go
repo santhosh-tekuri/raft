@@ -182,7 +182,7 @@ func (r *Raft) Serve(l net.Listener) error {
 
 	// restore fsm from last snapshot, if present
 	if r.snapIndex > 0 {
-		req := fsmRestoreReq{task: &task{done: make(chan struct{})}, index: r.snapIndex}
+		req := fsmRestoreReq{task: newTask(), index: r.snapIndex}
 		r.fsmTaskCh <- req
 		<-req.Done()
 		if req.Err() != nil {

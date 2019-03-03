@@ -23,6 +23,10 @@ type task struct {
 	done   chan struct{}
 }
 
+func newTask() *task {
+	return &task{done: make(chan struct{})}
+}
+
 func (t *task) Done() <-chan struct{} {
 	return t.done
 }
@@ -63,11 +67,8 @@ func (r *Raft) NewEntries() chan<- NewEntry {
 
 func newEntry(typ entryType, data []byte) NewEntry {
 	return NewEntry{
-		task: &task{done: make(chan struct{})},
-		entry: &entry{
-			typ:  typ,
-			data: data,
-		},
+		task:  newTask(),
+		entry: &entry{typ: typ, data: data},
 	}
 }
 
@@ -94,10 +95,7 @@ type bootstrap struct {
 }
 
 func Bootstrap(nodes map[ID]Node) Task {
-	return bootstrap{
-		task:  &task{done: make(chan struct{})},
-		nodes: nodes,
-	}
+	return bootstrap{task: newTask(), nodes: nodes}
 }
 
 // ------------------------------------------------------------------------
@@ -209,10 +207,7 @@ type inspect struct {
 }
 
 func Inspect(fn func(r Info)) Task {
-	return inspect{
-		task: &task{done: make(chan struct{})},
-		fn:   fn,
-	}
+	return inspect{task: newTask(), fn: fn}
 }
 
 func (r *Raft) Info() Info {
@@ -235,10 +230,7 @@ type addNonvoter struct {
 }
 
 func AddNonvoter(node Node) Task {
-	return addNonvoter{
-		task: &task{done: make(chan struct{})},
-		node: node,
-	}
+	return addNonvoter{task: newTask(), node: node}
 }
 
 type removeNode struct {
@@ -247,10 +239,7 @@ type removeNode struct {
 }
 
 func RemoveNode(id ID) Task {
-	return removeNode{
-		task: &task{done: make(chan struct{})},
-		id:   id,
-	}
+	return removeNode{task: newTask(), id: id}
 }
 
 type changeAddrs struct {
@@ -259,10 +248,7 @@ type changeAddrs struct {
 }
 
 func ChangeAddrs(addrs map[ID]string) Task {
-	return changeAddrs{
-		task:  &task{done: make(chan struct{})},
-		addrs: addrs,
-	}
+	return changeAddrs{task: newTask(), addrs: addrs}
 }
 
 // result is of type SnapshotMeta
@@ -273,10 +259,7 @@ type takeSnapshot struct {
 }
 
 func TakeSnapshot(threshold uint64) Task {
-	return takeSnapshot{
-		task:      &task{done: make(chan struct{})},
-		threshold: threshold,
-	}
+	return takeSnapshot{task: newTask(), threshold: threshold}
 }
 
 type fsmSnapReq struct {

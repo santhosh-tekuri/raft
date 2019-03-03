@@ -206,7 +206,7 @@ func (r *Raft) takeSnapshot(t takeSnapshot) {
 	if len(snaps) > 0 {
 		latestSnap = snaps[0]
 	}
-	req = fsmSnapReq{task: &task{done: make(chan struct{})}, index: latestSnap + t.threshold}
+	req = fsmSnapReq{task: newTask(), index: latestSnap + t.threshold}
 	r.fsmTaskCh <- req
 	select {
 	case <-r.shutdownCh:

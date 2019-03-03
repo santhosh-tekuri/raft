@@ -235,7 +235,7 @@ func (r *Raft) onInstallSnapRequest(req *installSnapRequest, reader io.Reader) (
 	}
 
 	// ask fsm to restore from this snapshot
-	restoreReq := fsmRestoreReq{task: &task{done: make(chan struct{})}, index: req.lastIndex}
+	restoreReq := fsmRestoreReq{task: newTask(), index: req.lastIndex}
 	r.fsmTaskCh <- restoreReq
 	<-restoreReq.Done()
 	if restoreReq.Err() != nil {
