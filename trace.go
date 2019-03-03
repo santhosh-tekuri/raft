@@ -17,42 +17,42 @@ type Trace struct {
 	ShuttingDown    func(info Info)
 }
 
-func DefaultTrace(infof, warnf func(format string, v ...interface{})) Trace {
-	return Trace{
-		Starting: func(info Info) {
-			infof("raft: starting with Config %s\n", info.Configs().Latest)
-		},
-		LookupIDFailed: func(id ID, err error, fallbackAddr string) {
-			warnf("raft: lookupID(%s) failed, using fallback addr %s: %v\n", id, fallbackAddr, err)
-		},
-		StateChanged: func(info Info) {
-			if info.State() == Leader {
-				infof("raft: cluster leadership acquired\n")
-			}
-		},
-		ElectionAborted: func(info Info, reason string) {
-			infof("raft: %s, aborting election\n", reason)
-		},
-		ConfigChanged: func(info Info) {
-			infof("raft: config changed to %s\n", info.Configs().Latest)
-		},
-		ConfigCommitted: func(info Info) {
-			infof("raft: config committed\n")
-		},
-		ConfigReverted: func(info Info) {
-			infof("raft: config reverted to %s\n", info.Configs().Latest)
-		},
-		Unreachable: func(info Info, id ID, since time.Time) {
-			if since.IsZero() {
-				infof("raft: node %s is reachable\n", id)
-			} else {
-				warnf("raft: node %s is unreachable since %s\n", id, since)
-			}
-		},
-		ShuttingDown: func(info Info) {
-			infof("raft: shutting down\n")
-		},
+func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
+	trace.Starting = func(rinfo Info) {
+		info("raft: starting with Config", rinfo.Configs().Latest)
 	}
+	trace.LookupIDFailed = func(id ID, err error, fallbackAddr string) {
+		warn("raft.lookupID: using fallback addr", fallbackAddr, "for", id, ":", err)
+	}
+	trace.StateChanged = func(rinfo Info) {
+		if rinfo.State() == Leader {
+			info("raft: cluster leadership acquired")
+		}
+	}
+	trace.ElectionAborted = func(rinfo Info, reason string) {
+		info("raft: aborting election:", reason)
+	}
+	trace.ConfigChanged = func(rinfo Info) {
+		if rinfo.State() == Leader {
+			info("raft: config changed to", rinfo.Configs().Latest)
+		}
+	}
+	trace.ConfigCommitted = func(rinfo Info) {
+		if rinfo.State() == Leader {
+			info("raft: config committed")
+		}
+	}
+	trace.Unreachable = func(rinfo Info, id ID, since time.Time) {
+		if since.IsZero() {
+			info("raft: node", id, "is reachable now")
+		} else {
+			warn("raft: node", id, "is unreachable since", since)
+		}
+	}
+	trace.ShuttingDown = func(rinfo Info) {
+		info("raft: shutting down")
+	}
+	return
 }
 
 func (r *Raft) liveInfo() Info {

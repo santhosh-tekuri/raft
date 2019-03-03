@@ -38,18 +38,17 @@ type Options struct {
 
 func DefaultOptions() Options {
 	var mu sync.Mutex
-	logger := func(prefix string) func(format string, v ...interface{}) {
-		return func(format string, v ...interface{}) {
+	logger := func(prefix string) func(v ...interface{}) {
+		return func(v ...interface{}) {
 			mu.Lock()
 			defer mu.Unlock()
-			fmt.Print(prefix)
-			fmt.Printf(format, v...)
+			fmt.Println(append(append([]interface{}(nil), prefix), v...))
 		}
 	}
 	return Options{
 		HeartbeatTimeout:   1000 * time.Millisecond,
 		LeaderLeaseTimeout: 1000 * time.Millisecond,
-		Trace:              DefaultTrace(logger("[INFO] "), logger("[WARN] ")),
+		Trace:              DefaultTrace(logger("[INFO]"), logger("[WARN]")),
 	}
 }
 
