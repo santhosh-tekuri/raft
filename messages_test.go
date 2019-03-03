@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"reflect"
 	"testing"
 )
@@ -13,6 +14,12 @@ func TestMessages(t *testing.T) {
 		decode(r io.Reader) error
 		encode(w io.Writer) error
 	}
+
+	nodes := make(map[ID]Node)
+	nodes["M1"] = Node{ID: "M1", Addr: "localhost:7000", Voter: true}
+	nodes["M2"] = Node{ID: "M2", Addr: "localhost:8000", Voter: false}
+	nodes["M3"] = Node{ID: "M3", Addr: "localhost:9000", Promote: true}
+
 	tests := []message{
 		&entry{index: 3, term: 5, typ: 2, data: []byte("sleep")},
 		&voteRequest{term: 5, candidate: "localhost:1234", lastLogIndex: 3, lastLogTerm: 5},
@@ -25,6 +32,14 @@ func TestMessages(t *testing.T) {
 			}, ldrCommitIndex: 7,
 		},
 		&appendEntriesResponse{term: 5, success: true, lastLogIndex: 9},
+		&installSnapRequest{
+			term: 5, leader: "localhost:5678", lastIndex: 3, lastTerm: 5,
+			lastConfig: Config{
+				Nodes: nodes,
+				Index: 1, Term: 2,
+			}, size: math.MaxInt64,
+		},
+		&installSnapResponse{term: 5, success: true},
 	}
 	for _, test := range tests {
 		name := fmt.Sprintf("message(%T)", test)

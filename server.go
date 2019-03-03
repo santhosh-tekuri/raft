@@ -15,14 +15,17 @@ import (
 var ErrServerClosed = errors.New("raft: Server closed")
 
 type rpc struct {
-	req    message
-	respCh chan<- message
+	req     message
+	reader  io.Reader // for partial requests
+	resp    message
+	readErr error // error while reading partial req payload
+	done    chan struct{}
 }
 
 type server struct {
 	listenerMu sync.RWMutex
 	listener   net.Listener
-	rpcCh      chan rpc
+	rpcCh      chan *rpc
 
 	// interval to check for shutdown signal
 	idleTimeout time.Duration
@@ -34,7 +37,7 @@ type server struct {
 
 func newServer(idleTimeout time.Duration) *server {
 	return &server{
-		rpcCh:       make(chan rpc),
+		rpcCh:       make(chan *rpc),
 		shutdownCh:  make(chan struct{}),
 		idleTimeout: idleTimeout,
 	}
@@ -114,8 +117,7 @@ func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) erro
 		break
 	}
 
-	respCh := make(chan message, 1)
-	rpc := rpc{respCh: respCh}
+	rpc := &rpc{done: make(chan struct{}), reader: r}
 
 	// decode request
 	switch typ {
@@ -124,6 +126,9 @@ func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) erro
 		rpc.req = req
 	case rpcAppendEntries:
 		req := &appendEntriesRequest{}
+		rpc.req = req
+	case rpcInstallSnap:
+		req := &installSnapRequest{}
 		rpc.req = req
 	default:
 		return fmt.Errorf("unknown rpcType: %d", typ)
@@ -143,17 +148,21 @@ func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) erro
 	case s.rpcCh <- rpc:
 	}
 
-	// wait for response and send reply
+	// wait for response
 	select {
 	case <-s.shutdownCh:
 		return ErrServerClosed
-	case resp := <-respCh:
-		// todo: set write deadline
-		if err := resp.encode(w); err != nil {
-			return err
-		}
+	case <-rpc.done:
 	}
 
+	// send reply
+	if rpc.readErr != nil {
+		return rpc.readErr
+	}
+	// todo: set write deadline
+	if err := rpc.resp.encode(w); err != nil {
+		return err
+	}
 	return w.Flush()
 }
 

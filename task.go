@@ -265,13 +265,7 @@ func ChangeAddrs(addrs map[ID]string) Task {
 	}
 }
 
-type snapFSM struct {
-	*task
-	index  uint64
-	term   uint64
-	config Config
-}
-
+// result is of type SnapshotMeta
 type takeSnapshot struct {
 	*task
 	threshold uint64
@@ -283,6 +277,22 @@ func TakeSnapshot(threshold uint64) Task {
 		task:      &task{done: make(chan struct{})},
 		threshold: threshold,
 	}
+}
+
+type fsmSnapReq struct {
+	*task
+	index uint64
+}
+
+type fsmSnapResp struct {
+	index uint64
+	term  uint64
+	state FSMState
+}
+
+type fsmRestoreReq struct {
+	*task
+	index uint64
 }
 
 // ------------------------------------------------------------------------
@@ -298,7 +308,7 @@ func (r *Raft) executeTask(t Task) {
 		r.bootstrap(t)
 	case takeSnapshot:
 		t.config = r.configs.Committed
-		r.userSnapCh <- t
+		r.snapTaskCh <- t
 	case inspect:
 		t.fn(liveInfo{r: r})
 		t.reply(nil)

@@ -232,7 +232,7 @@ type SnapshotMeta struct {
 
 type SnapshotSink interface {
 	io.Writer
-	Done(err error)
+	Done(err error) (SnapshotMeta, error)
 }
 
 // -----------------------------------------------------------------------------------

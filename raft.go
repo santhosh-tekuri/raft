@@ -58,9 +58,8 @@ type Raft struct {
 	server *server
 
 	fsm           FSM
-	fsmApplyCh    chan NewEntry
-	fsmSnapCh     chan *snapFSM
-	userSnapCh    chan takeSnapshot
+	fsmTaskCh     chan Task
+	snapTaskCh    chan takeSnapshot
 	snapThreshold uint64
 
 	// persistent state
@@ -101,9 +100,8 @@ func New(id ID, opt Options, fsm FSM, storage Storage) (*Raft, error) {
 		id:              id,
 		server:          newServer(2 * opt.HeartbeatTimeout),
 		fsm:             fsm,
-		fsmApplyCh:      make(chan NewEntry, 128), // todo configurable capacity
-		fsmSnapCh:       make(chan *snapFSM),
-		userSnapCh:      make(chan takeSnapshot),
+		fsmTaskCh:       make(chan Task, 128), // todo configurable capacity
+		snapTaskCh:      make(chan takeSnapshot),
 		snapThreshold:   opt.SnapshotThreshold,
 		storage:         store,
 		state:           Follower,
@@ -123,20 +121,6 @@ func New(id ID, opt Options, fsm FSM, storage Storage) (*Raft, error) {
 		trace:    &r.trace,
 	}
 	r.resolver.update(store.configs.Latest)
-
-	// restore fsm from last snapshot, if present
-	if store.snapIndex > 0 {
-		sr, err := r.snapshots.Open(store.snapIndex)
-		if err != nil {
-			return nil, err
-		}
-		defer sr.Close()
-		if err = r.fsm.RestoreFrom(sr); err != nil {
-			return nil, err
-		}
-		r.commitIndex, r.lastApplied = store.snapIndex, store.snapIndex
-		debug(r, "restored snapshot ", store.snapIndex)
-	}
 
 	return r, nil
 }
@@ -195,6 +179,17 @@ func (r *Raft) Serve(l net.Listener) error {
 	go r.stateLoop()
 	go r.fsmLoop()
 	go r.snapLoop()
+
+	// restore fsm from last snapshot, if present
+	if r.snapIndex > 0 {
+		req := fsmRestoreReq{task: &task{done: make(chan struct{})}, index: r.snapIndex}
+		r.fsmTaskCh <- req
+		<-req.Done()
+		if req.Err() != nil {
+			r.commitIndex, r.lastApplied = r.snapIndex, r.snapIndex
+		}
+	}
+
 	return r.server.serve(l)
 }
 

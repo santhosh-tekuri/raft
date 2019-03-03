@@ -28,32 +28,65 @@ func (r *Raft) fsmLoop() {
 		case <-r.shutdownCh:
 			debug(r, "fsmLoop shutdown")
 			return
-		case ne := <-r.fsmApplyCh:
-			debug(r.id, "fsm.apply", ne.typ, ne.index)
-			var resp interface{}
-			if ne.typ == entryUpdate || ne.typ == entryQuery {
-				resp = r.fsm.Execute(ne.entry.data)
-				if ne.typ == entryUpdate {
-					updateIndex, updateTerm = ne.index, ne.term
+		case t := <-r.fsmTaskCh:
+			switch t := t.(type) {
+			case NewEntry:
+				debug(r.id, "fsm.execute", t.typ, t.index)
+				var resp interface{}
+				if t.typ == entryUpdate || t.typ == entryQuery {
+					resp = r.fsm.Execute(t.entry.data)
+					if t.typ == entryUpdate {
+						updateIndex, updateTerm = t.index, t.term
+					}
 				}
+				t.reply(resp)
+			case fsmSnapReq:
+				if updateIndex == 0 {
+					t.reply(ErrNoUpdates)
+					continue
+				}
+				if updateIndex < t.index {
+					t.reply(ErrSnapshotThreshold)
+					continue
+				}
+				state, err := r.fsm.Snapshot()
+				if err != nil {
+					debug(r, "fsm.Snapshot failed", err)
+					// send to trace
+					t.reply(err)
+					continue
+				}
+				t.reply(fsmSnapResp{
+					index: updateIndex,
+					term:  updateTerm,
+					state: state,
+				})
+			case fsmRestoreReq:
+				sr, err := r.snapshots.Open(t.index)
+				if err != nil {
+					debug(r, "snapshots.Open failed", t.index, err)
+					// send to trace
+					t.reply(err)
+					continue
+				}
+				defer sr.Close()
+				if err = r.fsm.RestoreFrom(sr); err != nil {
+					debug(r, "fsm.restore failed", t.index, err)
+					// send to trace
+					t.reply(err)
+					continue
+				}
+				meta, err := r.snapshots.Meta(t.index)
+				if err != nil {
+					debug(r, "snapshots.Meta failed", t.index, err)
+					// send to trace
+					t.reply(err)
+					continue
+				}
+				updateIndex, updateTerm = t.index, meta.Term
+				t.reply(nil)
+				debug(r, "restored snapshot", t.index)
 			}
-			ne.task.reply(resp)
-		case t := <-r.fsmSnapCh:
-			if updateIndex == 0 {
-				t.reply(ErrNoUpdates)
-				continue
-			}
-			if updateIndex < t.index {
-				t.reply(ErrSnapshotThreshold)
-				continue
-			}
-			state, err := r.fsm.Snapshot()
-			if err != nil {
-				t.reply(err)
-				continue
-			}
-			t.index, t.term = updateIndex, updateTerm
-			t.reply(state)
 		}
 	}
 }
@@ -90,7 +123,7 @@ func (r *Raft) applyCommitted(newEntries *list.List) {
 					select {
 					case <-r.shutdownCh:
 						return
-					case r.fsmApplyCh <- ne:
+					case r.fsmTaskCh <- ne:
 					}
 				} else {
 					break
@@ -123,7 +156,7 @@ func (r *Raft) applyCommitted(newEntries *list.List) {
 				select {
 				case <-r.shutdownCh:
 					return
-				case r.fsmApplyCh <- ne:
+				case r.fsmTaskCh <- ne:
 				}
 			default:
 				assert(true, "got unexpected entryType %d", ne.typ)
@@ -141,54 +174,70 @@ func (r *Raft) applyCommitted(newEntries *list.List) {
 func (r *Raft) snapLoop() {
 	defer r.wg.Done()
 	for {
-		req := &snapFSM{task: &task{done: make(chan struct{})}}
 		select {
 		case <-r.shutdownCh:
 			debug(r, "snapLoop shutdown")
 			return
-		case t := <-r.userSnapCh:
-			req.config = t.config
-			snapIndex, err := r.takeSnapshot(req, t.threshold)
-			if err != nil {
-				t.reply(err)
-			} else {
-				t.reply(snapIndex)
-			}
+		case t := <-r.snapTaskCh:
+			r.takeSnapshot(t)
 		}
 	}
 }
 
-func (r *Raft) takeSnapshot(req *snapFSM, threshold uint64) (snapIndex uint64, err error) {
+func (r *Raft) takeSnapshot(t takeSnapshot) {
+	var req fsmSnapReq
+	var meta SnapshotMeta
+	var err error
+	defer func() {
+		if err != nil {
+			t.reply(err)
+		} else if req.Err() != nil {
+			t.reply(req.Err())
+		} else {
+			t.reply(meta)
+		}
+	}()
+
 	snaps, err := r.snapshots.List()
 	if err != nil {
-		return 0, err
+		return
 	}
 	latestSnap := uint64(0)
 	if len(snaps) > 0 {
 		latestSnap = snaps[0]
 	}
-	req.index = latestSnap + threshold
-	r.fsmSnapCh <- req
+	req = fsmSnapReq{task: &task{done: make(chan struct{})}, index: latestSnap + t.threshold}
+	r.fsmTaskCh <- req
 	select {
 	case <-r.shutdownCh:
-		return 0, ErrServerClosed
+		err = ErrServerClosed
+		return
 	case <-req.Done():
 	}
 	if req.Err() != nil {
-		return 0, req.Err()
+		return
 	}
-	fsmState := req.Result().(FSMState)
-	defer fsmState.Release()
+	resp := req.Result().(fsmSnapResp)
+	defer resp.state.Release()
 
-	sink, err := r.snapshots.New(req.index, req.term, req.config)
+	sink, err := r.snapshots.New(resp.index, resp.term, t.config)
 	if err != nil {
-		return 0, err
+		debug(r, "snapshots.New failed", err)
+		// send to trace
+		return
 	}
-	err = fsmState.WriteTo(sink)
-	sink.Done(err)
+	err = resp.state.WriteTo(sink)
+	meta, doneErr := sink.Done(err)
 	if err != nil {
-		return 0, err
+		debug(r, "FSMState.WriteTo failed", resp.index, err)
+		// send to trace
+		return
 	}
-
-	return req.index, r.log.deleteLTE(req.index)
+	if doneErr != nil {
+		debug(r, "FSMState.Done failed", resp.index, err)
+		// send to trace
+		err = doneErr
+		return
+	}
+	err = r.log.deleteLTE(resp.index)
 }

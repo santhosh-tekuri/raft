@@ -1,26 +1,30 @@
 package raft
 
+import (
+	"io"
+	"io/ioutil"
+)
+
 // If election timeout elapses without receiving AppendEntries
 // RPC from current leader or granting vote to candidate:
 // convert to candidate.
 //
 // replyRPC return true if it is appendEntries request
 // or vote granted
-func (r *Raft) replyRPC(rpc rpc) bool {
-	var resp message
-	var resetElectionTimer bool
+func (r *Raft) replyRPC(rpc *rpc) bool {
+	var resetElectionTimer = true
 	switch req := rpc.req.(type) {
 	case *voteRequest:
 		reply := r.onVoteRequest(req)
-		resp, resetElectionTimer = reply, reply.granted
+		rpc.resp, resetElectionTimer = reply, reply.granted
 	case *appendEntriesRequest:
-		reply := r.onAppendEntriesRequest(req)
-		resp, resetElectionTimer = reply, true
-		resp, resetElectionTimer = reply, true
+		rpc.resp = r.onAppendEntriesRequest(req)
+	case *installSnapRequest:
+		rpc.resp, rpc.readErr = r.onInstallSnapRequest(req, rpc.reader)
 	default:
 		// todo
 	}
-	rpc.respCh <- resp
+	close(rpc.done)
 	return resetElectionTimer
 }
 
@@ -178,4 +182,67 @@ func (r *Raft) lastLog(req *appendEntriesRequest) (index uint64, term uint64) {
 		last := req.entries[n-1]
 		return last.index, last.term
 	}
+}
+
+func (r *Raft) onInstallSnapRequest(req *installSnapRequest, reader io.Reader) (resp *installSnapResponse, readErr error) {
+	debug(r, "onInstallSnapRequest", req.term, req.lastIndex, req.lastTerm, req.lastConfig)
+
+	reader = io.LimitReader(reader, int64(req.size))
+	defer func() {
+		_, err := io.Copy(ioutil.Discard, reader)
+		if err != nil {
+			readErr = err
+		}
+	}()
+	resp = &installSnapResponse{term: r.term, success: false}
+
+	// reply false if older term
+	if req.term < r.term {
+		return
+	}
+
+	// if newer term, convert to follower
+	if req.term > r.term || r.state != Follower {
+		debug(r, "stateChange", req.term, Follower)
+		r.state = Follower
+		r.setTerm(req.term)
+		r.stateChanged()
+	}
+
+	r.leader = req.leader
+
+	// store snapshot
+	sink, err := r.snapshots.New(req.lastIndex, req.lastTerm, req.lastConfig)
+	if err != nil {
+		debug(r, "snapshots.New failed", err)
+		// todo: send to trace
+		return
+	}
+	n, readErr := io.Copy(sink, reader)
+	if readErr != nil {
+		_, _ = sink.Done(readErr)
+		return
+	}
+	if n != req.size {
+		readErr = io.ErrUnexpectedEOF
+		_, _ = sink.Done(readErr)
+		return
+	}
+	if _, err = sink.Done(nil); err != nil {
+		debug(r, "sing.Done failed", err)
+		// todo: send to trace
+		return
+	}
+
+	// ask fsm to restore from this snapshot
+	restoreReq := fsmRestoreReq{task: &task{done: make(chan struct{})}, index: req.lastIndex}
+	r.fsmTaskCh <- restoreReq
+	<-restoreReq.Done()
+	if restoreReq.Err() != nil {
+		err = restoreReq.Err()
+		return
+	}
+
+	resp.success = true
+	return
 }

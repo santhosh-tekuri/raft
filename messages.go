@@ -10,6 +10,7 @@ type rpcType int
 const (
 	rpcVote rpcType = iota
 	rpcAppendEntries
+	rpcInstallSnap
 )
 
 type message interface {
@@ -17,6 +18,8 @@ type message interface {
 	decode(r io.Reader) error
 	encode(w io.Writer) error
 }
+
+// ------------------------------------------------------
 
 type entryType uint8
 
@@ -87,6 +90,8 @@ func (e *entry) encode(w io.Writer) error {
 	return nil
 }
 
+// ------------------------------------------------------
+
 type voteRequest struct {
 	term         uint64 // candidate's term
 	candidate    ID     // candidate requesting vote
@@ -94,9 +99,7 @@ type voteRequest struct {
 	lastLogTerm  uint64 // term of candidate's last log entry
 }
 
-func (req *voteRequest) getTerm() uint64 {
-	return req.term
-}
+func (req *voteRequest) getTerm() uint64 { return req.term }
 
 func (req *voteRequest) decode(r io.Reader) error {
 	var err error
@@ -134,14 +137,14 @@ func (req *voteRequest) encode(w io.Writer) error {
 	return nil
 }
 
+// ------------------------------------------------------
+
 type voteResponse struct {
 	term    uint64 // currentTerm, for candidate to update itself
 	granted bool   // true means candidate received vote
 }
 
-func (resp *voteResponse) getTerm() uint64 {
-	return resp.term
-}
+func (resp *voteResponse) getTerm() uint64 { return resp.term }
 
 func (resp *voteResponse) decode(r io.Reader) error {
 	var err error
@@ -165,18 +168,18 @@ func (resp *voteResponse) encode(w io.Writer) error {
 	return nil
 }
 
+// ------------------------------------------------------
+
 type appendEntriesRequest struct {
-	term           uint64
-	leader         ID
+	term           uint64 // leader's term
+	leader         ID     // so followers can redirect clients
 	prevLogIndex   uint64
 	prevLogTerm    uint64
 	entries        []*entry
 	ldrCommitIndex uint64
 }
 
-func (req *appendEntriesRequest) getTerm() uint64 {
-	return req.term
-}
+func (req *appendEntriesRequest) getTerm() uint64 { return req.term }
 
 func (req *appendEntriesRequest) decode(r io.Reader) error {
 	var err error
@@ -184,10 +187,10 @@ func (req *appendEntriesRequest) decode(r io.Reader) error {
 	if req.term, err = readUint64(r); err != nil {
 		return err
 	}
-	if s, err := readString(r); err != nil {
+	if ldr, err := readString(r); err != nil {
 		return err
 	} else {
-		req.leader = ID(s)
+		req.leader = ID(ldr)
 	}
 	if req.prevLogIndex, err = readUint64(r); err != nil {
 		return err
@@ -243,6 +246,8 @@ func (req *appendEntriesRequest) encode(w io.Writer) error {
 	return nil
 }
 
+// ------------------------------------------------------
+
 type appendEntriesResponse struct {
 	term         uint64
 	success      bool
@@ -250,9 +255,7 @@ type appendEntriesResponse struct {
 	// todo: what abt additional field NoRetryBackoff
 }
 
-func (resp *appendEntriesResponse) getTerm() uint64 {
-	return resp.term
-}
+func (resp *appendEntriesResponse) getTerm() uint64 { return resp.term }
 
 func (resp *appendEntriesResponse) decode(r io.Reader) error {
 	var err error
@@ -277,6 +280,109 @@ func (resp *appendEntriesResponse) encode(w io.Writer) error {
 		return err
 	}
 	if err := writeUint64(w, resp.lastLogIndex); err != nil {
+		return err
+	}
+	return nil
+}
+
+// ------------------------------------------------------
+
+type installSnapRequest struct {
+	term       uint64 // leader's term
+	leader     ID     // so followers can redirect clients
+	lastIndex  uint64 // last index in the snapshot
+	lastTerm   uint64 // term of lastIndex
+	lastConfig Config // last config in the snapshot
+	size       int64  // size of the snapshot
+}
+
+func (req *installSnapRequest) getTerm() uint64 { return req.term }
+
+func (req *installSnapRequest) decode(r io.Reader) error {
+	var err error
+
+	if req.term, err = readUint64(r); err != nil {
+		return err
+	}
+	if ldr, err := readString(r); err != nil {
+		return err
+	} else {
+		req.leader = ID(ldr)
+	}
+	if req.lastIndex, err = readUint64(r); err != nil {
+		return err
+	}
+	if req.lastTerm, err = readUint64(r); err != nil {
+		return err
+	}
+
+	e := &entry{}
+	if err = e.decode(r); err != nil {
+		return err
+	}
+	if err = req.lastConfig.decode(e); err != nil {
+		return err
+	}
+
+	if size, err := readUint64(r); err != nil {
+		return err
+	} else {
+		req.size = int64(size)
+	}
+	return nil
+}
+
+func (req *installSnapRequest) encode(w io.Writer) error {
+	if err := writeUint64(w, req.term); err != nil {
+		return err
+	}
+	if err := writeString(w, string(req.leader)); err != nil {
+		return err
+	}
+	if err := writeUint64(w, req.lastIndex); err != nil {
+		return err
+	}
+	if err := writeUint64(w, req.lastTerm); err != nil {
+		return err
+	}
+
+	e := req.lastConfig.encode()
+	if err := e.encode(w); err != nil {
+		return err
+	}
+
+	if err := writeUint64(w, uint64(req.size)); err != nil {
+		return err
+	}
+	return nil
+}
+
+// ------------------------------------------------------
+
+type installSnapResponse struct {
+	term    uint64
+	success bool
+}
+
+func (resp *installSnapResponse) getTerm() uint64 { return resp.term }
+
+func (resp *installSnapResponse) decode(r io.Reader) error {
+	var err error
+
+	if resp.term, err = readUint64(r); err != nil {
+		return err
+	}
+	if resp.success, err = readBool(r); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (resp *installSnapResponse) encode(w io.Writer) error {
+	if err := writeUint64(w, resp.term); err != nil {
+		return err
+	}
+	if err := writeBool(w, resp.success); err != nil {
 		return err
 	}
 	return nil

@@ -1585,11 +1585,13 @@ type inmemSink struct {
 	*bytes.Buffer
 }
 
-func (s *inmemSink) Done(err error) {
+func (s *inmemSink) Done(err error) (SnapshotMeta, error) {
 	if err == nil {
+		s.meta.Size = int64(s.Buffer.Len())
 		s.s.snapMeta = s.meta
 		s.s.snapshot = s.Buffer
 	}
+	return s.meta, err
 }
 
 func (s *inmemStorage) New(index, term uint64, config Config) (SnapshotSink, error) {

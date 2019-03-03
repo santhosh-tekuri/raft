@@ -54,7 +54,8 @@ func TestServer(t *testing.T) {
 					if !reflect.DeepEqual(rpc.req, test.req) {
 						t.Errorf("request mismatch: got %#v, want %#v", rpc.req, test.req)
 					}
-					rpc.respCh <- test.resp
+					rpc.resp = test.resp
+					close(rpc.done)
 				}
 			}()
 
