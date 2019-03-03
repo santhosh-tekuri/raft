@@ -3,7 +3,7 @@ package raft
 // export access to raft internals for tests
 
 func Debug(args ...interface{}) {
-	debug(args)
+	debug(args...)
 }
 
 func RequestVote(from, to *Raft) (granted bool, err error) {

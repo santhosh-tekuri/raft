@@ -562,6 +562,13 @@ func (c *cluster) launch(n int, bootstrap bool) {
 	}
 }
 
+func (c *cluster) shutdown() {
+	for _, r := range c.rr {
+		r.Shutdown().Wait()
+		Debug(r.ID(), "<< shutdown()")
+	}
+}
+
 func (c *cluster) restart(r *Raft) *Raft {
 	c.Helper()
 	addr := r.Info().Addr()
@@ -740,13 +747,6 @@ func (c *cluster) disconnect(r *Raft) {
 func (c *cluster) connect() {
 	Debug("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ reconnecting")
 	c.network.SetFirewall(fnet.AllowAll)
-}
-
-func (c *cluster) shutdown() {
-	for _, r := range c.rr {
-		r.Shutdown().Wait()
-		Debug(r.ID(), "<< shutdown()")
-	}
 }
 
 // ---------------------------------------------

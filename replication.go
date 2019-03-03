@@ -55,8 +55,8 @@ func (repl *replication) runLoop(req *appendEntriesReq) {
 			req.prevLogTerm = 0
 		} else if req.prevLogIndex >= repl.ldrStartIndex {
 			req.prevLogTerm = req.term
-		} else if req.prevLogIndex == repl.storage.snapIndex {
-			req.prevLogTerm = repl.storage.snapTerm
+		} else if snapTerm, matched := repl.getSnapTerm(req.prevLogIndex); matched {
+			req.prevLogTerm = snapTerm
 		} else {
 			prevEntry := &entry{}
 			repl.storage.getEntry(req.prevLogIndex, prevEntry)
@@ -181,6 +181,16 @@ func (repl *replication) appendEntries(req *appendEntriesReq) (*appendEntriesRes
 		repl.conn = nil
 	}
 	return resp, err
+}
+
+func (repl *replication) getSnapTerm(index uint64) (snapTerm uint64, indexMatched bool) {
+	// snapshoting might be in progress
+	repl.storage.snapMu.RLock()
+	defer repl.storage.snapMu.RUnlock()
+	if index == repl.storage.snapIndex {
+		return repl.storage.snapTerm, true
+	}
+	return 0, false
 }
 
 func (repl *replication) String() string {

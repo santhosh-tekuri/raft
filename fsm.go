@@ -179,7 +179,16 @@ func (r *Raft) snapLoop() {
 			debug(r, "snapLoop shutdown")
 			return
 		case t := <-r.snapTaskCh:
-			t.reply(r.takeSnapshot(t))
+			taken := snapshotTaken{req: t}
+			switch resp := r.takeSnapshot(t).(type) {
+			case SnapshotMeta:
+				taken.meta = resp
+			case error:
+				taken.err = resp
+			}
+			// send to raft main loop, for further processing
+			// such as updating snapIndex/snapTerm, compacting logs
+			r.taskCh <- taken
 		}
 	}
 }
@@ -215,9 +224,6 @@ func (r *Raft) takeSnapshot(t takeSnapshot) interface{} {
 		debug(r, "FSMState.Done failed", resp.index, err)
 		// send to trace
 		err = doneErr
-		return err
-	}
-	if err = r.storage.deleteLTE(resp.index); err != nil {
 		return err
 	}
 	return meta

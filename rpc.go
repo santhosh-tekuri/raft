@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"fmt"
 	"io"
 	"io/ioutil"
 )
@@ -225,7 +226,8 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq, reader io.Reader) (resp
 		_, _ = sink.Done(readErr)
 		return
 	}
-	if _, err = sink.Done(nil); err != nil {
+	meta, err := sink.Done(nil)
+	if err != nil {
 		debug(r, "sing.Done failed", err)
 		// todo: send to trace
 		return
@@ -238,6 +240,14 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq, reader io.Reader) (resp
 	if restoreReq.Err() != nil {
 		err = restoreReq.Err()
 		return
+	}
+
+	r.snapIndex, r.snapTerm = meta.Index, meta.Term
+	r.changeConfig(meta.Config)
+	r.commitConfig()
+	if err := r.storage.deleteLTE(meta.Index); err != nil {
+		// send to trace
+		fmt.Println("compactLogs failed:", err)
 	}
 
 	resp.success = true

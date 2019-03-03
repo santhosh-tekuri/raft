@@ -175,10 +175,8 @@ func (r *Raft) Serve(l net.Listener) error {
 	if r.trace.Starting != nil {
 		r.trace.Starting(r.liveInfo())
 	}
-	go r.stateLoop()
-	go r.fsmLoop()
-	go r.snapLoop()
 
+	go r.fsmLoop()
 	// restore fsm from last snapshot, if present
 	if r.snapIndex > 0 {
 		req := fsmRestoreReq{task: newTask(), index: r.snapIndex}
@@ -188,6 +186,9 @@ func (r *Raft) Serve(l net.Listener) error {
 			r.commitIndex, r.lastApplied = r.snapIndex, r.snapIndex
 		}
 	}
+
+	go r.stateLoop()
+	go r.snapLoop()
 
 	return r.server.serve(l)
 }
