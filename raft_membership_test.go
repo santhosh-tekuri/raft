@@ -9,8 +9,8 @@ import (
 	"github.com/fortytw2/leaktest"
 )
 
-func TestRaft_AddNode_Validations(t *testing.T) {
-	Debug("\nTestRaft_AddNode --------------------------")
+func TestRaft_AddNonVoter_validations(t *testing.T) {
+	Debug("\nTestRaft_AddNonVoter_validations --------------------------")
 	defer leaktest.Check(t)()
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
@@ -59,19 +59,12 @@ func TestRaft_AddNode_Validations(t *testing.T) {
 	}
 }
 
-func TestRaft_AddNode(t *testing.T) {
-	Debug("\nTestRaft_AddNode --------------------------")
+func TestRaft_AddNonVoter_committedByAll(t *testing.T) {
+	Debug("\nTestRaft_AddNonVoter_committedByAll --------------------------")
 	defer leaktest.Check(t)()
-
 	// launch 3 node cluster M1, M2, M3
-	c, ldr, _ := launchCluster(t, 3)
+	c, ldr, followers := launchCluster(t, 3)
 	defer c.shutdown()
-
-	// send 10 fsm updates, and wait for them to replicate
-	for i := 0; i < 10; i++ {
-		ldr.NewEntries() <- UpdateEntry([]byte(fmt.Sprintf("msg-%d", i)))
-	}
-	c.waitFSMLen(10)
 
 	// launch new raft instance M4, without bootstrap
 	c.launch(1, false)
@@ -81,11 +74,8 @@ func TestRaft_AddNode(t *testing.T) {
 	defer c.unregisterObserver(configRelated)
 
 	// add M4 as nonvoter, wait for success reply
-	task := AddNonvoter(Node{ID: m4.ID(), Addr: "M4:8888", Voter: false})
-	ldr.Tasks() <- task
-	<-task.Done()
-	if task.Err() != nil {
-		t.Fatal(task.Err())
+	if _, err := waitTask(ldr, AddNonvoter(Node{m4.ID(), "M4:8888", false, false}), 0); err != nil {
+		t.Fatal(err)
 	}
 
 	// ensure that leader raised configChange
@@ -134,7 +124,8 @@ func TestRaft_AddNode(t *testing.T) {
 	}
 
 	// wait and ensure that followers raised configCommitted
-	limit := time.After(2 * c.heartbeatTimeout)
+	c.waitCatchup(followers[0])
+	c.waitCatchup(followers[1])
 	set = make(map[ID]bool)
 	for i := 0; i < 2; i++ {
 		select {
@@ -148,14 +139,49 @@ func TestRaft_AddNode(t *testing.T) {
 			if set[e.src] {
 				t.Fatalf("duplicate configCommitted from %s", e.src)
 			}
-		case <-limit:
+		default:
 			t.Fatal("expected configCommit from follower")
 		}
 	}
 
-	// ensure that leader has now config committed
-	if !ldr.Info().Configs().IsCommitted() {
-		t.Fatal("config is not committed")
+	// ensure that config committed by all
+	c.waitCatchup(m4)
+	for _, r := range c.rr {
+		info := r.Info()
+		if !info.Configs().IsCommitted() {
+			t.Fatalf("config is not committed by %s %s", info.ID(), info.State())
+		}
+		m4, ok := info.Configs().Committed.Nodes[ID("M4")]
+		if !ok {
+			t.Fatalf("m4 is not present in %s %s", info.ID(), info.State())
+		}
+		if m4.Voter {
+			t.Fatalf("m4 must be nonvoter in %s %s", info.ID(), info.State())
+		}
+	}
+}
+
+func TestRaft_AddNonVoter_catchesUp_followsLeader(t *testing.T) {
+	Debug("\nTestRaft_AddNonVoter_catchesUp_followsLeader --------------------------")
+	defer leaktest.Check(t)()
+
+	// launch 3 node cluster M1, M2, M3
+	c, ldr, _ := launchCluster(t, 3)
+	defer c.shutdown()
+
+	// send 10 fsm updates, and wait for them to replicate
+	for i := 0; i < 10; i++ {
+		ldr.NewEntries() <- UpdateEntry([]byte(fmt.Sprintf("msg-%d", i)))
+	}
+	c.waitFSMLen(10)
+
+	// launch new raft instance M4, without bootstrap
+	c.launch(1, false)
+	m4 := c.rr["M4"]
+
+	// add M4 as nonvoter, wait for success reply
+	if _, err := waitTask(ldr, AddNonvoter(Node{m4.ID(), "M4:8888", false, false}), 0); err != nil {
+		t.Fatal(err)
 	}
 
 	// ensure that M4 got its FSM replicated
@@ -166,6 +192,24 @@ func TestRaft_AddNode(t *testing.T) {
 		ldr.NewEntries() <- UpdateEntry([]byte(fmt.Sprintf("msg-%d", i)))
 	}
 	c.waitFSMLen(20)
+}
+
+func TestRaft_AddNonVoter_nonVoterReconnects_catchesUp(t *testing.T) {
+	Debug("\nTestRaft_AddNonVoter_nonVoterReconnects_catchesUp --------------------------")
+	defer leaktest.Check(t)()
+
+	// launch 3 node cluster M1, M2, M3
+	c, ldr, _ := launchCluster(t, 3)
+	defer c.shutdown()
+
+	// launch new raft instance M4, without bootstrap
+	c.launch(1, false)
+	m4 := c.rr["M4"]
+
+	// add M4 as nonvoter, wait for success reply
+	if _, err := waitTask(ldr, AddNonvoter(Node{m4.ID(), "M4:8888", false, false}), 0); err != nil {
+		t.Fatal(err)
+	}
 
 	// now disconnect nonvoter m4
 	unreachable := c.registerForEvent(unreachable, ldr)
@@ -192,27 +236,21 @@ func TestRaft_AddNode(t *testing.T) {
 	}
 
 	// send 10 fsm updates, and wait for them to replicate to m1, m2, m3
-	for i := 20; i < 30; i++ {
+	for i := 0; i < 10; i++ {
 		ldr.NewEntries() <- UpdateEntry([]byte(fmt.Sprintf("msg-%d", i)))
 	}
-	c.waitFSMLen(30, c.exclude(m4)...)
+	c.waitFSMLen(10, c.exclude(m4)...)
 
 	// ensure that m4 did not get last 10 fsm updates
-	if got := fsm(m4).len(); got != 20 {
-		t.Fatalf("m4.fsmLen: got %d, want 20", got)
+	if got := fsm(m4).len(); got != 0 {
+		t.Fatalf("m4.fsmLen: got %d, want 0", got)
 	}
-
-	// now shutdown the leader
-	ldr.Shutdown().Wait()
-
-	// wait for newLeader
-	c.waitForLeader(c.longTimeout, c.exclude(ldr)...)
 
 	// now reconnect m4
 	c.connect()
 
 	// wait and ensure that m4 got last 10 entries from new leader
-	c.waitFSMLen(30, m4)
+	c.waitFSMLen(10, m4)
 
 	// restart m4, and check that he started with earlier config
 	before := m4.Info().Configs()
@@ -223,19 +261,35 @@ func TestRaft_AddNode(t *testing.T) {
 		t.Log(" after.latest:", after.Latest)
 		t.Fatal("latest config after restart did not match")
 	}
+}
 
-	// ensure that m4's fsm restored after restart
-	c.waitFSMLen(30, m4)
+func TestRaft_AddNonVoter_leaderChanged_followsNewLeader(t *testing.T) {
+	Debug("\nTestRaft_AddNonVoter_leaderChanged_followsNewLeader --------------------------")
+	defer leaktest.Check(t)()
 
-	after = m4.Info().Configs()
-	if !reflect.DeepEqual(before, after) {
-		t.Log("before:", before)
-		t.Log(" after:", after)
-		t.Fatal("configs after restart did not match")
+	// launch 3 node cluster M1, M2, M3
+	c, ldr, _ := launchCluster(t, 3)
+	defer c.shutdown()
+
+	// launch new raft instance M4, without bootstrap
+	c.launch(1, false)
+	m4 := c.rr["M4"]
+
+	// add M4 as nonvoter, wait for success reply
+	if _, err := waitTask(ldr, AddNonvoter(Node{m4.ID(), "M4:8888", false, false}), 0); err != nil {
+		t.Fatal(err)
 	}
 
-	// ensure that his config is committed
-	if !m4.Info().Configs().IsCommitted() {
-		t.Fatal("m4 configs should have been committed")
+	// now shutdown the leader
+	ldr.Shutdown().Wait()
+
+	// wait for newLeader
+	newLdr := c.waitForLeader(c.longTimeout, c.exclude(ldr)...)
+
+	// send 10 fsm updates to new leader, and wait for them to replicate to all
+	for i := 0; i < 10; i++ {
+		newLdr.NewEntries() <- UpdateEntry([]byte(fmt.Sprintf("msg-%d", i)))
 	}
+	c.waitFSMLen(10, c.exclude(ldr)...)
+	c.ensureFSMSame(nil, c.exclude(ldr)...)
 }

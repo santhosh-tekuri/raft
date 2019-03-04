@@ -594,14 +594,17 @@ func (c *cluster) waitForStability(rr ...*Raft) {
 	}
 }
 
-func (c *cluster) getInState(state State) []*Raft {
-	var rr []*Raft
-	for _, r := range c.rr {
+func (c *cluster) getInState(state State, rr ...*Raft) []*Raft {
+	if len(rr) == 0 {
+		rr = c.exclude()
+	}
+	var inState []*Raft
+	for _, r := range rr {
 		if r.Info().State() == state {
-			rr = append(rr, r)
+			inState = append(inState, r)
 		}
 	}
-	return rr
+	return inState
 }
 
 func (c *cluster) leader() *Raft {
@@ -657,7 +660,7 @@ func (c *cluster) waitForState(r *Raft, timeout time.Duration, states ...State) 
 	}
 }
 
-func (c *cluster) waitForLeader(timeout time.Duration, rr ...*Raft) {
+func (c *cluster) waitForLeader(timeout time.Duration, rr ...*Raft) *Raft {
 	c.Helper()
 	if len(rr) == 0 {
 		rr = c.exclude()
@@ -675,6 +678,7 @@ func (c *cluster) waitForLeader(timeout time.Duration, rr ...*Raft) {
 	if !stateChanged.waitFor(condition, timeout) {
 		c.Fatalf("waitForLeader timeout")
 	}
+	return c.getInState(Leader, rr...)[0]
 }
 
 func (c *cluster) waitFSMLen(fsmLen uint64, rr ...*Raft) {
@@ -703,15 +707,37 @@ func (c *cluster) waitFSMLen(fsmLen uint64, rr ...*Raft) {
 
 // if want==nil, we ensure all fsm are same
 // if want!=nil, we ensure all fms has want
-func (c *cluster) ensureFSMSame(want []string) {
+func (c *cluster) ensureFSMSame(want []string, rr ...*Raft) {
 	c.Helper()
-	if want == nil {
-		want = fsm(c.rr["M1"]).commands()
+	if len(rr) == 0 {
+		rr = c.exclude()
 	}
-	for _, r := range c.rr {
+	if want == nil {
+		for _, r := range rr {
+			want = fsm(r).commands()
+			break
+		}
+	}
+	for _, r := range rr {
 		if got := fsm(r).commands(); !reflect.DeepEqual(got, want) {
 			c.Fatalf("\n got %v\n want %v", got, want)
 		}
+	}
+}
+
+func (c *cluster) waitCatchup(r *Raft) {
+	leaders := c.getInState(Leader)
+	if len(leaders) != 1 {
+		c.Fatalf("leaders: got %d, want 1", len(leaders))
+	}
+	ldrLastLogIndex := leaders[0].Info().LastLogIndex()
+	condition := func() bool {
+		info := r.Info()
+		return info.Committed() == ldrLastLogIndex
+	}
+	if !waitForCondition(condition, c.commitTimeout, c.longTimeout) {
+		info := r.Info()
+		c.Fatalf("%s catchup: got %d, want %d", info.ID(), info.Committed(), ldrLastLogIndex)
 	}
 }
 
