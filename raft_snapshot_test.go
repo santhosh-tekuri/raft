@@ -1,66 +1,60 @@
 package raft
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/fortytw2/leaktest"
 )
 
-func TestRaft_SnapshotRestore(t *testing.T) {
-	Debug("\nTestRaft_SnapshotRestore --------------------------")
+func TestRaft_Snapshot_emptyFSM(t *testing.T) {
+	Debug("\nTestRaft_Snapshot_emptyFSM --------------------------")
 	defer leaktest.Check(t)()
 	c, ldr, _ := launchCluster(t, 1)
 	defer c.shutdown()
 
-	// with nothing committed, asking for a snapshot should return an error.
-	takeSnap := TakeSnapshot(0)
-	ldr.Tasks() <- takeSnap
-	<-takeSnap.Done()
-	if takeSnap.Err() != ErrNoUpdates {
-		t.Fatalf("got %s, want ErrNoStateToSnapshot", takeSnap.Err())
-	}
+	// with nothing committed, asking for a snapshot should return an error
+	c.takeSnapshot(ldr, 0, ErrNoUpdates)
+}
+
+func TestRaft_Snapshot_thresholdNotReached(t *testing.T) {
+	Debug("\nTestRaft_Snapshot_thresholdNotReached --------------------------")
+	defer leaktest.Check(t)()
+	c, ldr, _ := launchCluster(t, 1)
+	defer c.shutdown()
 
 	// commit a log of things
-	var ne NewEntry
-	for i := 0; i < 1000; i++ {
-		ne = UpdateEntry([]byte(fmt.Sprintf("msg-%d", i)))
-		ldr.NewEntries() <- ne
-	}
-	<-ne.Done()
-	if ne.Err() != nil {
-		t.Fatal(ne.Err())
-	}
+	c.sendUpdates(ldr, 1, 1000)
+	c.waitBarrier(ldr, 0)
 
-	// if threshold is not reached, asking for a snapshot should return an error.
-	takeSnap = TakeSnapshot(2000)
-	ldr.Tasks() <- takeSnap
-	<-takeSnap.Done()
-	if takeSnap.Err() != ErrSnapshotThreshold {
-		t.Fatalf("got %s, want ErrSnapshotThreshold", takeSnap.Err())
-	}
+	// if threshold is not reached, asking for a snapshot should return an error
+	c.takeSnapshot(ldr, 2000, ErrSnapshotThreshold)
+}
+
+func TestRaft_Snapshot_restoreOnRestart(t *testing.T) {
+	Debug("\nTestRaft_Snapshot_restoreOnRestart --------------------------")
+	defer leaktest.Check(t)()
+	c, ldr, _ := launchCluster(t, 1)
+	defer c.shutdown()
+
+	// commit a log of things
+	c.sendUpdates(ldr, 1, 1000)
+	c.waitBarrier(ldr, 0)
 
 	// now take proper snapshot
-	takeSnap = TakeSnapshot(10)
-	ldr.Tasks() <- takeSnap
-	<-takeSnap.Done()
-	if takeSnap.Err() != nil {
-		t.Fatalf("got %s, want nil", takeSnap.Err())
-	}
+	c.takeSnapshot(ldr, 10, nil)
+
+	// wait for leader to finish compacting logs
+	// note: compacting logs is done after replying takeSnapshot req
+	ldr.Info()
 
 	// ensure #snapshots is one
-	snaps, _ := ldr.snapshots.List()
-	if len(snaps) != 1 {
-		t.Fatalf("got %d, want 1", len(snaps))
+	if got := c.inmemStorage(ldr).numSnaps(); got != 1 {
+		t.Fatalf("numSnaps: got %d, want 1", got)
 	}
 
 	// log should have zero entries
-	count := uint64(111)
-	waitInspect(ldr, func(info Info) {
-		count = ldr.storage.entryCount()
-	})
-	if count != 0 {
-		t.Fatalf("got %d, want 0", count)
+	if got := c.inmemStorage(ldr).numEntries(); got != 0 {
+		t.Fatalf("numEntries: got %d, want 0", got)
 	}
 
 	// shutdown and restart with fresh fsm
@@ -68,7 +62,7 @@ func TestRaft_SnapshotRestore(t *testing.T) {
 
 	// ensure that fsm has been restored from log
 	c.waitFSMLen(fsm(ldr).len(), r)
-	if cmd := fsm(r).lastCommand(); cmd != "msg-999" {
-		t.Fatalf("fsm.lastCommand: got %s want test", cmd)
+	if cmd := fsm(r).lastCommand(); cmd != "update:1000" {
+		t.Fatalf("fsm.lastCommand: got %s want update:1000", cmd)
 	}
 }

@@ -367,6 +367,10 @@ type cluster struct {
 	observers   map[int]observer
 }
 
+func (c *cluster) inmemStorage(r *Raft) *inmemStorage {
+	return c.storage[string(r.ID())].Log.(*inmemStorage)
+}
+
 func (c *cluster) exclude(excludes ...*Raft) []*Raft {
 	var members []*Raft
 
@@ -782,6 +786,16 @@ func (c *cluster) waitBarrier(r *Raft, timeout time.Duration) {
 	}
 }
 
+func (c *cluster) takeSnapshot(r *Raft, threshold uint64, want error) {
+	c.Helper()
+	takeSnap := TakeSnapshot(threshold)
+	r.Tasks() <- takeSnap
+	<-takeSnap.Done()
+	if takeSnap.Err() != want {
+		c.Fatalf("takeSnapshot(%s).err: got %s, want %s", takeSnap.Err(), want)
+	}
+}
+
 func (c *cluster) disconnect(r *Raft) {
 	host := string(r.ID())
 	Debug("-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<- disconnecting", host)
@@ -1039,11 +1053,22 @@ type inmemStorage struct {
 	confCommitted uint64
 	confLatest    uint64
 
-	muLog sync.RWMutex
-	list  [][]byte
+	muLog   sync.RWMutex
+	entries [][]byte
 
 	snapMeta SnapshotMeta
 	snapshot *bytes.Buffer
+}
+
+func (s *inmemStorage) numEntries() int {
+	s.muLog.RLock()
+	defer s.muLog.RUnlock()
+	return len(s.entries)
+}
+
+func (s *inmemStorage) numSnaps() int {
+	snaps, _ := s.List()
+	return len(snaps)
 }
 
 func (s *inmemStorage) GetVote() (term uint64, vote string, err error) {
@@ -1075,60 +1100,60 @@ func (s *inmemStorage) SetConfig(committed, latest uint64) error {
 func (s *inmemStorage) Empty() (bool, error) {
 	s.muLog.RLock()
 	defer s.muLog.RUnlock()
-	return len(s.list) == 0, nil
+	return len(s.entries) == 0, nil
 }
 
 func (s *inmemStorage) First() ([]byte, error) {
 	s.muLog.RLock()
 	defer s.muLog.RUnlock()
-	if len(s.list) == 0 {
+	if len(s.entries) == 0 {
 		return nil, ErrNotFound
 	}
-	return s.list[0], nil
+	return s.entries[0], nil
 }
 
 func (s *inmemStorage) Last() ([]byte, error) {
 	s.muLog.RLock()
 	defer s.muLog.RUnlock()
-	if len(s.list) == 0 {
+	if len(s.entries) == 0 {
 		return nil, ErrNotFound
 	}
-	return s.list[len(s.list)-1], nil
+	return s.entries[len(s.entries)-1], nil
 }
 
 func (s *inmemStorage) Get(offset uint64) ([]byte, error) {
 	s.muLog.RLock()
 	defer s.muLog.RUnlock()
-	if offset >= uint64(len(s.list)) {
+	if offset >= uint64(len(s.entries)) {
 		return nil, ErrNotFound
 	}
-	return s.list[offset], nil
+	return s.entries[offset], nil
 }
 
 func (s *inmemStorage) Append(entry []byte) error {
 	s.muLog.Lock()
 	defer s.muLog.Unlock()
-	s.list = append(s.list, entry)
+	s.entries = append(s.entries, entry)
 	return nil
 }
 
 func (s *inmemStorage) DeleteFirst(n uint64) error {
 	s.muLog.Lock()
 	defer s.muLog.Unlock()
-	if n > uint64(len(s.list)) {
+	if n > uint64(len(s.entries)) {
 		return ErrOutOfRange
 	}
-	s.list = s.list[n:]
+	s.entries = s.entries[n:]
 	return nil
 }
 
 func (s *inmemStorage) DeleteLast(n uint64) error {
 	s.muLog.Lock()
 	defer s.muLog.Unlock()
-	if n > uint64(len(s.list)) {
+	if n > uint64(len(s.entries)) {
 		return ErrOutOfRange
 	}
-	s.list = s.list[:len(s.list)-int(n)]
+	s.entries = s.entries[:len(s.entries)-int(n)]
 	return nil
 }
 
