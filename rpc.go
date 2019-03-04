@@ -163,7 +163,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp 
 
 	// If leaderCommit > commitIndex, set commitIndex =
 	// min(leaderCommit, index of last new entry)
-	lastIndex, lastTerm := lastLog(req)
+	lastIndex, lastTerm := lastEntry(req)
 	if lastTerm == req.term && req.ldrCommitIndex > r.commitIndex {
 		r.commitIndex = min(req.ldrCommitIndex, lastIndex)
 		r.applyCommitted(nil) // apply newly committed logs
@@ -173,7 +173,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp 
 	return resp
 }
 
-func lastLog(req *appendEntriesReq) (index, term uint64) {
+func lastEntry(req *appendEntriesReq) (index, term uint64) {
 	if n := len(req.entries); n == 0 {
 		return req.prevLogIndex, req.prevLogTerm
 	} else {
