@@ -14,11 +14,8 @@ func TestRaft_AddNode(t *testing.T) {
 	defer leaktest.Check(t)()
 
 	// launch 3 node cluster M1, M2, M3
-	c := newCluster(t)
-	c.launch(3, true)
+	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
-	ldr := c.waitForHealthy()
-	c.ensureLeader(ldr.ID())
 
 	configs := ldr.Info().Configs()
 

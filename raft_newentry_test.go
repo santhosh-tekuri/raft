@@ -12,13 +12,8 @@ import (
 func TestRaft_ApplyNonLeader(t *testing.T) {
 	Debug("\nTestRaft_ApplyNonLeader --------------------------")
 	defer leaktest.Check(t)()
-	c := newCluster(t)
-	c.launch(3, true)
+	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
-	ldr := c.waitForHealthy()
-
-	// should agree on leader
-	c.ensureLeader(ldr.ID())
 
 	// apply should work not work on non-leader
 	ldrAddr := ldr.Info().Addr()
@@ -37,13 +32,8 @@ func TestRaft_ApplyNonLeader(t *testing.T) {
 func TestRaft_ApplyConcurrent(t *testing.T) {
 	Debug("\nTestRaft_ApplyConcurrent --------------------------")
 	defer leaktest.Check(t)()
-	c := newCluster(t)
-	c.launch(3, true)
+	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
-	ldr := c.waitForHealthy()
-
-	// should agree on leader
-	c.ensureLeader(ldr.ID())
 
 	// concurrently apply
 	wg := sync.WaitGroup{}
@@ -84,14 +74,8 @@ func TestRaft_ApplyConcurrent(t *testing.T) {
 func TestRaft_Barrier(t *testing.T) {
 	Debug("\nTestRaft_Barrier --------------------------")
 	defer leaktest.Check(t)()
-	c := newCluster(t)
-	c.launch(3, true)
+	c, ldr, followers := launchCluster(t, 3)
 	defer c.shutdown()
-	ldr := c.waitForHealthy()
-	followers := c.followers()
-
-	// should agree on leader
-	c.ensureLeader(ldr.ID())
 
 	// commit a lot of things
 	n := 100
@@ -130,13 +114,8 @@ func TestRaft_Barrier(t *testing.T) {
 func TestRaft_Query(t *testing.T) {
 	Debug("\nTestRaft_Query --------------------------")
 	defer leaktest.Check(t)()
-	c := newCluster(t)
-	c.launch(3, true)
+	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
-	ldr := c.waitForHealthy()
-
-	// should agree on leader
-	c.ensureLeader(ldr.ID())
 
 	// wait for fsm ready
 	if err := waitBarrier(ldr, 0); err != nil {

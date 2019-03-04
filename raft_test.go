@@ -22,13 +22,8 @@ import (
 func TestRaft_Voting(t *testing.T) {
 	Debug("\nTestRaft_Voting --------------------------")
 	defer leaktest.Check(t)()
-	c := newCluster(t)
-	c.launch(3, true)
+	c, ldr, followers := launchCluster(t, 3)
 	defer c.shutdown()
-	ldr := c.waitForHealthy()
-	followers := c.followers()
-
-	c.ensureLeader(c.leader().ID())
 
 	// a follower that thinks there's a leader should vote for that leader
 	granted, err := RequestVote(ldr, followers[0])
@@ -51,10 +46,8 @@ func TestRaft_Voting(t *testing.T) {
 func TestRaft_SingleNode(t *testing.T) {
 	Debug("\nTestRaft_SingleNode --------------------------")
 	defer leaktest.Check(t)()
-	c := newCluster(t)
-	c.launch(1, true)
+	c, ldr, _ := launchCluster(t, 1)
 	defer c.shutdown()
-	ldr := c.waitForHealthy()
 
 	// should be able to apply
 	resp, err := waitUpdate(ldr, "test", c.heartbeatTimeout)
@@ -106,13 +99,8 @@ func TestRaft_Shutdown(t *testing.T) {
 func TestRaft_TripleNode(t *testing.T) {
 	Debug("\nTestRaft_TripleNode --------------------------")
 	defer leaktest.Check(t)()
-	c := newCluster(t)
-	c.launch(3, true)
+	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
-	ldr := c.waitForHealthy()
-
-	// should agree on leader
-	c.ensureLeader(ldr.ID())
 
 	// should be able to apply
 	resp, err := waitUpdate(ldr, "test", c.heartbeatTimeout)
@@ -131,13 +119,8 @@ func TestRaft_TripleNode(t *testing.T) {
 func TestRaft_LeaderFail(t *testing.T) {
 	Debug("\nTestRaft_LeaderFail --------------------------")
 	defer leaktest.Check(t)()
-	c := newCluster(t)
-	c.launch(3, true)
+	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
-	ldr := c.waitForHealthy()
-
-	// should agree on leader
-	c.ensureLeader(ldr.ID())
 
 	// should be able to apply
 	resp, err := waitUpdate(ldr, "test", c.heartbeatTimeout)
@@ -198,13 +181,8 @@ func TestRaft_LeaderFail(t *testing.T) {
 func TestRaft_BehindFollower(t *testing.T) {
 	Debug("\nTestRaft_BehindFollower --------------------------")
 	defer leaktest.Check(t)()
-	c := newCluster(t)
-	c.launch(3, true)
+	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
-	ldr := c.waitForHealthy()
-
-	// should agree on leader
-	c.ensureLeader(ldr.ID())
 
 	// disconnect one follower
 	behind := c.followers()[0]
@@ -298,19 +276,8 @@ func TestRaft_Bootstrap(t *testing.T) {
 func TestRaft_LeaderLeaseExpire(t *testing.T) {
 	Debug("\nTestRaft_LeaderLeaseExpire --------------------------")
 	defer leaktest.Check(t)()
-	c := newCluster(t)
-	c.launch(2, true)
+	c, ldr, followers := launchCluster(t, 2)
 	defer c.shutdown()
-	ldr := c.waitForHealthy()
-
-	// should agree on leader
-	c.ensureLeader(ldr.ID())
-
-	// #followers must be 1
-	followers := c.followers()
-	if len(followers) != 1 {
-		t.Fatalf("#followers: got %d, want 1", len(followers))
-	}
 
 	// disconnect the follower now
 	c.disconnect(followers[0])
@@ -347,19 +314,14 @@ func TestMain(m *testing.M) {
 
 // ---------------------------------------------
 
-type cluster struct {
-	*testing.T
-	rr               map[string]*Raft
-	storage          map[string]Storage
-	network          *fnet.Network
-	heartbeatTimeout time.Duration
-	longTimeout      time.Duration
-	commitTimeout    time.Duration
-	opt              Options
-
-	observersMu sync.RWMutex
-	observerID  int
-	observers   map[int]observer
+func launchCluster(t *testing.T, n int) (c *cluster, ldr *Raft, followers []*Raft) {
+	t.Helper()
+	c = newCluster(t)
+	c.launch(n, true)
+	ldr = c.waitForHealthy()
+	c.ensureLeader(ldr.ID())
+	followers = c.followers()
+	return
 }
 
 func newCluster(t *testing.T) *cluster {
@@ -388,6 +350,21 @@ func newCluster(t *testing.T) *cluster {
 		},
 	}
 	return c
+}
+
+type cluster struct {
+	*testing.T
+	rr               map[string]*Raft
+	storage          map[string]Storage
+	network          *fnet.Network
+	heartbeatTimeout time.Duration
+	longTimeout      time.Duration
+	commitTimeout    time.Duration
+	opt              Options
+
+	observersMu sync.RWMutex
+	observerID  int
+	observers   map[int]observer
 }
 
 func (c *cluster) exclude(excludes ...*Raft) []*Raft {

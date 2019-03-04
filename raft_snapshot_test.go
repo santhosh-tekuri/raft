@@ -10,13 +10,8 @@ import (
 func TestRaft_SnapshotRestore(t *testing.T) {
 	Debug("\nTestRaft_SnapshotRestore --------------------------")
 	defer leaktest.Check(t)()
-
-	// launch 3 node cluster M1, M2, M3
-	c := newCluster(t)
-	c.launch(1, true)
+	c, ldr, _ := launchCluster(t, 1)
 	defer c.shutdown()
-	ldr := c.waitForHealthy()
-	c.ensureLeader(ldr.ID())
 
 	// with nothing committed, asking for a snapshot should return an error.
 	takeSnap := TakeSnapshot(0)
