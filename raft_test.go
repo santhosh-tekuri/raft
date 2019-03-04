@@ -660,7 +660,7 @@ func (c *cluster) waitForState(r *Raft, timeout time.Duration, states ...State) 
 	}
 }
 
-func (c *cluster) waitForLeader(timeout time.Duration, rr ...*Raft) *Raft {
+func (c *cluster) waitForLeader(rr ...*Raft) *Raft {
 	c.Helper()
 	if len(rr) == 0 {
 		rr = c.exclude()
@@ -675,8 +675,8 @@ func (c *cluster) waitForLeader(timeout time.Duration, rr ...*Raft) *Raft {
 	}
 	stateChanged := c.registerForEvent(stateChanged)
 	defer c.unregisterObserver(stateChanged)
-	if !stateChanged.waitFor(condition, timeout) {
-		c.Fatalf("waitForLeader timeout")
+	if !stateChanged.waitFor(condition, c.longTimeout) {
+		c.Fatalf("waitForLeader: timeout")
 	}
 	return c.getInState(Leader, rr...)[0]
 }
@@ -702,6 +702,18 @@ func (c *cluster) waitFSMLen(fsmLen uint64, rr ...*Raft) {
 			c.Logf("%s got %d", r.ID(), fsm(r).len())
 		}
 		c.Fatalf("waitFSMLen(%d) timeout", fsmLen)
+	}
+}
+
+func (c *cluster) ensureFSMLen(fsmLen uint64, rr ...*Raft) {
+	c.Helper()
+	if len(rr) == 0 {
+		rr = c.exclude()
+	}
+	for _, r := range rr {
+		if got := fsm(r).len(); got != fsmLen {
+			c.Fatalf("ensureFSMLen(%s): got %d, want %d", r.ID(), got, fsmLen)
+		}
 	}
 }
 
@@ -751,6 +763,22 @@ func (c *cluster) waitUnreachableDetected(ldr, failed *Raft) {
 	defer c.unregisterObserver(unreachable)
 	if !unreachable.waitFor(condition, c.longTimeout) {
 		c.Fatalf("waitUnreachableDetected: ldr %s failed %s", ldr.ID(), failed.ID())
+	}
+}
+
+func (c *cluster) sendUpdates(r *Raft, from, to int) Task {
+	var ne NewEntry
+	for i := from; i <= to; i++ {
+		ne = UpdateEntry([]byte(fmt.Sprintf("update:%d", i)))
+		r.NewEntries() <- ne
+	}
+	return ne
+}
+
+func (c *cluster) waitBarrier(r *Raft, timeout time.Duration) {
+	c.Helper()
+	if _, err := waitNewEntry(r, BarrierEntry(), timeout); err != nil {
+		c.Fatalf("Barrer(%s): timeout", r.ID())
 	}
 }
 
@@ -832,11 +860,6 @@ func waitUpdate(r *Raft, cmd string, timeout time.Duration) (fsmReply, error) {
 
 func waitQuery(r *Raft, query string, timeout time.Duration) (fsmReply, error) {
 	return waitNewEntry(r, QueryEntry([]byte(query)), timeout)
-}
-
-func waitBarrier(r *Raft, timeout time.Duration) error {
-	_, err := waitNewEntry(r, BarrierEntry(), timeout)
-	return err
 }
 
 // trace ----------------------------------------------------------------------

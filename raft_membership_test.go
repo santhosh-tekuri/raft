@@ -1,7 +1,6 @@
 package raft
 
 import (
-	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -159,9 +158,7 @@ func TestRaft_AddNonVoter_catchesUp_followsLeader(t *testing.T) {
 	defer c.shutdown()
 
 	// send 10 fsm updates, and wait for them to replicate
-	for i := 0; i < 10; i++ {
-		ldr.NewEntries() <- UpdateEntry([]byte(fmt.Sprintf("msg-%d", i)))
-	}
+	c.sendUpdates(ldr, 1, 10)
 	c.waitFSMLen(10)
 
 	// launch new raft instance M4, without bootstrap
@@ -175,10 +172,8 @@ func TestRaft_AddNonVoter_catchesUp_followsLeader(t *testing.T) {
 	// ensure that M4 got its FSM replicated
 	c.waitFSMLen(10, m4)
 
-	// send 10 fsm updates, and wait for them to replicate
-	for i := 10; i < 20; i++ {
-		ldr.NewEntries() <- UpdateEntry([]byte(fmt.Sprintf("msg-%d", i)))
-	}
+	// send 10 more fsm updates, and wait for them to replicate
+	c.sendUpdates(ldr, 11, 20)
 	c.waitFSMLen(20)
 }
 
@@ -214,15 +209,11 @@ func TestRaft_AddNonVoter_nonVoterReconnects_catchesUp(t *testing.T) {
 	c.waitUnreachableDetected(ldr, m4)
 
 	// send 10 fsm updates, and wait for them to replicate to m1, m2, m3
-	for i := 0; i < 10; i++ {
-		ldr.NewEntries() <- UpdateEntry([]byte(fmt.Sprintf("msg-%d", i)))
-	}
+	c.sendUpdates(ldr, 1, 10)
 	c.waitFSMLen(10, c.exclude(m4)...)
 
 	// ensure that m4 did not get last 10 fsm updates
-	if got := fsm(m4).len(); got != 0 {
-		t.Fatalf("m4.fsmLen: got %d, want 0", got)
-	}
+	c.ensureFSMLen(0, m4)
 
 	// now reconnect m4
 	c.connect()
@@ -261,12 +252,10 @@ func TestRaft_AddNonVoter_leaderChanged_followsNewLeader(t *testing.T) {
 	ldr.Shutdown().Wait()
 
 	// wait for newLeader
-	newLdr := c.waitForLeader(c.longTimeout, c.exclude(ldr)...)
+	newLdr := c.waitForLeader(c.exclude(ldr)...)
 
 	// send 10 fsm updates to new leader, and wait for them to replicate to all
-	for i := 0; i < 10; i++ {
-		newLdr.NewEntries() <- UpdateEntry([]byte(fmt.Sprintf("msg-%d", i)))
-	}
+	c.sendUpdates(newLdr, 1, 10)
 	c.waitFSMLen(10, c.exclude(ldr)...)
 	c.ensureFSMSame(nil, c.exclude(ldr)...)
 }

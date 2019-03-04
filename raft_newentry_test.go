@@ -77,21 +77,12 @@ func TestRaft_Barrier(t *testing.T) {
 	c, ldr, followers := launchCluster(t, 3)
 	defer c.shutdown()
 
-	// commit a lot of things
-	n := 100
-	for i := 0; i < n; i++ {
-		ldr.NewEntries() <- UpdateEntry([]byte(fmt.Sprintf("test%d", i)))
-	}
-
-	// wait for a barrier complete
-	if err := waitBarrier(ldr, 0); err != nil {
-		t.Fatalf("barrier failed: %v", err)
-	}
+	// commit a lot of things and wait for barrier
+	c.sendUpdates(ldr, 1, 100)
+	c.waitBarrier(ldr, 0)
 
 	// ensure leader fsm got all commands
-	if got := fsm(ldr).len(); int(got) != n {
-		t.Fatalf("#entries: got %d, want %d", got, n)
-	}
+	c.ensureFSMLen(100, ldr)
 
 	// ensure leader's lastLogIndex matches with at-least one of follower
 	len0 := ldr.Info().LastLogIndex()
@@ -103,9 +94,7 @@ func TestRaft_Barrier(t *testing.T) {
 
 	// ensure that barrier is not stored in log
 	want := ldr.Info().LastLogIndex()
-	if err := waitBarrier(ldr, 0); err != nil {
-		t.Fatalf("barrier failed: %v", err)
-	}
+	c.waitBarrier(ldr, 0)
 	if got := ldr.Info().LastLogIndex(); got != want {
 		t.Fatalf("lastLogIndex: got %d, want %d", got, want)
 	}
@@ -118,9 +107,7 @@ func TestRaft_Query(t *testing.T) {
 	defer c.shutdown()
 
 	// wait for fsm ready
-	if err := waitBarrier(ldr, 0); err != nil {
-		t.Fatalf("barrier failed: %v", err)
-	}
+	c.waitBarrier(ldr, 0)
 
 	// send query
 	want := ldr.Info().LastLogIndex()
@@ -170,7 +157,5 @@ func TestRaft_Query(t *testing.T) {
 	}
 
 	// ensure fsm has all commands but not queries
-	if got := fsm(ldr).len(); got != 101 {
-		t.Fatalf("got %d, want %d", got, 100)
-	}
+	c.ensureFSMLen(101, ldr)
 }
