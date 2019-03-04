@@ -49,39 +49,50 @@ func (repl *replication) runLoop(req *appendEntriesReq) {
 	debug(repl, "repl.start ldrLastIndex:", ldrLastIndex, "matchIndex:", matchIndex, "nextIndex:", nextIndex)
 
 	for {
-		// prepare request ----------------------------
-		req.prevLogIndex = nextIndex - 1
-		if req.prevLogIndex == 0 {
-			req.prevLogTerm = 0
-		} else if req.prevLogIndex >= repl.ldrStartIndex {
-			req.prevLogTerm = req.term
-		} else if snapTerm, matched := repl.getSnapTerm(req.prevLogIndex); matched {
-			req.prevLogTerm = snapTerm
-		} else {
-			prevEntry := &entry{}
-			repl.storage.getEntry(req.prevLogIndex, prevEntry)
-			req.prevLogTerm = prevEntry.term
+		// find prevEntry ----------------------------
+		prevIndex, prevTerm := nextIndex-1, uint64(0)
+		if prevIndex == 0 {
+			prevTerm = 0
+		} else if prevIndex >= repl.ldrStartIndex {
+			prevTerm = req.term
+		} else if repl.storage.hasEntry(prevIndex) {
+			prevTerm = repl.storage.getEntryTerm(prevIndex)
+		} else if snapIndex, snapTerm := repl.getSnapLog(); prevIndex == snapIndex {
+			prevIndex, prevTerm = snapIndex, snapTerm
 		}
-		var n uint64 // number of entries to be sent
-		if matchIndex+1 == nextIndex {
-			n = min(ldrLastIndex-matchIndex, maxAppendEntries)
-		}
-		if n == 0 {
-			req.entries = nil
-		} else {
-			req.entries = make([]*entry, n)
-			for i := range req.entries {
-				req.entries[i] = &entry{}
-				repl.storage.getEntry(nextIndex+uint64(i), req.entries[i])
+
+		// prepare request----------------------------
+		var rpcType rpcType
+		var reqMsg, respMsg message
+
+		if prevIndex == nextIndex-1 {
+			rpcType = rpcAppendEntries
+			req.prevLogIndex, req.prevLogTerm = prevIndex, prevTerm
+			reqMsg, respMsg = req, &appendEntriesResp{}
+
+			var n uint64 // number of entries to be sent
+			if matchIndex+1 == nextIndex {
+				n = min(ldrLastIndex-matchIndex, maxAppendEntries)
 			}
+			if n == 0 {
+				req.entries = nil
+			} else {
+				req.entries = make([]*entry, n)
+				for i := range req.entries {
+					req.entries[i] = &entry{}
+					repl.storage.getEntry(nextIndex+uint64(i), req.entries[i])
+				}
+			}
+		} else {
+			rpcType = rpcInstallSnap
+			// todo
 		}
 
 		// send request ----------------------------------
-		var resp *appendEntriesResp
 		var err error
 		var failures uint64
 		for {
-			resp, err = repl.appendEntries(req)
+			err = repl.doRPC(rpcType, reqMsg, respMsg)
 			if err != nil {
 				if noContact.IsZero() {
 					noContact = time.Now()
@@ -98,40 +109,47 @@ func (repl *replication) runLoop(req *appendEntriesReq) {
 			}
 			break
 		}
-
-		// process response ------------------------------
 		if !noContact.IsZero() {
 			noContact = time.Time{} // zeroing
 			debug(repl, "yesContact")
 			repl.notifyLdr(matchIndex, noContact)
 		}
-		if resp.term > req.term {
-			select {
-			case <-repl.stopCh:
-			case repl.newTermCh <- resp.term:
+
+		// process response ------------------------------
+		if rpcType == rpcAppendEntries {
+			resp := respMsg.(*appendEntriesResp)
+			if resp.term > req.term {
+				select {
+				case <-repl.stopCh:
+				case repl.newTermCh <- resp.term:
+				}
+				return
 			}
-			return
-		}
-		if resp.success {
-			old := matchIndex
-			if len(req.entries) == 0 {
-				matchIndex = req.prevLogIndex
+			if resp.success {
+				old := matchIndex
+				if len(req.entries) == 0 {
+					matchIndex = req.prevLogIndex
+				} else {
+					matchIndex = resp.lastLogIndex
+					nextIndex = matchIndex + 1
+				}
+				if matchIndex != old {
+					debug(repl, "matchIndex:", matchIndex)
+					repl.notifyLdr(matchIndex, noContact)
+				}
 			} else {
-				matchIndex = resp.lastLogIndex
-				nextIndex = matchIndex + 1
-			}
-			if matchIndex != old {
-				debug(repl, "matchIndex:", matchIndex)
-				repl.notifyLdr(matchIndex, noContact)
+				if matchIndex+1 != nextIndex {
+					nextIndex = max(min(nextIndex-1, resp.lastLogIndex+1), 1)
+					debug(repl, "nextIndex:", nextIndex)
+				} else {
+					// todo: notify leader, that we stopped and dont panic
+					panic(fmt.Sprintf("Raft: faulty follower %s. remove it from cluster", repl.status.id))
+				}
 			}
 		} else {
-			if matchIndex+1 != nextIndex {
-				nextIndex = max(min(nextIndex-1, resp.lastLogIndex+1), 1)
-				debug(repl, "nextIndex:", nextIndex)
-			} else {
-				// todo: notify leader, that we stopped and dont panic
-				panic(fmt.Sprintf("Raft: faulty follower %s. remove it from cluster", repl.status.id))
-			}
+			resp := respMsg.(*installSnapResp)
+			_ = resp // todo:
+
 		}
 
 		if matchIndex == ldrLastIndex {
@@ -166,31 +184,27 @@ func (repl *replication) notifyLdr(matchIndex uint64, noContact time.Time) {
 	}
 }
 
-func (repl *replication) appendEntries(req *appendEntriesReq) (*appendEntriesResp, error) {
+func (repl *replication) doRPC(typ rpcType, req, resp message) error {
 	if repl.conn == nil {
 		conn, err := repl.connPool.getConn()
 		if err != nil {
-			return nil, err
+			return err
 		}
 		repl.conn = conn
 	}
-	resp := new(appendEntriesResp)
 	err := repl.conn.doRPC(rpcAppendEntries, req, resp)
 	if err != nil {
 		_ = repl.conn.close()
 		repl.conn = nil
 	}
-	return resp, err
+	return err
 }
 
-func (repl *replication) getSnapTerm(index uint64) (snapTerm uint64, indexMatched bool) {
+func (repl *replication) getSnapLog() (snapIndex, snapTerm uint64) {
 	// snapshoting might be in progress
 	repl.storage.snapMu.RLock()
 	defer repl.storage.snapMu.RUnlock()
-	if index == repl.storage.snapIndex {
-		return repl.storage.snapTerm, true
-	}
-	return 0, false
+	return repl.storage.snapIndex, repl.storage.snapTerm
 }
 
 func (repl *replication) String() string {

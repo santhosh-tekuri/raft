@@ -226,7 +226,7 @@ func (ldr *leadership) startReplication(node Node) {
 	} else {
 		// don't retry on failure. so that we can respond to apply/inspect
 		debug(repl, ">> firstHeartbeat")
-		_, _ = repl.appendEntries(req)
+		_ = repl.doRPC(rpcAppendEntries, req, &appendEntriesResp{})
 		go func() {
 			defer ldr.wg.Done()
 			repl.runLoop(req)
