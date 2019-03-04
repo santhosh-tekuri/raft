@@ -212,8 +212,6 @@ func TestRaft_AddNonVoter_nonVoterReconnects_catchesUp(t *testing.T) {
 	}
 
 	// now disconnect nonvoter m4
-	unreachable := c.registerForEvent(unreachable, ldr)
-	defer c.unregisterObserver(unreachable)
 	m4StateChanged := c.registerForEvent(stateChanged, m4)
 	defer c.unregisterObserver(m4StateChanged)
 	c.disconnect(m4)
@@ -226,14 +224,7 @@ func TestRaft_AddNonVoter_nonVoterReconnects_catchesUp(t *testing.T) {
 	}
 
 	// ensure that leader detected that m4 is unreachable
-	select {
-	case e := <-unreachable.ch:
-		if e.target != m4.ID() {
-			t.Fatalf("leader.unreachable: got %s, want m4", e.target)
-		}
-	case <-time.After(c.longTimeout):
-		t.Fatal("leader could not detect that m4 got disconnected")
-	}
+	c.waitUnreachableDetected(ldr, m4)
 
 	// send 10 fsm updates, and wait for them to replicate to m1, m2, m3
 	for i := 0; i < 10; i++ {

@@ -726,6 +726,7 @@ func (c *cluster) ensureFSMSame(want []string, rr ...*Raft) {
 }
 
 func (c *cluster) waitCatchup(r *Raft) {
+	c.Helper()
 	leaders := c.getInState(Leader)
 	if len(leaders) != 1 {
 		c.Fatalf("leaders: got %d, want 1", len(leaders))
@@ -738,6 +739,18 @@ func (c *cluster) waitCatchup(r *Raft) {
 	if !waitForCondition(condition, c.commitTimeout, c.longTimeout) {
 		info := r.Info()
 		c.Fatalf("%s catchup: got %d, want %d", info.ID(), info.Committed(), ldrLastLogIndex)
+	}
+}
+
+func (c *cluster) waitUnreachableDetected(ldr, failed *Raft) {
+	c.Helper()
+	condition := func() bool {
+		return !ldr.Info().Replication()[failed.ID()].Unreachable.IsZero()
+	}
+	unreachable := c.registerForEvent(unreachable, ldr)
+	defer c.unregisterObserver(unreachable)
+	if !unreachable.waitFor(condition, c.longTimeout) {
+		c.Fatalf("waitUnreachableDetected: ldr %s failed %s", ldr.ID(), failed.ID())
 	}
 }
 
