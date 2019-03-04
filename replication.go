@@ -32,6 +32,7 @@ type replication struct {
 
 const maxAppendEntries = 64 // todo: should be configurable
 
+// todo: lots of panics!!!
 func (repl *replication) runLoop(req *appendEntriesReq) {
 	defer func() {
 		if repl.conn != nil {
@@ -85,7 +86,20 @@ func (repl *replication) runLoop(req *appendEntriesReq) {
 			}
 		} else {
 			rpcType = rpcInstallSnap
-			// todo
+			meta, snapshot, err := repl.storage.snapshots.Open(prevIndex)
+			if err != nil {
+				panic(err)
+			}
+			installReq := &installSnapReq{
+				term:       req.term,
+				leader:     req.leader,
+				lastIndex:  meta.Index,
+				lastTerm:   meta.Term,
+				lastConfig: meta.Config,
+				size:       meta.Size,
+				snapshot:   snapshot,
+			}
+			reqMsg, respMsg = installReq, &installSnapResp{}
 		}
 
 		// send request ----------------------------------
@@ -114,17 +128,17 @@ func (repl *replication) runLoop(req *appendEntriesReq) {
 			debug(repl, "yesContact")
 			repl.notifyLdr(matchIndex, noContact)
 		}
+		if respMsg.getTerm() > req.term {
+			select {
+			case <-repl.stopCh:
+			case repl.newTermCh <- respMsg.getTerm():
+			}
+			return
+		}
 
 		// process response ------------------------------
 		if rpcType == rpcAppendEntries {
 			resp := respMsg.(*appendEntriesResp)
-			if resp.term > req.term {
-				select {
-				case <-repl.stopCh:
-				case repl.newTermCh <- resp.term:
-				}
-				return
-			}
 			if resp.success {
 				old := matchIndex
 				if len(req.entries) == 0 {
@@ -147,14 +161,21 @@ func (repl *replication) runLoop(req *appendEntriesReq) {
 				}
 			}
 		} else {
-			resp := respMsg.(*installSnapResp)
-			_ = resp // todo:
-
+			req, resp := reqMsg.(*installSnapReq), respMsg.(*installSnapResp)
+			if resp.success {
+				nextIndex = req.lastIndex + 1
+				matchIndex = req.lastIndex
+				debug(repl, "matchIndex:", matchIndex)
+				repl.notifyLdr(matchIndex, noContact)
+			} else {
+				panic("faulty follower: installSnapshot failed")
+			}
 		}
 
 		if matchIndex == ldrLastIndex {
 			// nothing to replicate. start heartbeat timer
 			select {
+
 			case <-repl.stopCh:
 				return
 			case update := <-repl.ldrUpdateCh:

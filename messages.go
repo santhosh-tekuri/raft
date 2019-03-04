@@ -364,6 +364,7 @@ func (req *installSnapReq) encode(w io.Writer) error {
 	if n != req.size {
 		return io.ErrUnexpectedEOF
 	}
+	_ = req.snapshot.Close()
 	return nil
 }
 
