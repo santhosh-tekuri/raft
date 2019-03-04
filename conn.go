@@ -30,11 +30,11 @@ func dial(dialFn dialFn, address string, timeout time.Duration) (*netConn, error
 	}, nil
 }
 
-func (n *netConn) doRPC(typ rpcType, req, resp message) error {
+func (n *netConn) doRPC(req request, resp message) error {
 	if err := n.conn.SetDeadline(time.Now().Add(n.timeout)); err != nil {
 		return err
 	}
-	if err := writeUint8(n.w, uint8(typ)); err != nil {
+	if err := writeUint8(n.w, uint8(req.rpcType())); err != nil {
 		return err
 	}
 	if err := req.encode(n.w); err != nil {

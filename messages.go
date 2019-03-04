@@ -14,10 +14,29 @@ const (
 	rpcInstallSnap
 )
 
+func (t rpcType) createReq() request {
+	switch t {
+	case rpcVote:
+		return &voteReq{}
+	case rpcAppendEntries:
+		return &appendEntriesReq{}
+	case rpcInstallSnap:
+		return &installSnapReq{}
+	default:
+		panic(fmt.Errorf("unknown rpcType: %d", t))
+	}
+}
+
 type message interface {
 	getTerm() uint64
 	decode(r io.Reader) error
 	encode(w io.Writer) error
+}
+
+type request interface {
+	message
+	rpcType() rpcType
+	from() ID
 }
 
 // ------------------------------------------------------
@@ -100,7 +119,9 @@ type voteReq struct {
 	lastLogTerm  uint64 // term of candidate's last log entry
 }
 
-func (req *voteReq) getTerm() uint64 { return req.term }
+func (req *voteReq) getTerm() uint64  { return req.term }
+func (req *voteReq) rpcType() rpcType { return rpcVote }
+func (req *voteReq) from() ID         { return req.candidate }
 
 func (req *voteReq) decode(r io.Reader) error {
 	var err error
@@ -180,7 +201,9 @@ type appendEntriesReq struct {
 	ldrCommitIndex uint64
 }
 
-func (req *appendEntriesReq) getTerm() uint64 { return req.term }
+func (req *appendEntriesReq) getTerm() uint64  { return req.term }
+func (req *appendEntriesReq) rpcType() rpcType { return rpcAppendEntries }
+func (req *appendEntriesReq) from() ID         { return req.leader }
 
 func (req *appendEntriesReq) decode(r io.Reader) error {
 	var err error
@@ -298,7 +321,9 @@ type installSnapReq struct {
 	snapshot   io.ReadCloser
 }
 
-func (req *installSnapReq) getTerm() uint64 { return req.term }
+func (req *installSnapReq) getTerm() uint64  { return req.term }
+func (req *installSnapReq) rpcType() rpcType { return rpcInstallSnap }
+func (req *installSnapReq) from() ID         { return req.leader }
 
 func (req *installSnapReq) decode(r io.Reader) error {
 	var err error

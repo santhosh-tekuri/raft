@@ -12,19 +12,17 @@ import (
 func TestServer(t *testing.T) {
 	defer leaktest.Check(t)()
 	tests := []struct {
-		name      string
-		typ       rpcType
-		req, resp message
+		name string
+		req  request
+		resp message
 	}{
 		{
 			name: "requestVote",
-			typ:  rpcVote,
 			req:  &voteReq{term: 5, candidate: "localhost:1234", lastLogIndex: 3, lastLogTerm: 5},
 			resp: &voteResp{term: 5, granted: true},
 		},
 		{
 			name: "appendEntries",
-			typ:  rpcAppendEntries,
 			req: &appendEntriesReq{
 				term: 5, leader: "localhost:5678", prevLogIndex: 3, prevLogTerm: 5,
 				entries: []*entry{
@@ -65,7 +63,7 @@ func TestServer(t *testing.T) {
 			}
 			defer c.close()
 			resp := reflect.New(reflect.TypeOf(test.resp).Elem()).Interface().(message)
-			if err := c.doRPC(test.typ, test.req, resp); err != nil {
+			if err := c.doRPC(test.req, resp); err != nil {
 				t.Fatalf("c.doRPC() failed: %v", err)
 			}
 			if !reflect.DeepEqual(resp, test.resp) {

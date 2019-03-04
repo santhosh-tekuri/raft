@@ -1,7 +1,6 @@
 package raft
 
 import (
-	"fmt"
 	"io"
 	"io/ioutil"
 )
@@ -13,6 +12,9 @@ import (
 // replyRPC return true if it is appendEntries request
 // or vote granted
 func (r *Raft) replyRPC(rpc *rpc) bool {
+	if r.trace.received != nil {
+		r.trace.received(r.id, rpc.req.from(), rpc.req)
+	}
 	var resetElectionTimer = true
 	switch req := rpc.req.(type) {
 	case *voteReq:
@@ -26,6 +28,9 @@ func (r *Raft) replyRPC(rpc *rpc) bool {
 		// todo
 	}
 	close(rpc.done)
+	if r.trace.sending != nil {
+		r.trace.sending(r.id, rpc.req.from(), rpc.resp)
+	}
 	return resetElectionTimer
 }
 
@@ -77,6 +82,9 @@ func (r *Raft) onVoteRequest(req *voteReq) *voteResp {
 }
 
 func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp {
+	if req.prevLogTerm < req.term || len(req.entries) > 0 { // to avoid printing heartbeat requests
+		debug(r, "onAppendEntries", req.term, req.prevLogIndex, req.prevLogTerm, len(req.entries))
+	}
 	resp := &appendEntriesResp{
 		term:         r.term,
 		success:      false,
@@ -85,6 +93,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp 
 
 	// reply false if older term
 	if req.term < r.term {
+		debug(r, "rejectAppendEntries", "stale term")
 		return resp
 	}
 
@@ -101,7 +110,8 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp 
 	// reply false if log at req.prevLogIndex does not match
 	if req.prevLogIndex > 0 {
 		if req.prevLogIndex > r.lastLogIndex {
-			// no log found
+			// no entry found
+			debug(r, "rejectAppendEntries", "noEntryFound", req.prevLogIndex, r.lastLogIndex)
 			return resp
 		}
 
@@ -111,10 +121,14 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp 
 		} else if req.prevLogIndex == r.snapIndex {
 			prevLogTerm = r.snapTerm
 		} else {
-			prevLogTerm = r.storage.getEntryTerm(req.prevLogIndex)
+			var err error
+			prevLogTerm, err = r.storage.getEntryTerm(req.prevLogIndex)
+			// we never get ErrnotFound here, because we are the goroutine who is compacting
+			assert(err == nil, "unexpected error: %v", err)
 		}
 		if req.prevLogTerm != prevLogTerm {
 			// term did not match
+			debug(r, "rejectAppendEntries", "term mismatch", req.prevLogTerm, prevLogTerm)
 			return resp
 		}
 	}
@@ -130,7 +144,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp 
 				break
 			}
 			e := &entry{}
-			r.storage.getEntry(ne.index, e)
+			_ = r.storage.getEntry(ne.index, e)
 			if e.term != ne.term { // conflicts
 				debug(r, "log.deleteGTE", ne.index)
 				r.storage.deleteGTE(ne.index, prevLogTerm)
@@ -217,10 +231,12 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq) (resp *installSnapResp,
 	}
 	n, readErr := io.Copy(sink, req.snapshot)
 	if readErr != nil {
+		debug(r, "copy snapshot->sink failed:", readErr)
 		_, _ = sink.Done(readErr)
 		return
 	}
 	if n != req.size {
+		debug(r, "installSnapReq size mismatch", n, req.size)
 		readErr = io.ErrUnexpectedEOF
 		_, _ = sink.Done(readErr)
 		return
@@ -238,17 +254,38 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq) (resp *installSnapResp,
 	<-restoreReq.Done()
 	if restoreReq.Err() != nil {
 		err = restoreReq.Err()
+		debug(r, "fsmRestore failed:", err)
 		return
 	}
 
 	r.snapIndex, r.snapTerm = meta.Index, meta.Term
 	r.changeConfig(meta.Config)
 	r.commitConfig()
-	if err := r.storage.deleteLTE(meta.Index); err != nil {
-		// send to trace
-		fmt.Println("compactLogs failed:", err)
-	}
 
+	if r.lastLogIndex <= meta.Index {
+		// we dont need any entries
+		debug(r, "deleting log entries if any")
+		if n := r.storage.entryCount(); n > 0 {
+			debug(r, "storage.deleteLTE", r.lastLogIndex)
+			if err := r.storage.deleteLTE(r.lastLogIndex); err != nil {
+				// send to trace
+				debug(r, "compactLogs failed:", err)
+				assert(false, "")
+			}
+		}
+		r.lastLogIndex = meta.Index
+		r.firstLogIndex = meta.Index + 1
+	} else {
+		// retain entries if any beyond snapshot
+		if r.storage.hasEntry(meta.Index) {
+			debug(r, "storage.deleteLTE", meta.Index)
+			if err := r.storage.deleteLTE(meta.Index); err != nil {
+				// send to trace
+				debug(r, "compactLogs failed:", err)
+				assert(false, "")
+			}
+		}
+	}
 	resp.success = true
 	return
 }

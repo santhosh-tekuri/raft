@@ -169,7 +169,7 @@ func (r *Raft) snapLoop() {
 	for {
 		select {
 		case <-r.shutdownCh:
-			debug(r, "snapLoop shutdown")
+			debug(r.id, "snapLoop shutdown")
 			return
 		case t := <-r.snapTaskCh:
 			taken := snapshotTaken{req: t}

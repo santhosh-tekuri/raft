@@ -3,7 +3,6 @@ package raft
 import (
 	"bufio"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -15,7 +14,7 @@ import (
 var ErrServerClosed = errors.New("raft: Server closed")
 
 type rpc struct {
-	req     message
+	req     request
 	reader  io.Reader // for partial requests
 	resp    message
 	readErr error // error while reading partial req payload
@@ -117,22 +116,9 @@ func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) erro
 		break
 	}
 
-	rpc := &rpc{done: make(chan struct{}), reader: r}
+	rpc := &rpc{req: typ.createReq(), done: make(chan struct{}), reader: r}
 
 	// decode request
-	switch typ {
-	case rpcVote:
-		req := &voteReq{}
-		rpc.req = req
-	case rpcAppendEntries:
-		req := &appendEntriesReq{}
-		rpc.req = req
-	case rpcInstallSnap:
-		req := &installSnapReq{}
-		rpc.req = req
-	default:
-		return fmt.Errorf("unknown rpcType: %d", typ)
-	}
 	// todo: set read deadline
 	if err := rpc.req.decode(r); err != nil {
 		if err == io.EOF {

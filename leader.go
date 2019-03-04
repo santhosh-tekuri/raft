@@ -190,6 +190,7 @@ func (ldr *leadership) startReplication(node Node) {
 		replUpdatedCh: ldr.replUpdatedCh,
 		newTermCh:     ldr.newTermCh,
 		ldrUpdateCh:   make(chan leaderUpdate, 1),
+		trace:         &ldr.trace,
 		str:           fmt.Sprintf("%v %s", ldr, string(node.ID)),
 	}
 	ldr.repls[node.ID] = repl
@@ -226,7 +227,7 @@ func (ldr *leadership) startReplication(node Node) {
 	} else {
 		// don't retry on failure. so that we can respond to apply/inspect
 		debug(repl, ">> firstHeartbeat")
-		_ = repl.doRPC(rpcAppendEntries, req, &appendEntriesResp{})
+		_ = repl.doRPC(req, &appendEntriesResp{})
 		go func() {
 			defer ldr.wg.Done()
 			repl.runLoop(req)

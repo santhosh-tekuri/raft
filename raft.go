@@ -214,6 +214,8 @@ func (r *Raft) stateLoop() {
 			debug(r, "stateLoop shutdown")
 			r.server.shutdown()
 			debug(r, "server shutdown")
+			close(r.newEntryCh)
+			close(r.taskCh)
 			return
 		default:
 		}

@@ -137,10 +137,16 @@ func (r *Raft) requestVote(pool *connPool, req *voteReq) (*voteResp, error) {
 		return nil, err
 	}
 	resp := new(voteResp)
-	if err = conn.doRPC(rpcVote, req, resp); err != nil {
+	if r.trace.sending != nil {
+		r.trace.sending(r.id, pool.id, req)
+	}
+	if err = conn.doRPC(req, resp); err != nil {
 		_ = conn.close()
-		return resp, err
+		return nil, err
 	}
 	pool.returnConn(conn)
+	if r.trace.received != nil {
+		r.trace.received(r.id, pool.id, resp)
+	}
 	return resp, nil
 }

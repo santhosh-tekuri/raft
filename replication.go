@@ -27,7 +27,8 @@ type replication struct {
 	newTermCh     chan<- uint64
 	stopCh        chan struct{}
 
-	str string // used for debug() calls
+	trace *Trace
+	str   string // used for debug() calls
 }
 
 const maxAppendEntries = 64 // todo: should be configurable
@@ -48,26 +49,27 @@ func (repl *replication) runLoop(req *appendEntriesReq) {
 	var noContact time.Time
 
 	debug(repl, "repl.start ldrLastIndex:", ldrLastIndex, "matchIndex:", matchIndex, "nextIndex:", nextIndex)
-
 	for {
 		// find prevEntry ----------------------------
-		prevIndex, prevTerm := nextIndex-1, uint64(0)
+		prevIndex, prevTerm, err := nextIndex-1, uint64(0), errNoEntryFound
 		if prevIndex == 0 {
-			prevTerm = 0
-		} else if prevIndex >= repl.ldrStartIndex {
-			prevTerm = req.term
+			prevTerm, err = 0, nil
+		} else if prevIndex < repl.ldrStartIndex {
+			prevTerm, err = repl.storage.getEntryTerm(prevIndex)
 		} else if repl.storage.hasEntry(prevIndex) {
-			prevTerm = repl.storage.getEntryTerm(prevIndex)
-		} else if snapIndex, snapTerm := repl.getSnapLog(); prevIndex == snapIndex {
-			prevIndex, prevTerm = snapIndex, snapTerm
+			prevTerm, err = req.term, nil
+		}
+		if err == errNoEntryFound {
+			prevIndex, prevTerm = repl.getSnapLog()
+		} else if err != nil {
+			panic(err)
 		}
 
 		// prepare request----------------------------
-		var rpcType rpcType
-		var reqMsg, respMsg message
+		var reqMsg request
+		var respMsg message
 
 		if prevIndex == nextIndex-1 {
-			rpcType = rpcAppendEntries
 			req.prevLogIndex, req.prevLogTerm = prevIndex, prevTerm
 			reqMsg, respMsg = req, &appendEntriesResp{}
 
@@ -85,7 +87,7 @@ func (repl *replication) runLoop(req *appendEntriesReq) {
 				}
 			}
 		} else {
-			rpcType = rpcInstallSnap
+			debug(repl, "preparing installSnapReq")
 			meta, snapshot, err := repl.storage.snapshots.Open(prevIndex)
 			if err != nil {
 				panic(err)
@@ -103,10 +105,9 @@ func (repl *replication) runLoop(req *appendEntriesReq) {
 		}
 
 		// send request ----------------------------------
-		var err error
 		var failures uint64
 		for {
-			err = repl.doRPC(rpcType, reqMsg, respMsg)
+			err = repl.doRPC(reqMsg, respMsg)
 			if err != nil {
 				if noContact.IsZero() {
 					noContact = time.Now()
@@ -137,7 +138,7 @@ func (repl *replication) runLoop(req *appendEntriesReq) {
 		}
 
 		// process response ------------------------------
-		if rpcType == rpcAppendEntries {
+		if reqMsg.rpcType() == rpcAppendEntries {
 			resp := respMsg.(*appendEntriesResp)
 			if resp.success {
 				old := matchIndex
@@ -157,7 +158,7 @@ func (repl *replication) runLoop(req *appendEntriesReq) {
 					debug(repl, "nextIndex:", nextIndex)
 				} else {
 					// todo: notify leader, that we stopped and dont panic
-					panic(fmt.Sprintf("Raft: faulty follower %s. remove it from cluster", repl.status.id))
+					assert(false, fmt.Sprintf("Raft: faulty follower %s. remove it from cluster", repl.status.id))
 				}
 			}
 		} else {
@@ -205,7 +206,7 @@ func (repl *replication) notifyLdr(matchIndex uint64, noContact time.Time) {
 	}
 }
 
-func (repl *replication) doRPC(typ rpcType, req, resp message) error {
+func (repl *replication) doRPC(req request, resp message) error {
 	if repl.conn == nil {
 		conn, err := repl.connPool.getConn()
 		if err != nil {
@@ -213,10 +214,16 @@ func (repl *replication) doRPC(typ rpcType, req, resp message) error {
 		}
 		repl.conn = conn
 	}
-	err := repl.conn.doRPC(rpcAppendEntries, req, resp)
+	if repl.trace.sending != nil {
+		repl.trace.sending(req.from(), repl.connPool.id, req)
+	}
+	err := repl.conn.doRPC(req, resp)
 	if err != nil {
 		_ = repl.conn.close()
 		repl.conn = nil
+	}
+	if repl.trace.sending != nil && err == nil {
+		repl.trace.received(req.from(), repl.connPool.id, resp)
 	}
 	return err
 }

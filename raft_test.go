@@ -347,6 +347,8 @@ func newCluster(t *testing.T) *cluster {
 			ConfigCommitted: c.onConfigCommitted,
 			ConfigReverted:  c.onConfigReverted,
 			Unreachable:     c.onUnreachable,
+			sending:         c.sending,
+			received:        c.received,
 		},
 	}
 	return c
@@ -441,7 +443,7 @@ func (c *cluster) sendEvent(e event) {
 	}
 }
 
-func (c *cluster) onFMSChanded(id ID, len uint64) {
+func (c *cluster) onFMSChanged(id ID, len uint64) {
 	c.sendEvent(event{
 		src:    id,
 		typ:    fsmChanged,
@@ -504,12 +506,34 @@ func (c *cluster) onUnreachable(info Info, id ID, since time.Time) {
 	})
 }
 
+func (c *cluster) sending(from, to ID, msg message) {
+	c.sendEvent(event{
+		src:     from,
+		typ:     sending,
+		target:  to,
+		msgType: fmt.Sprintf("%T", msg),
+	})
+}
+
+func (c *cluster) received(by, from ID, msg message) {
+	c.sendEvent(event{
+		src:     by,
+		typ:     received,
+		target:  from,
+		msgType: fmt.Sprintf("%T", msg),
+	})
+}
+
+func id2Addr(id ID) string {
+	return string(id) + ":8888"
+}
+
 func (c *cluster) launch(n int, bootstrap bool) map[ID]*Raft {
 	c.Helper()
 	nodes := make(map[ID]Node, n)
 	for i := 1; i <= n; i++ {
 		id := ID("M" + strconv.Itoa(i+len(c.rr)))
-		nodes[id] = Node{ID: id, Addr: string(id) + ":8888", Voter: true}
+		nodes[id] = Node{ID: id, Addr: id2Addr(id), Voter: true}
 	}
 
 	launched := make(map[ID]*Raft)
@@ -521,7 +545,7 @@ func (c *cluster) launch(n int, bootstrap bool) map[ID]*Raft {
 				c.Fatalf("Storage.bootstrap failed: %v", err)
 			}
 		}
-		fsm := &fsmMock{id: node.ID, changed: c.onFMSChanded}
+		fsm := &fsmMock{id: node.ID, changed: c.onFMSChanged}
 		r, err := New(node.ID, c.opt, fsm, storage)
 		if err != nil {
 			c.Fatal(err)
@@ -543,8 +567,11 @@ func (c *cluster) launch(n int, bootstrap bool) map[ID]*Raft {
 	return launched
 }
 
-func (c *cluster) shutdown() {
-	for _, r := range c.rr {
+func (c *cluster) shutdown(rr ...*Raft) {
+	if len(rr) == 0 {
+		rr = c.exclude()
+	}
+	for _, r := range rr {
 		r.Shutdown().Wait()
 		Debug(r.ID(), "<< shutdown()")
 	}
@@ -552,11 +579,10 @@ func (c *cluster) shutdown() {
 
 func (c *cluster) restart(r *Raft) *Raft {
 	c.Helper()
-	addr := r.Info().Addr()
 	r.Shutdown().Wait()
 	Debug(r.ID(), "<< shutdown()")
 
-	newFSM := &fsmMock{id: r.ID(), changed: c.onFMSChanded}
+	newFSM := &fsmMock{id: r.ID(), changed: c.onFMSChanged}
 	storage := c.storage[string(r.ID())]
 	newr, err := New(r.ID(), c.opt, newFSM, storage)
 	if err != nil {
@@ -566,7 +592,7 @@ func (c *cluster) restart(r *Raft) *Raft {
 	host := c.network.Host(string(r.ID()))
 	newr.dialFn = host.DialTimeout
 
-	l, err := host.Listen("tcp", addr)
+	l, err := host.Listen("tcp", id2Addr(r.ID()))
 	if err != nil {
 		c.Fatal(err)
 	}
@@ -889,6 +915,8 @@ const (
 	configCommitted
 	configReverted
 	unreachable
+	sending
+	received
 
 	configRelated
 )
@@ -902,6 +930,7 @@ type event struct {
 	configs Configs
 	target  ID
 	since   time.Time
+	msgType string
 }
 
 type observer struct {

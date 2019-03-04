@@ -2,6 +2,7 @@ package raft
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -55,6 +56,8 @@ type Storage struct {
 	Log       Log
 	Snapshots Snapshots
 }
+
+var errNoEntryFound = errors.New("raft: no entry found")
 
 // todo: can we avoid panics on storage error
 type storage struct {
@@ -196,26 +199,34 @@ func (s *storage) entryCount() uint64 {
 }
 
 func (s *storage) hasEntry(index uint64) bool {
+	s.firstLogIndexMu.RLock()
+	defer s.firstLogIndexMu.RUnlock()
 	return index >= s.firstLogIndex
 }
 
-func (s *storage) getEntryTerm(index uint64) uint64 {
+func (s *storage) getEntryTerm(index uint64) (uint64, error) {
 	e := &entry{}
-	s.getEntry(index, e)
-	return e.term
+	err := s.getEntry(index, e)
+	return e.term, err
 }
 
 // called by raft.runLoop and repl.runLoop. append call can be called during this
 // never called with invalid index
-func (s *storage) getEntry(index uint64, e *entry) {
+func (s *storage) getEntry(index uint64, e *entry) error {
+	s.firstLogIndexMu.RLock()
+	if index < s.firstLogIndex {
+		return errNoEntryFound
+	}
 	offset := index - s.firstLogIndex
 	b, err := s.log.Get(offset)
+	s.firstLogIndexMu.RUnlock()
 	if err != nil {
 		panic(fmt.Sprintf("raft: log.get(%d) failed: %v", index, err))
 	}
 	if err = e.decode(bytes.NewReader(b)); err != nil {
 		panic(fmt.Sprintf("raft: entry.decode(%d) failed: %v", index, err))
 	}
+	return nil
 }
 
 // called by raft.runLoop. getEntry call can be called during this
@@ -235,6 +246,9 @@ func (s *storage) appendEntry(e *entry) {
 
 // never called with invalid index
 func (s *storage) deleteLTE(index uint64) error {
+	s.firstLogIndexMu.Lock()
+	defer s.firstLogIndexMu.Unlock()
+	debug("deleteLTE", index, s.firstLogIndex, s.lastLogIndex)
 	n := index - s.firstLogIndex + 1
 	if err := s.log.DeleteFirst(n); err != nil {
 		return fmt.Errorf("raft: log.deleteFirst(%d) failed: %v", n, err)

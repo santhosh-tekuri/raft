@@ -15,6 +15,9 @@ type Trace struct {
 	ConfigReverted  func(info Info)
 	Unreachable     func(info Info, id ID, since time.Time) // todo: can we give err also
 	ShuttingDown    func(info Info)
+
+	sending  func(self, to ID, msg message)
+	received func(self, from ID, msg message)
 }
 
 func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
