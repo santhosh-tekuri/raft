@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"math"
+	"io/ioutil"
 	"reflect"
 	"testing"
 )
@@ -20,6 +20,7 @@ func TestMessages(t *testing.T) {
 	nodes["M2"] = Node{ID: "M2", Addr: "localhost:8000", Voter: false}
 	nodes["M3"] = Node{ID: "M3", Addr: "localhost:9000", Promote: true}
 
+	snapshot := "helloworld"
 	tests := []message{
 		&entry{index: 3, term: 5, typ: 2, data: []byte("sleep")},
 		&voteReq{term: 5, candidate: "localhost:1234", lastLogIndex: 3, lastLogTerm: 5},
@@ -37,7 +38,8 @@ func TestMessages(t *testing.T) {
 			lastConfig: Config{
 				Nodes: nodes,
 				Index: 1, Term: 2,
-			}, size: math.MaxInt64,
+			}, size: int64(len(snapshot)),
+			snapshot: ioutil.NopCloser(bytes.NewReader([]byte(snapshot))),
 		},
 		&installSnapResp{term: 5, success: true},
 	}
@@ -52,6 +54,19 @@ func TestMessages(t *testing.T) {
 			cmd := reflect.New(typ).Interface().(message)
 			if err := cmd.decode(b); err != nil {
 				t.Fatalf("decode failed: %v", err)
+			}
+
+			if test, ok := test.(*installSnapReq); ok {
+				test.snapshot = nil
+				cmd := cmd.(*installSnapReq)
+				cmdSnapshot, err := ioutil.ReadAll(cmd.snapshot)
+				if err != nil {
+					t.Fatalf("snapshot read failed: %v", err)
+				}
+				if string(cmdSnapshot) != snapshot {
+					t.Fatalf("snapshot: got %s, want %s", cmdSnapshot, snapshot)
+				}
+				cmd.snapshot = nil
 			}
 			if !reflect.DeepEqual(cmd, test) {
 				t.Fatalf("mismatch: got %#v, want %#v", cmd, test)

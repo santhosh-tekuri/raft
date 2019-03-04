@@ -21,7 +21,7 @@ func (r *Raft) replyRPC(rpc *rpc) bool {
 	case *appendEntriesReq:
 		rpc.resp = r.onAppendEntriesRequest(req)
 	case *installSnapReq:
-		rpc.resp, rpc.readErr = r.onInstallSnapRequest(req, rpc.reader)
+		rpc.resp, rpc.readErr = r.onInstallSnapRequest(req)
 	default:
 		// todo
 	}
@@ -182,12 +182,11 @@ func lastLog(req *appendEntriesReq) (index, term uint64) {
 	}
 }
 
-func (r *Raft) onInstallSnapRequest(req *installSnapReq, reader io.Reader) (resp *installSnapResp, readErr error) {
+func (r *Raft) onInstallSnapRequest(req *installSnapReq) (resp *installSnapResp, readErr error) {
 	debug(r, "onInstallSnapRequest", req.term, req.lastIndex, req.lastTerm, req.lastConfig)
 
-	reader = io.LimitReader(reader, int64(req.size))
 	defer func() {
-		_, err := io.Copy(ioutil.Discard, reader)
+		_, err := io.Copy(ioutil.Discard, req.snapshot)
 		if err != nil {
 			readErr = err
 		}
@@ -216,7 +215,7 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq, reader io.Reader) (resp
 		// todo: send to trace
 		return
 	}
-	n, readErr := io.Copy(sink, reader)
+	n, readErr := io.Copy(sink, req.snapshot)
 	if readErr != nil {
 		_, _ = sink.Done(readErr)
 		return

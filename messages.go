@@ -3,6 +3,7 @@ package raft
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 )
 
 type rpcType int
@@ -294,6 +295,7 @@ type installSnapReq struct {
 	lastTerm   uint64 // term of lastIndex
 	lastConfig Config // last config in the snapshot
 	size       int64  // size of the snapshot
+	snapshot   io.ReadCloser
 }
 
 func (req *installSnapReq) getTerm() uint64 { return req.term }
@@ -329,6 +331,7 @@ func (req *installSnapReq) decode(r io.Reader) error {
 	} else {
 		req.size = int64(size)
 	}
+	req.snapshot = ioutil.NopCloser(io.LimitReader(r, req.size))
 	return nil
 }
 
@@ -353,6 +356,13 @@ func (req *installSnapReq) encode(w io.Writer) error {
 
 	if err := writeUint64(w, uint64(req.size)); err != nil {
 		return err
+	}
+	n, err := io.Copy(w, req.snapshot)
+	if err != nil {
+		return err
+	}
+	if n != req.size {
+		return io.ErrUnexpectedEOF
 	}
 	return nil
 }
