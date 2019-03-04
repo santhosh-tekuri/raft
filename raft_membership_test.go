@@ -9,11 +9,9 @@ import (
 	"github.com/fortytw2/leaktest"
 )
 
-func TestRaft_AddNode(t *testing.T) {
+func TestRaft_AddNode_Validations(t *testing.T) {
 	Debug("\nTestRaft_AddNode --------------------------")
 	defer leaktest.Check(t)()
-
-	// launch 3 node cluster M1, M2, M3
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -59,6 +57,15 @@ func TestRaft_AddNode(t *testing.T) {
 		t.Log("new: ", configsNow)
 		t.Fatal("configs changed")
 	}
+}
+
+func TestRaft_AddNode(t *testing.T) {
+	Debug("\nTestRaft_AddNode --------------------------")
+	defer leaktest.Check(t)()
+
+	// launch 3 node cluster M1, M2, M3
+	c, ldr, _ := launchCluster(t, 3)
+	defer c.shutdown()
 
 	// send 10 fsm updates, and wait for them to replicate
 	for i := 0; i < 10; i++ {
@@ -231,5 +238,4 @@ func TestRaft_AddNode(t *testing.T) {
 	if !m4.Info().Configs().IsCommitted() {
 		t.Fatal("m4 configs should have been committed")
 	}
-
 }
