@@ -500,7 +500,7 @@ func (c *cluster) onUnreachable(info Info, id ID, since time.Time) {
 	})
 }
 
-func (c *cluster) launch(n int, bootstrap bool) {
+func (c *cluster) launch(n int, bootstrap bool) map[ID]*Raft {
 	c.Helper()
 	nodes := make(map[ID]Node, n)
 	for i := 1; i <= n; i++ {
@@ -508,7 +508,7 @@ func (c *cluster) launch(n int, bootstrap bool) {
 		nodes[id] = Node{ID: id, Addr: string(id) + ":8888", Voter: true}
 	}
 
-	i := 0
+	launched := make(map[ID]*Raft)
 	for _, node := range nodes {
 		s := new(inmemStorage)
 		storage := Storage{Vars: s, Log: s, Snapshots: s}
@@ -522,10 +522,9 @@ func (c *cluster) launch(n int, bootstrap bool) {
 		if err != nil {
 			c.Fatal(err)
 		}
-
+		launched[r.ID()] = r
 		c.rr[string(node.ID)] = r
 		c.storage[string(node.ID)] = storage
-		i++
 
 		// switch to fake transport
 		host := c.network.Host(string(r.ID()))
@@ -537,6 +536,7 @@ func (c *cluster) launch(n int, bootstrap bool) {
 		}
 		go func() { _ = r.Serve(l) }()
 	}
+	return launched
 }
 
 func (c *cluster) shutdown() {

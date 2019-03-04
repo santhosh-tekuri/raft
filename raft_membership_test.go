@@ -18,35 +18,25 @@ func TestRaft_AddNonVoter_validations(t *testing.T) {
 	configs := ldr.Info().Configs()
 
 	// adding node with empty id should fail
-	n := Node{Addr: "localhost:8888", Voter: false}
-	if _, err := waitTask(ldr, AddNonvoter(n), 0); err == nil {
+	if _, err := waitTask(ldr, AddNonvoter("", "localhost:8888", false), 0); err == nil {
 		t.Fatal(err)
 	}
 
 	// adding node with empty addr should fail
-	n = Node{ID: ID("M10"), Voter: false}
-	if _, err := waitTask(ldr, AddNonvoter(n), 0); err == nil {
-		t.Fatal(err)
-	}
-
-	// adding voter should fail
-	n = Node{ID: ID("M11"), Addr: "M10:8888", Voter: true}
-	if _, err := waitTask(ldr, AddNonvoter(n), 0); err == nil {
+	if _, err := waitTask(ldr, AddNonvoter("M10", "", false), 0); err == nil {
 		t.Fatal(err)
 	}
 
 	// adding node with existing id should fail
 	for _, n := range ldr.Info().Configs().Latest.Nodes {
-		n := Node{ID: n.ID, Addr: "localhost:8888", Voter: false}
-		if _, err := waitTask(ldr, AddNonvoter(n), 0); err == nil {
+		if _, err := waitTask(ldr, AddNonvoter(n.ID, "localhost:8888", false), 0); err == nil {
 			t.Fatal(err)
 		}
 	}
 
 	// adding node with existing addr should fail
 	for _, n := range ldr.Info().Configs().Latest.Nodes {
-		n := Node{ID: "M12", Addr: n.Addr, Voter: false}
-		if _, err := waitTask(ldr, AddNonvoter(n), 0); err == nil {
+		if _, err := waitTask(ldr, AddNonvoter("M12", n.Addr, false), 0); err == nil {
 			t.Fatal(err)
 		}
 	}
@@ -67,14 +57,13 @@ func TestRaft_AddNonVoter_committedByAll(t *testing.T) {
 	defer c.shutdown()
 
 	// launch new raft instance M4, without bootstrap
-	c.launch(1, false)
-	m4 := c.rr["M4"]
+	m4 := c.launch(1, false)["M4"]
 
 	configRelated := c.registerForEvent(configRelated, c.exclude(m4)...)
 	defer c.unregisterObserver(configRelated)
 
 	// add M4 as nonvoter, wait for success reply
-	if _, err := waitTask(ldr, AddNonvoter(Node{m4.ID(), "M4:8888", false, false}), 0); err != nil {
+	if _, err := waitTask(ldr, AddNonvoter(m4.ID(), "M4:8888", false), 0); err != nil {
 		t.Fatal(err)
 	}
 
@@ -176,11 +165,10 @@ func TestRaft_AddNonVoter_catchesUp_followsLeader(t *testing.T) {
 	c.waitFSMLen(10)
 
 	// launch new raft instance M4, without bootstrap
-	c.launch(1, false)
-	m4 := c.rr["M4"]
+	m4 := c.launch(1, false)["M4"]
 
 	// add M4 as nonvoter, wait for success reply
-	if _, err := waitTask(ldr, AddNonvoter(Node{m4.ID(), "M4:8888", false, false}), 0); err != nil {
+	if _, err := waitTask(ldr, AddNonvoter(m4.ID(), "M4:8888", false), 0); err != nil {
 		t.Fatal(err)
 	}
 
@@ -203,11 +191,10 @@ func TestRaft_AddNonVoter_nonVoterReconnects_catchesUp(t *testing.T) {
 	defer c.shutdown()
 
 	// launch new raft instance M4, without bootstrap
-	c.launch(1, false)
-	m4 := c.rr["M4"]
+	m4 := c.launch(1, false)["M4"]
 
 	// add M4 as nonvoter, wait for success reply
-	if _, err := waitTask(ldr, AddNonvoter(Node{m4.ID(), "M4:8888", false, false}), 0); err != nil {
+	if _, err := waitTask(ldr, AddNonvoter(m4.ID(), "M4:8888", false), 0); err != nil {
 		t.Fatal(err)
 	}
 
@@ -263,11 +250,10 @@ func TestRaft_AddNonVoter_leaderChanged_followsNewLeader(t *testing.T) {
 	defer c.shutdown()
 
 	// launch new raft instance M4, without bootstrap
-	c.launch(1, false)
-	m4 := c.rr["M4"]
+	m4 := c.launch(1, false)["M4"]
 
 	// add M4 as nonvoter, wait for success reply
-	if _, err := waitTask(ldr, AddNonvoter(Node{m4.ID(), "M4:8888", false, false}), 0); err != nil {
+	if _, err := waitTask(ldr, AddNonvoter(m4.ID(), "M4:8888", false), 0); err != nil {
 		t.Fatal(err)
 	}
 

@@ -230,8 +230,9 @@ type addNonvoter struct {
 	node Node
 }
 
-func AddNonvoter(node Node) Task {
-	return addNonvoter{task: newTask(), node: node}
+func AddNonvoter(id ID, addr string, promote bool) Task {
+	nonVoter := Node{ID: id, Addr: addr, Promote: promote}
+	return addNonvoter{task: newTask(), node: nonVoter}
 }
 
 type removeNode struct {
