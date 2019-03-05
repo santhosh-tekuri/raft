@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"io"
 	"time"
 )
 
@@ -103,20 +104,14 @@ mainLoop:
 			}
 		} else {
 			debug(repl, nextIndex, "is not in log, preparing installSnapReq")
-			meta, snapshot, err := repl.storage.snapshots.Open()
-			if err != nil {
-				panic(err)
+			reqMsg = &installLatestSnapReq{
+				installSnapReq: installSnapReq{
+					term:   req.term,
+					leader: req.leader,
+				},
+				snapshots: repl.storage.snapshots,
 			}
-			installReq := &installSnapReq{
-				term:       req.term,
-				leader:     req.leader,
-				lastIndex:  meta.Index,
-				lastTerm:   meta.Term,
-				lastConfig: meta.Config,
-				size:       meta.Size,
-				snapshot:   snapshot,
-			}
-			reqMsg, respMsg = installReq, &installSnapResp{}
+			respMsg = &installSnapResp{}
 		}
 
 		// send request ----------------------------------
@@ -170,7 +165,7 @@ mainLoop:
 				assert(matchIndex < nextIndex, "%s assert %d<%d => faulty follower", repl, matchIndex, nextIndex)
 			}
 		} else {
-			req, resp := reqMsg.(*installSnapReq), respMsg.(*installSnapResp)
+			req, resp := reqMsg.(*installLatestSnapReq), respMsg.(*installSnapResp)
 			sendEntries = resp.success
 			if resp.success {
 				matchIndex = req.lastIndex
@@ -245,6 +240,26 @@ func (repl *replication) getSnapLog() (snapIndex, snapTerm uint64) {
 
 func (repl *replication) String() string {
 	return repl.str
+}
+
+// ------------------------------------------------
+
+type installLatestSnapReq struct {
+	installSnapReq
+	snapshots Snapshots
+}
+
+func (req *installLatestSnapReq) encode(w io.Writer) error {
+	meta, snapshot, err := req.snapshots.Open()
+	if err != nil {
+		panic(err)
+	}
+	req.lastIndex = meta.Index
+	req.lastTerm = meta.Term
+	req.lastConfig = meta.Config
+	req.size = meta.Size
+	req.snapshot = snapshot
+	return req.installSnapReq.encode(w)
 }
 
 // ------------------------------------------------
