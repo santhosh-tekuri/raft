@@ -264,12 +264,11 @@ func TakeSnapshot(threshold uint64) Task {
 	return takeSnapshot{task: newTask(), threshold: threshold}
 }
 
-// snapLoop sends this to raft, after shapshot taken
-type snapshotTaken struct {
-	*task // always nil, unused
-	req   takeSnapshot
-	meta  SnapshotMeta
-	err   error
+// snapLoop sends this to raft, after snapshot taken
+type snapTaken struct {
+	req  takeSnapshot
+	meta SnapshotMeta
+	err  error
 }
 
 type fsmSnapReq struct {
@@ -299,23 +298,14 @@ func (r *Raft) executeTask(t Task) {
 	case bootstrap:
 		r.bootstrap(t)
 	case takeSnapshot:
-		t.lastSnapIndex = r.snapIndex
-		t.config = r.configs.Committed
-		r.snapTaskCh <- t
-	case snapshotTaken:
-		if t.err != nil {
-			t.req.reply(t.err)
+		if r.snapTakenCh != nil {
+			t.reply("in progress")
 			return
 		}
-		// todo: we can check repl status and accordingly decide how much to delete
-		metaIndexExists := t.meta.Index > r.snapIndex && t.meta.Index <= r.lastLogIndex
-		if metaIndexExists {
-			if err := r.storage.deleteLTE(t.meta); err != nil {
-				// send to trace
-				assert(false, err.Error())
-			}
-		}
-		t.req.reply(t.meta)
+		t.lastSnapIndex = r.snapIndex
+		t.config = r.configs.Committed
+		r.snapTakenCh = make(chan snapTaken)
+		go r.takeSnapshot(t)
 	case inspect:
 		t.fn(liveInfo{r: r})
 		t.reply(nil)
@@ -345,4 +335,22 @@ func (ldr *leadership) executeTask(t Task) {
 	default:
 		ldr.Raft.executeTask(t)
 	}
+}
+
+func (r *Raft) onSnapshotTaken(t snapTaken) {
+	r.snapTakenCh = nil
+
+	if t.err != nil {
+		t.req.reply(t.err)
+		return
+	}
+	// todo: we can check repl status and accordingly decide how much to delete
+	metaIndexExists := t.meta.Index > r.snapIndex && t.meta.Index <= r.lastLogIndex
+	if metaIndexExists {
+		if err := r.storage.deleteLTE(t.meta); err != nil {
+			// send to trace
+			assert(false, err.Error())
+		}
+	}
+	t.req.reply(t.meta)
 }

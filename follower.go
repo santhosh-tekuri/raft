@@ -48,6 +48,9 @@ func (r *Raft) runFollower() {
 				// we got new config, which allows us to start election
 				timeoutCh = afterRandomTimeout(r.hbTimeout)
 			}
+
+		case t := <-r.snapTakenCh:
+			r.onSnapshotTaken(t)
 		}
 	}
 }

@@ -102,9 +102,14 @@ func (ldr *leadership) runLoop() {
 		}
 
 		// respond to any pending user entries
-		lostLeaderShip := NotLeaderError{ldr.leaderAddr(), true}
+		var err error
+		if ldr.shutdownCalled() {
+			err = ErrServerClosed
+		} else {
+			err = NotLeaderError{ldr.leaderAddr(), true}
+		}
 		for e := ldr.newEntries.Front(); e != nil; e = e.Next() {
-			e.Value.(NewEntry).task.reply(lostLeaderShip)
+			e.Value.(NewEntry).task.reply(err)
 		}
 
 		// wait for replicators to finish
@@ -175,6 +180,9 @@ func (ldr *leadership) runLoop() {
 
 		case t := <-ldr.taskCh:
 			ldr.executeTask(t)
+
+		case t := <-ldr.snapTakenCh:
+			ldr.onSnapshotTaken(t)
 		}
 	}
 }

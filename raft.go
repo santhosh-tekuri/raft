@@ -58,7 +58,7 @@ type Raft struct {
 
 	fsm           FSM
 	fsmTaskCh     chan Task
-	snapTaskCh    chan takeSnapshot
+	snapTakenCh   chan snapTaken // non nil only when snapshot task is in progress
 	snapThreshold uint64
 
 	// persistent state
@@ -100,7 +100,6 @@ func New(id ID, opt Options, fsm FSM, storage Storage) (*Raft, error) {
 		server:          newServer(2 * opt.HeartbeatTimeout),
 		fsm:             fsm,
 		fsmTaskCh:       make(chan Task, 128), // todo configurable capacity
-		snapTaskCh:      make(chan takeSnapshot),
 		snapThreshold:   opt.SnapshotThreshold,
 		storage:         store,
 		state:           Follower,
@@ -109,8 +108,8 @@ func New(id ID, opt Options, fsm FSM, storage Storage) (*Raft, error) {
 		trace:           opt.Trace,
 		dialFn:          net.DialTimeout,
 		connPools:       make(map[ID]*connPool),
-		taskCh:          make(chan Task, 100),     // todo configurable capacity
-		newEntryCh:      make(chan NewEntry, 100), // todo configurable capacity
+		taskCh:          make(chan Task),
+		newEntryCh:      make(chan NewEntry),
 		shutdownCh:      make(chan struct{}),
 	}
 
@@ -165,7 +164,7 @@ func (r *Raft) Serve(l net.Listener) error {
 	r.shutdownMu.Lock()
 	shutdownCalled := r.shutdownCalled()
 	if !shutdownCalled {
-		r.wg.Add(3)
+		r.wg.Add(2)
 	}
 	r.shutdownMu.Unlock()
 	if shutdownCalled {
@@ -189,8 +188,6 @@ func (r *Raft) Serve(l net.Listener) error {
 	}
 
 	go r.stateLoop()
-	go r.snapLoop()
-
 	return r.server.serve(l)
 }
 
@@ -208,13 +205,20 @@ func (r *Raft) Shutdown() *sync.WaitGroup {
 }
 
 func (r *Raft) stateLoop() {
-	defer r.wg.Done()
+	defer func() {
+		if r.snapTakenCh != nil {
+			// wait for snapshot to complete
+			r.onSnapshotTaken(<-r.snapTakenCh)
+		}
+		defer r.wg.Done()
+	}()
 	for {
 		select {
 		case <-r.shutdownCh:
 			debug(r, "stateLoop shutdown")
 			r.server.shutdown()
 			debug(r, "server shutdown")
+			close(r.fsmTaskCh)
 			close(r.newEntryCh)
 			close(r.taskCh)
 			return

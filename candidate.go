@@ -63,6 +63,9 @@ func (r *Raft) runCandidate() {
 
 		case t := <-r.taskCh:
 			r.executeTask(t)
+
+		case t := <-r.snapTakenCh:
+			r.onSnapshotTaken(t)
 		}
 	}
 }
