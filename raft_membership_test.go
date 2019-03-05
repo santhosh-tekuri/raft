@@ -58,8 +58,8 @@ func TestRaft_AddNonVoter_committedByAll(t *testing.T) {
 	// launch new raft instance M4, without bootstrap
 	m4 := c.launch(1, false)["M4"]
 
-	configRelated := c.registerForEvent(configRelated, c.exclude(m4)...)
-	defer c.unregisterObserver(configRelated)
+	configRelated := c.registerFor(configRelated, c.exclude(m4)...)
+	defer c.unregister(configRelated)
 
 	// add M4 as nonvoter, wait for success reply
 	if _, err := waitTask(ldr, AddNonvoter(m4.ID(), "M4:8888", false), 0); err != nil {
@@ -194,8 +194,8 @@ func TestRaft_AddNonVoter_nonVoterReconnects_catchesUp(t *testing.T) {
 	}
 
 	// now disconnect nonvoter m4
-	m4StateChanged := c.registerForEvent(stateChanged, m4)
-	defer c.unregisterObserver(m4StateChanged)
+	m4StateChanged := c.registerFor(stateChanged, m4)
+	defer c.unregister(m4StateChanged)
 	c.disconnect(m4)
 
 	// ensure that m4 remains as follower and does not become candidate

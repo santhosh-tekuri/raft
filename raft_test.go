@@ -213,8 +213,8 @@ func TestRaft_Bootstrap(t *testing.T) {
 	defer leaktest.Check(t)()
 	c := newCluster(t)
 
-	electionAborted := c.registerForEvent(electionAborted)
-	defer c.unregisterObserver(electionAborted)
+	electionAborted := c.registerFor(electionAborted)
+	defer c.unregister(electionAborted)
 
 	// launch cluster without bootstrapping
 	c.launch(3, false)
@@ -334,22 +334,12 @@ func newCluster(t *testing.T) *cluster {
 		heartbeatTimeout: heartbeatTimeout,
 		longTimeout:      5 * time.Second,
 		commitTimeout:    5 * time.Millisecond,
-		observers:        make(map[int]observer),
+		events:           &events{observers: make(map[int]observer)},
 	}
 	c.opt = Options{
 		HeartbeatTimeout:   heartbeatTimeout,
 		LeaderLeaseTimeout: heartbeatTimeout,
-		Trace: Trace{
-			StateChanged:    c.onStateChanged,
-			ElectionStarted: c.onElectionStarted,
-			ElectionAborted: c.onElectionAborted,
-			ConfigChanged:   c.onConfigChanged,
-			ConfigCommitted: c.onConfigCommitted,
-			ConfigReverted:  c.onConfigReverted,
-			Unreachable:     c.onUnreachable,
-			sending:         c.sending,
-			received:        c.received,
-		},
+		Trace:              c.events.trace(),
 	}
 	return c
 }
@@ -363,10 +353,7 @@ type cluster struct {
 	longTimeout      time.Duration
 	commitTimeout    time.Duration
 	opt              Options
-
-	observersMu sync.RWMutex
-	observerID  int
-	observers   map[int]observer
+	*events
 }
 
 func (c *cluster) inmemStorage(r *Raft) *inmemStorage {
@@ -386,142 +373,6 @@ loop:
 		members = append(members, r)
 	}
 	return members
-}
-
-func (c *cluster) registerObserver(filter func(event) bool) observer {
-	c.observersMu.Lock()
-	defer c.observersMu.Unlock()
-	ob := observer{
-		filter: filter,
-		ch:     make(chan event, 1000),
-		id:     c.observerID,
-	}
-	c.observers[ob.id] = ob
-	c.observerID++
-	return ob
-}
-
-func (c *cluster) registerForEvent(typ eventType, rr ...*Raft) observer {
-	typeMatches := func(want, got eventType) bool {
-		return got == want
-	}
-	if typ == configRelated {
-		typeMatches = func(want, got eventType) bool {
-			return got == configChanged ||
-				got == configCommitted ||
-				got == configReverted
-		}
-	}
-	return c.registerObserver(func(e event) bool {
-		if typeMatches(typ, e.typ) {
-			if len(rr) == 0 {
-				return true
-			}
-			for _, r := range rr {
-				if e.src == r.ID() {
-					return true
-				}
-			}
-		}
-		return false
-	})
-}
-
-func (c *cluster) unregisterObserver(ob observer) {
-	c.observersMu.Lock()
-	defer c.observersMu.Unlock()
-	delete(c.observers, ob.id)
-}
-
-func (c *cluster) sendEvent(e event) {
-	c.observersMu.RLock()
-	defer c.observersMu.RUnlock()
-	for _, ob := range c.observers {
-		if ob.filter(e) {
-			ob.ch <- e
-		}
-	}
-}
-
-func (c *cluster) onFMSChanged(id ID, len uint64) {
-	c.sendEvent(event{
-		src:    id,
-		typ:    fsmChanged,
-		fsmLen: len,
-	})
-}
-
-func (c *cluster) onStateChanged(info Info) {
-	c.sendEvent(event{
-		src:   info.ID(),
-		typ:   stateChanged,
-		state: info.State(),
-	})
-}
-
-func (c *cluster) onElectionStarted(info Info) {
-	c.sendEvent(event{
-		src: info.ID(),
-		typ: electionStarted,
-	})
-}
-
-func (c *cluster) onElectionAborted(info Info, reason string) {
-	c.sendEvent(event{
-		src: info.ID(),
-		typ: electionAborted,
-	})
-}
-
-func (c *cluster) onConfigChanged(info Info) {
-	c.sendEvent(event{
-		src:     info.ID(),
-		typ:     configChanged,
-		configs: info.Configs(),
-	})
-}
-
-func (c *cluster) onConfigCommitted(info Info) {
-	c.sendEvent(event{
-		src:     info.ID(),
-		typ:     configCommitted,
-		configs: info.Configs(),
-	})
-}
-
-func (c *cluster) onConfigReverted(info Info) {
-	c.sendEvent(event{
-		src:     info.ID(),
-		typ:     configReverted,
-		configs: info.Configs(),
-	})
-}
-
-func (c *cluster) onUnreachable(info Info, id ID, since time.Time) {
-	c.sendEvent(event{
-		src:    info.ID(),
-		typ:    unreachable,
-		target: id,
-		since:  since,
-	})
-}
-
-func (c *cluster) sending(from, to ID, msg message) {
-	c.sendEvent(event{
-		src:     from,
-		typ:     sending,
-		target:  to,
-		msgType: fmt.Sprintf("%T", msg),
-	})
-}
-
-func (c *cluster) received(by, from ID, msg message) {
-	c.sendEvent(event{
-		src:     by,
-		typ:     received,
-		target:  from,
-		msgType: fmt.Sprintf("%T", msg),
-	})
 }
 
 func id2Addr(id ID) string {
@@ -545,7 +396,7 @@ func (c *cluster) launch(n int, bootstrap bool) map[ID]*Raft {
 				c.Fatalf("Storage.bootstrap failed: %v", err)
 			}
 		}
-		fsm := &fsmMock{id: node.ID, changed: c.onFMSChanged}
+		fsm := &fsmMock{id: node.ID, changed: c.events.onFMSChanged}
 		r, err := New(node.ID, c.opt, fsm, storage)
 		if err != nil {
 			c.Fatal(err)
@@ -584,7 +435,7 @@ func (c *cluster) restart(r *Raft) *Raft {
 	r.Shutdown().Wait()
 	Debug(r.ID(), "<< shutdown()")
 
-	newFSM := &fsmMock{id: r.ID(), changed: c.onFMSChanged}
+	newFSM := &fsmMock{id: r.ID(), changed: c.events.onFMSChanged}
 	storage := c.storage[string(r.ID())]
 	newr, err := New(r.ID(), c.opt, newFSM, storage)
 	if err != nil {
@@ -606,10 +457,10 @@ func (c *cluster) restart(r *Raft) *Raft {
 
 func (c *cluster) waitForStability(rr ...*Raft) {
 	c.Helper()
-	stateChanged := c.registerForEvent(stateChanged, rr...)
-	defer c.unregisterObserver(stateChanged)
-	electionStarted := c.registerForEvent(electionStarted, rr...)
-	defer c.unregisterObserver(electionStarted)
+	stateChanged := c.registerFor(stateChanged, rr...)
+	defer c.unregister(stateChanged)
+	electionStarted := c.registerFor(electionStarted, rr...)
+	defer c.unregister(electionStarted)
 
 	limitTimer := time.NewTimer(c.longTimeout)
 	electionTimer := time.NewTimer(4 * c.heartbeatTimeout)
@@ -686,8 +537,8 @@ func (c *cluster) waitForState(r *Raft, timeout time.Duration, states ...State) 
 		}
 		return false
 	}
-	stateChanged := c.registerForEvent(stateChanged)
-	defer c.unregisterObserver(stateChanged)
+	stateChanged := c.registerFor(stateChanged)
+	defer c.unregister(stateChanged)
 	if !stateChanged.waitFor(condition, timeout) {
 		c.Fatalf("waitForState(%s, %v) timeout", r.ID(), states)
 	}
@@ -706,8 +557,8 @@ func (c *cluster) waitForLeader(rr ...*Raft) *Raft {
 		}
 		return false
 	}
-	stateChanged := c.registerForEvent(stateChanged)
-	defer c.unregisterObserver(stateChanged)
+	stateChanged := c.registerFor(stateChanged)
+	defer c.unregister(stateChanged)
 	if !stateChanged.waitFor(condition, c.longTimeout) {
 		c.Fatalf("waitForLeader: timeout")
 	}
@@ -727,8 +578,8 @@ func (c *cluster) waitFSMLen(fsmLen uint64, rr ...*Raft) {
 		}
 		return true
 	}
-	fsmChanged := c.registerForEvent(fsmChanged, rr...)
-	defer c.unregisterObserver(fsmChanged)
+	fsmChanged := c.registerFor(fsmChanged, rr...)
+	defer c.unregister(fsmChanged)
 	if !fsmChanged.waitFor(condition, c.longTimeout) {
 		c.Logf("fsmLen: want %d", fsmLen)
 		for _, r := range rr {
@@ -792,8 +643,8 @@ func (c *cluster) waitUnreachableDetected(ldr, failed *Raft) {
 	condition := func() bool {
 		return !ldr.Info().Replication()[failed.ID()].Unreachable.IsZero()
 	}
-	unreachable := c.registerForEvent(unreachable, ldr)
-	defer c.unregisterObserver(unreachable)
+	unreachable := c.registerFor(unreachable, ldr)
+	defer c.unregister(unreachable)
 	if !unreachable.waitFor(condition, c.longTimeout) {
 		c.Fatalf("waitUnreachableDetected: ldr %s failed %s", ldr.ID(), failed.ID())
 	}
@@ -915,6 +766,30 @@ func waitQuery(r *Raft, query string, timeout time.Duration) (fsmReply, error) {
 
 // trace ----------------------------------------------------------------------
 
+func (ob observer) waitFor(condition func() bool, timeout time.Duration) bool {
+	var timeoutCh <-chan time.Time
+	if timeout <= 0 {
+		timeoutCh = make(chan time.Time)
+	}
+	timeoutCh = time.After(timeout)
+
+	if condition() {
+		return true
+	}
+	for {
+		select {
+		case <-ob.ch:
+			if condition() {
+				return true
+			}
+		case <-timeoutCh:
+			return false
+		}
+	}
+}
+
+// events ---------------------------------------------
+
 type eventType int
 
 const (
@@ -944,35 +819,158 @@ type event struct {
 	msgType string
 }
 
+func (e event) matches(typ eventType, rr ...*Raft) bool {
+	if typ == configRelated {
+		switch e.typ {
+		case configChanged, configCommitted, configReverted:
+		default:
+			return false
+		}
+	} else if typ != e.typ {
+		return false
+	}
+
+	if len(rr) > 0 {
+		for _, r := range rr {
+			if e.src == r.ID() {
+				return true
+			}
+		}
+		return false
+	}
+	return true
+}
+
 type observer struct {
 	filter func(event) bool
 	ch     chan event
 	id     int
 }
 
-func (ob observer) waitFor(condition func() bool, timeout time.Duration) bool {
-	var timeoutCh <-chan time.Time
-	if timeout <= 0 {
-		timeoutCh = make(chan time.Time)
-	}
-	timeoutCh = time.After(timeout)
+type events struct {
+	observersMu sync.RWMutex
+	observerID  int
+	observers   map[int]observer
+}
 
-	if condition() {
-		return true
+func (ee *events) register(filter func(event) bool) observer {
+	ee.observersMu.Lock()
+	defer ee.observersMu.Unlock()
+	ob := observer{
+		filter: filter,
+		ch:     make(chan event, 1000),
+		id:     ee.observerID,
 	}
-	for {
-		select {
-		case <-ob.ch:
-			if condition() {
-				return true
-			}
-		case <-timeoutCh:
-			return false
+	ee.observers[ob.id] = ob
+	ee.observerID++
+	return ob
+}
+
+func (ee *events) registerFor(typ eventType, rr ...*Raft) observer {
+	return ee.register(func(e event) bool {
+		return e.matches(typ, rr...)
+	})
+}
+
+func (ee *events) unregister(ob observer) {
+	ee.observersMu.Lock()
+	defer ee.observersMu.Unlock()
+	delete(ee.observers, ob.id)
+}
+
+func (ee *events) sendEvent(e event) {
+	ee.observersMu.RLock()
+	defer ee.observersMu.RUnlock()
+	for _, ob := range ee.observers {
+		if ob.filter(e) {
+			ob.ch <- e
 		}
 	}
 }
 
-// ---------------------------------------------
+func (ee *events) onFMSChanged(id ID, len uint64) {
+	ee.sendEvent(event{
+		src:    id,
+		typ:    fsmChanged,
+		fsmLen: len,
+	})
+}
+
+func (ee *events) trace() (trace Trace) {
+	trace.StateChanged = func(info Info) {
+		ee.sendEvent(event{
+			src:   info.ID(),
+			typ:   stateChanged,
+			state: info.State(),
+		})
+	}
+	trace.ElectionStarted = func(info Info) {
+		ee.sendEvent(event{
+			src: info.ID(),
+			typ: electionStarted,
+		})
+	}
+	trace.ElectionAborted = func(info Info, reason string) {
+		ee.sendEvent(event{
+			src: info.ID(),
+			typ: electionAborted,
+		})
+	}
+
+	trace.ConfigChanged = func(info Info) {
+		ee.sendEvent(event{
+			src:     info.ID(),
+			typ:     configChanged,
+			configs: info.Configs(),
+		})
+	}
+
+	trace.ConfigCommitted = func(info Info) {
+		ee.sendEvent(event{
+			src:     info.ID(),
+			typ:     configCommitted,
+			configs: info.Configs(),
+		})
+	}
+
+	trace.ConfigReverted = func(info Info) {
+		ee.sendEvent(event{
+			src:     info.ID(),
+			typ:     configReverted,
+			configs: info.Configs(),
+		})
+	}
+
+	trace.Unreachable = func(info Info, id ID, since time.Time) {
+		ee.sendEvent(event{
+			src:    info.ID(),
+			typ:    unreachable,
+			target: id,
+			since:  since,
+		})
+	}
+
+	trace.sending = func(from, to ID, msg message) {
+		ee.sendEvent(event{
+			src:     from,
+			typ:     sending,
+			target:  to,
+			msgType: fmt.Sprintf("%T", msg),
+		})
+	}
+
+	trace.received = func(by, from ID, msg message) {
+		ee.sendEvent(event{
+			src:     by,
+			typ:     received,
+			target:  from,
+			msgType: fmt.Sprintf("%T", msg),
+		})
+	}
+	return
+}
+
+// fsmMock ---------------------------------------------
 
 var errNoCommands = errors.New("no commands")
 var errNoCommandAt = errors.New("no command at index")
