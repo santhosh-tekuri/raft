@@ -172,6 +172,7 @@ func (r *Raft) Serve(l net.Listener) error {
 		return ErrServerClosed
 	}
 
+	debug(r, "starting....")
 	if r.trace.Starting != nil {
 		r.trace.Starting(r.liveInfo())
 	}
@@ -179,7 +180,7 @@ func (r *Raft) Serve(l net.Listener) error {
 	go r.fsmLoop()
 	// restore fsm from last snapshot, if present
 	if r.snapIndex > 0 {
-		req := fsmRestoreReq{task: newTask(), index: r.snapIndex}
+		req := fsmRestoreReq{task: newTask()}
 		r.fsmTaskCh <- req
 		<-req.Done()
 		if req.Err() != nil {

@@ -35,7 +35,7 @@ func (r *Raft) replyRPC(rpc *rpc) bool {
 }
 
 func (r *Raft) onVoteRequest(req *voteReq) *voteResp {
-	debug(r, "onVoteRequest", req.term, req.candidate, req.lastLogIndex, req.lastLogTerm)
+	debug(r, "received", req)
 	resp := &voteResp{
 		term:    r.term,
 		granted: false,
@@ -82,9 +82,6 @@ func (r *Raft) onVoteRequest(req *voteReq) *voteResp {
 }
 
 func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp {
-	if req.prevLogTerm < req.term || len(req.entries) > 0 { // to avoid printing heartbeat requests
-		debug(r, "onAppendEntries", req.term, req.prevLogIndex, req.prevLogTerm, len(req.entries))
-	}
 	resp := &appendEntriesResp{
 		term:         r.term,
 		success:      false,
@@ -93,6 +90,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp 
 
 	// reply false if older term
 	if req.term < r.term {
+		debug(r, "received", req)
 		debug(r, "rejectAppendEntries", "stale term")
 		return resp
 	}
@@ -111,7 +109,8 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp 
 	if req.prevLogIndex > 0 {
 		if req.prevLogIndex > r.lastLogIndex {
 			// no entry found
-			debug(r, "rejectAppendEntries", "noEntryFound", req.prevLogIndex, r.lastLogIndex)
+			debug(r, "received", req)
+			debug(r, "rejectAppendEntries", req.prevLogIndex, "entryNotFound, i have", r.lastLogIndex)
 			return resp
 		}
 
@@ -128,6 +127,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp 
 		}
 		if req.prevLogTerm != prevLogTerm {
 			// term did not match
+			debug(r, "received", req)
 			debug(r, "rejectAppendEntries", "term mismatch", req.prevLogTerm, prevLogTerm)
 			return resp
 		}
@@ -159,6 +159,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp 
 
 		// append new entries not already in the log
 		if len(newEntries) > 0 {
+			debug(r, "received", req)
 			debug(r, "log.appendN", "from:", newEntries[0].index, "n:", len(newEntries))
 			for _, e := range newEntries {
 				r.storage.appendEntry(e)
@@ -173,6 +174,8 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp 
 		}
 
 		resp.lastLogIndex = r.lastLogIndex
+	} else {
+		debug(r, "received heartbeat")
 	}
 
 	// If leaderCommit > commitIndex, set commitIndex =
@@ -197,15 +200,15 @@ func lastEntry(req *appendEntriesReq) (index, term uint64) {
 }
 
 func (r *Raft) onInstallSnapRequest(req *installSnapReq) (resp *installSnapResp, readErr error) {
-	debug(r, "onInstallSnapRequest", req.term, req.lastIndex, req.lastTerm, req.lastConfig)
+	debug(r, "received", req)
 
+	resp = &installSnapResp{term: r.term, success: false}
 	defer func() {
 		_, err := io.Copy(ioutil.Discard, req.snapshot)
 		if err != nil {
 			readErr = err
 		}
 	}()
-	resp = &installSnapResp{term: r.term, success: false}
 
 	// reply false if older term
 	if req.term < r.term {
@@ -248,44 +251,45 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq) (resp *installSnapResp,
 		return
 	}
 
-	// ask fsm to restore from this snapshot
-	restoreReq := fsmRestoreReq{task: newTask(), index: req.lastIndex}
-	r.fsmTaskCh <- restoreReq
-	<-restoreReq.Done()
-	if restoreReq.Err() != nil {
-		err = restoreReq.Err()
-		debug(r, "fsmRestore failed:", err)
-		return
-	}
-
-	r.snapIndex, r.snapTerm = meta.Index, meta.Term
-	r.changeConfig(meta.Config)
-	r.commitConfig()
-
-	if r.lastLogIndex <= meta.Index {
-		// we dont need any entries
-		debug(r, "deleting log entries if any")
-		if n := r.storage.entryCount(); n > 0 {
-			debug(r, "storage.deleteLTE", r.lastLogIndex)
-			if err := r.storage.deleteLTE(r.lastLogIndex); err != nil {
-				// send to trace
-				debug(r, "compactLogs failed:", err)
-				assert(false, "")
-			}
+	discardLog := true
+	metaIndexExists := meta.Index > r.snapIndex && meta.Index <= r.lastLogIndex
+	if metaIndexExists {
+		metaTerm, err := r.storage.getEntryTerm(meta.Index)
+		if err != nil {
+			panic(err)
 		}
-		r.lastLogIndex = meta.Index
-		r.firstLogIndex = meta.Index + 1
-	} else {
-		// retain entries if any beyond snapshot
-		if r.storage.hasEntry(meta.Index) {
-			debug(r, "storage.deleteLTE", meta.Index)
-			if err := r.storage.deleteLTE(meta.Index); err != nil {
-				// send to trace
-				debug(r, "compactLogs failed:", err)
-				assert(false, "")
+		termsMatched := metaTerm == meta.Term
+		if termsMatched {
+			// delete <=meta.index, but retain following it
+			if err = r.storage.deleteLTE(meta); err != nil {
+				assert(false, err.Error())
 			}
+			discardLog = false
 		}
 	}
+	if discardLog {
+		count := r.lastLogIndex - r.snapIndex
+		if err = r.storage.log.DeleteFirst(count); err != nil {
+			assert(false, err.Error())
+		}
+		r.lastLogIndex, r.lastLogTerm = meta.Index, meta.Term
+		r.snapIndex, r.snapTerm = meta.Index, meta.Term
+
+		// reset fsm from this snapshot
+		restoreReq := fsmRestoreReq{task: newTask()}
+		r.fsmTaskCh <- restoreReq
+		<-restoreReq.Done()
+		if restoreReq.Err() != nil {
+			err = restoreReq.Err()
+			debug(r, "fsmRestore failed:", err)
+			return
+		}
+
+		// load snapshot config as cluster configuration
+		r.changeConfig(meta.Config)
+		r.commitConfig()
+	}
+
 	resp.success = true
 	return
 }

@@ -2,7 +2,6 @@ package raft
 
 import (
 	"errors"
-	"fmt"
 	"time"
 )
 
@@ -286,7 +285,6 @@ type fsmSnapResp struct {
 
 type fsmRestoreReq struct {
 	*task
-	index uint64
 }
 
 // ------------------------------------------------------------------------
@@ -307,31 +305,17 @@ func (r *Raft) executeTask(t Task) {
 	case snapshotTaken:
 		if t.err != nil {
 			t.req.reply(t.err)
-		} else {
-			t.req.reply(t.meta)
-			ok := func() bool {
-				if r.ldr != nil { // repls are reading snapIndex & snapTerm
-					r.snapMu.Lock()
-					defer r.snapMu.Unlock()
-				}
-				if t.meta.Index < r.snapIndex {
-					// this happens when we started taking snapshot, before we
-					// finish we got installSnapReq from leader
-					// our motivation is to keep latest snapIndex value cached
-					return false
-				}
-				r.snapIndex, r.snapTerm = t.meta.Index, t.meta.Term
-				return true
-			}()
-			if !ok {
-				return
-			}
-			// todo: we can check repl status and accordingly decide how much to delete
-			if err := r.storage.deleteLTE(t.meta.Index); err != nil {
+			return
+		}
+		// todo: we can check repl status and accordingly decide how much to delete
+		metaIndexExists := t.meta.Index > r.snapIndex && t.meta.Index <= r.lastLogIndex
+		if metaIndexExists {
+			if err := r.storage.deleteLTE(t.meta); err != nil {
 				// send to trace
-				fmt.Println("compactLogs failed:", err)
+				assert(false, err.Error())
 			}
 		}
+		t.req.reply(t.meta)
 	case inspect:
 		t.fn(liveInfo{r: r})
 		t.reply(nil)

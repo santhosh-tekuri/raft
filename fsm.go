@@ -26,7 +26,7 @@ func (r *Raft) fsmLoop() {
 	for {
 		select {
 		case <-r.shutdownCh:
-			debug(r, "fsmLoop shutdown")
+			debug(r.id, "fsmLoop shutdown")
 			return
 		case t := <-r.fsmTaskCh:
 			switch t := t.(type) {
@@ -62,23 +62,23 @@ func (r *Raft) fsmLoop() {
 					state: state,
 				})
 			case fsmRestoreReq:
-				meta, sr, err := r.snapshots.Open(t.index)
+				meta, sr, err := r.snapshots.Open()
 				if err != nil {
-					debug(r, "snapshots.Open failed", t.index, err)
+					debug(r, "snapshots.Open failed", err)
 					// send to trace
 					t.reply(err)
 					continue
 				}
-				defer sr.Close()
 				if err = r.fsm.RestoreFrom(sr); err != nil {
-					debug(r, "fsm.restore failed", t.index, err)
+					debug(r, "fsm.restore failed", err)
 					// send to trace
 					t.reply(err)
-					continue
+				} else {
+					updateIndex, updateTerm = meta.Index, meta.Term
+					debug(r, "restored snapshot", meta.Index)
+					t.reply(nil)
 				}
-				updateIndex, updateTerm = t.index, meta.Term
-				t.reply(nil)
-				debug(r, "restored snapshot", t.index)
+				_ = sr.Close()
 			}
 		}
 	}

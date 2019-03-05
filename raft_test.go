@@ -569,9 +569,11 @@ func (c *cluster) launch(n int, bootstrap bool) map[ID]*Raft {
 
 func (c *cluster) shutdown(rr ...*Raft) {
 	if len(rr) == 0 {
+		Debug("<<----------------------------------shutting down cluster")
 		rr = c.exclude()
 	}
 	for _, r := range rr {
+		Debug("<<----------------------------------shutting down", r.ID())
 		r.Shutdown().Wait()
 		Debug(r.ID(), "<< shutdown()")
 	}
@@ -597,6 +599,7 @@ func (c *cluster) restart(r *Raft) *Raft {
 		c.Fatal(err)
 	}
 	c.rr[string(r.ID())] = newr
+	Debug("<<----------------------------------restarting", r.ID())
 	go newr.Serve(l)
 	return newr
 }
@@ -863,6 +866,14 @@ func waitBootstrap(r *Raft, nodes map[ID]Node, timeout time.Duration) error {
 	return err
 }
 
+func waitAddNonVoter(ldr *Raft, id ID, promote bool) error {
+	t := AddNonvoter(id, id2Addr(id), promote)
+	if _, err := waitTask(ldr, t, 0); err != nil {
+		return err
+	}
+	return nil
+}
+
 func waitInspect(r *Raft, fn func(Info)) {
 	_, _ = waitTask(r, Inspect(fn), 0)
 }
@@ -1089,17 +1100,6 @@ type inmemStorage struct {
 	snapshot *bytes.Buffer
 }
 
-func (s *inmemStorage) numEntries() int {
-	s.muLog.RLock()
-	defer s.muLog.RUnlock()
-	return len(s.entries)
-}
-
-func (s *inmemStorage) numSnaps() int {
-	snaps, _ := s.List()
-	return len(snaps)
-}
-
 func (s *inmemStorage) GetVote() (term uint64, vote string, err error) {
 	s.muStable.RLock()
 	defer s.muStable.RUnlock()
@@ -1124,6 +1124,16 @@ func (s *inmemStorage) SetConfig(committed, latest uint64) error {
 	defer s.muStable.Unlock()
 	s.confCommitted, s.confLatest = committed, latest
 	return nil
+}
+
+func (s *inmemStorage) numEntries() int {
+	s.muLog.RLock()
+	defer s.muLog.RUnlock()
+	return len(s.entries)
+}
+
+func (s *inmemStorage) Count() (uint64, error) {
+	return uint64(s.numEntries()), nil
 }
 
 func (s *inmemStorage) Empty() (bool, error) {
@@ -1186,6 +1196,13 @@ func (s *inmemStorage) DeleteLast(n uint64) error {
 	return nil
 }
 
+func (s *inmemStorage) numSnaps() int {
+	if s.snapMeta.Index == 0 {
+		return 0
+	}
+	return 1
+}
+
 type inmemSink struct {
 	s    *inmemStorage
 	meta SnapshotMeta
@@ -1202,6 +1219,9 @@ func (s *inmemSink) Done(err error) (SnapshotMeta, error) {
 }
 
 func (s *inmemStorage) New(index, term uint64, config Config) (SnapshotSink, error) {
+	if index < s.snapMeta.Index {
+		panic("i have latest snapshot")
+	}
 	return &inmemSink{
 		s: s,
 		meta: SnapshotMeta{
@@ -1213,23 +1233,13 @@ func (s *inmemStorage) New(index, term uint64, config Config) (SnapshotSink, err
 	}, nil
 }
 
-func (s *inmemStorage) List() ([]uint64, error) {
-	if s.snapMeta.Index == 0 {
-		return nil, nil
-	}
-	return []uint64{s.snapMeta.Index}, nil
-}
-
-func (s *inmemStorage) Meta(index uint64) (SnapshotMeta, error) {
-	if index != s.snapMeta.Index {
-		return SnapshotMeta{}, fmt.Errorf("no snapshot found for index %d", index)
-	}
+func (s *inmemStorage) Meta() (SnapshotMeta, error) {
 	return s.snapMeta, nil
 }
 
-func (s *inmemStorage) Open(index uint64) (SnapshotMeta, io.ReadCloser, error) {
-	if index != s.snapMeta.Index {
-		return SnapshotMeta{}, nil, fmt.Errorf("no snapshot found for index %d", index)
+func (s *inmemStorage) Open() (SnapshotMeta, io.ReadCloser, error) {
+	if s.snapMeta.Index == 0 {
+		panic("no snapshots")
 	}
 	return s.snapMeta, ioutil.NopCloser(bytes.NewReader(s.snapshot.Bytes())), nil
 }

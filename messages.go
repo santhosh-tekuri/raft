@@ -122,6 +122,10 @@ type voteReq struct {
 func (req *voteReq) getTerm() uint64  { return req.term }
 func (req *voteReq) rpcType() rpcType { return rpcVote }
 func (req *voteReq) from() ID         { return req.candidate }
+func (req *voteReq) String() string {
+	format := "voteReq{term:%d, candidate:%s, last:(%d,%d)}"
+	return fmt.Sprintf(format, req.term, req.candidate, req.lastLogIndex, req.lastLogTerm)
+}
 
 func (req *voteReq) decode(r io.Reader) error {
 	var err error
@@ -204,6 +208,10 @@ type appendEntriesReq struct {
 func (req *appendEntriesReq) getTerm() uint64  { return req.term }
 func (req *appendEntriesReq) rpcType() rpcType { return rpcAppendEntries }
 func (req *appendEntriesReq) from() ID         { return req.leader }
+func (req *appendEntriesReq) String() string {
+	format := "appendEntriesReq{term:%d, prev:(%d,%d), #entries:%d}"
+	return fmt.Sprintf(format, req.term, req.prevLogIndex, req.prevLogTerm, len(req.entries))
+}
 
 func (req *appendEntriesReq) decode(r io.Reader) error {
 	var err error
@@ -324,6 +332,10 @@ type installSnapReq struct {
 func (req *installSnapReq) getTerm() uint64  { return req.term }
 func (req *installSnapReq) rpcType() rpcType { return rpcInstallSnap }
 func (req *installSnapReq) from() ID         { return req.leader }
+func (req *installSnapReq) String() string {
+	format := "installSnapReq{term:%d, last:(%d,%d), size:%d}"
+	return fmt.Sprintf(format, req.term, req.lastIndex, req.lastIndex, req.size)
+}
 
 func (req *installSnapReq) decode(r io.Reader) error {
 	var err error

@@ -14,16 +14,7 @@ type Vars interface {
 }
 
 type Log interface {
-	Empty() (bool, error)
-
-	// First returns first entry.
-	// This is never called on empty log.
-	First() ([]byte, error)
-
-	// Last returns last entry.
-	// This is never called on empty log.
-	Last() ([]byte, error)
-
+	Count() (uint64, error)
 	Get(offset uint64) ([]byte, error)
 	Append(entry []byte) error
 	DeleteFirst(n uint64) error
@@ -32,9 +23,8 @@ type Log interface {
 
 type Snapshots interface {
 	New(index, term uint64, config Config) (SnapshotSink, error)
-	List() ([]uint64, error)
-	Meta(index uint64) (SnapshotMeta, error)
-	Open(index uint64) (SnapshotMeta, io.ReadCloser, error)
+	Meta() (SnapshotMeta, error)
+	Open() (SnapshotMeta, io.ReadCloser, error)
 }
 
 type SnapshotMeta struct {
@@ -65,11 +55,9 @@ type storage struct {
 	term     uint64
 	votedFor ID
 
-	log             Log
-	firstLogIndexMu sync.RWMutex // todo
-	firstLogIndex   uint64
-	lastLogIndex    uint64
-	lastLogTerm     uint64
+	log          Log
+	lastLogIndex uint64
+	lastLogTerm  uint64
 
 	snapshots Snapshots
 	snapMu    sync.RWMutex // todo
@@ -98,57 +86,29 @@ func (s *storage) init() error {
 	s.term, s.votedFor = term, ID(vote)
 
 	// init snapshots ---------------
-	snaps, err := s.snapshots.List()
+	meta, err := s.snapshots.Meta()
 	if err != nil {
 		return err
 	}
-	var snapMeta SnapshotMeta
-	if len(snaps) > 0 {
-		snapMeta, err = s.snapshots.Meta(snaps[0])
-		if err != nil {
-			return err
-		}
-		s.snapIndex, s.snapTerm = snapMeta.Index, snapMeta.Term
-	}
+	s.snapIndex, s.snapTerm = meta.Index, meta.Term
 
 	// init log ---------------------
-	empty, err := s.log.Empty()
+	count, err := s.log.Count()
 	if err != nil {
-		return fmt.Errorf("raft: Log.Empty failed: %v", err)
+		return err
 	}
-	if empty {
-		if s.snapIndex > 0 {
-			s.firstLogIndex, s.lastLogIndex, s.lastLogTerm = s.snapIndex+1, s.snapIndex, s.snapTerm
-		} else {
-			s.firstLogIndex, s.lastLogIndex, s.lastLogTerm = 1, 0, 0
-		}
+	s.lastLogIndex = s.snapIndex + count
+	if count == 0 {
+		s.lastLogTerm = s.snapTerm
 	} else {
-		getEntry := func(get func() ([]byte, error)) (*entry, error) {
-			b, err := get()
-			if err != nil {
-				return nil, fmt.Errorf("raft: Log.GetFirst/GetLast failed: %v", err)
-			}
-			e := &entry{}
-			if err = e.decode(bytes.NewReader(b)); err != nil {
-				return nil, err
-			}
-			return e, nil
-		}
-		var first, last *entry
-		if first, err = getEntry(s.log.First); err != nil {
-			return err
-		}
-		if last, err = getEntry(s.log.Last); err != nil {
-			return err
-		}
-		s.firstLogIndex, s.lastLogIndex, s.lastLogTerm = first.index, last.index, last.term
+		s.lastLogTerm, _ = s.getEntryTerm(s.lastLogIndex)
 	}
 
 	// load configs ----------------
 	need := 2
-	for i := s.lastLogIndex; i >= s.firstLogIndex; i-- {
+	for i := s.lastLogIndex; i > s.snapIndex; i-- {
 		e := &entry{}
-		s.getEntry(i, e)
+		_ = s.getEntry(i, e)
 		if e.typ == entryConfig {
 			if need == 2 {
 				err = s.configs.Latest.decode(e)
@@ -164,14 +124,12 @@ func (s *storage) init() error {
 			}
 		}
 	}
-	if s.snapIndex > 0 {
-		if need == 2 {
-			s.configs.Latest = snapMeta.Config
-			need--
-		}
-		if need == 1 {
-			s.configs.Committed = snapMeta.Config
-		}
+	if need == 2 {
+		s.configs.Latest = meta.Config
+		need--
+	}
+	if need == 1 {
+		s.configs.Committed = meta.Config
 	}
 
 	return nil
@@ -191,17 +149,11 @@ func (s *storage) setVotedFor(id ID) {
 	s.votedFor = id
 }
 
-func (s *storage) entryCount() uint64 {
-	if s.firstLogIndex > s.lastLogIndex {
-		return 0
-	}
-	return s.lastLogIndex - s.firstLogIndex + 1
-}
-
+// note: this method assumes that index<=lastLogIndex
 func (s *storage) hasEntry(index uint64) bool {
-	s.firstLogIndexMu.RLock()
-	defer s.firstLogIndexMu.RUnlock()
-	return index >= s.firstLogIndex
+	s.snapMu.RLock()
+	defer s.snapMu.RUnlock()
+	return index > s.snapIndex
 }
 
 func (s *storage) getEntryTerm(index uint64) (uint64, error) {
@@ -213,13 +165,13 @@ func (s *storage) getEntryTerm(index uint64) (uint64, error) {
 // called by raft.runLoop and repl.runLoop. append call can be called during this
 // never called with invalid index
 func (s *storage) getEntry(index uint64, e *entry) error {
-	s.firstLogIndexMu.RLock()
-	if index < s.firstLogIndex {
+	s.snapMu.RLock()
+	if index <= s.snapIndex {
 		return errNoEntryFound
 	}
-	offset := index - s.firstLogIndex
+	offset := index - s.snapIndex - 1
 	b, err := s.log.Get(offset)
-	s.firstLogIndexMu.RUnlock()
+	s.snapMu.RUnlock()
 	if err != nil {
 		panic(fmt.Sprintf("raft: log.get(%d) failed: %v", index, err))
 	}
@@ -239,21 +191,21 @@ func (s *storage) appendEntry(e *entry) {
 		panic(fmt.Sprintf("raft: log.append(%d): %v", e.index, err))
 	}
 	if e.index != s.lastLogIndex+1 {
-		panic("log.append: entry.index!=lastIndex+1")
+		assert(false, fmt.Sprintf("log.append: mismatch %d, %d", e.index, s.lastLogIndex))
 	}
 	s.lastLogIndex, s.lastLogTerm = e.index, e.term
 }
 
 // never called with invalid index
-func (s *storage) deleteLTE(index uint64) error {
-	s.firstLogIndexMu.Lock()
-	defer s.firstLogIndexMu.Unlock()
-	debug("deleteLTE", index, s.firstLogIndex, s.lastLogIndex)
-	n := index - s.firstLogIndex + 1
+func (s *storage) deleteLTE(meta SnapshotMeta) error {
+	s.snapMu.Lock()
+	defer s.snapMu.Unlock()
+	debug("deleteLTE", meta.Index, s.snapIndex, s.lastLogIndex)
+	n := meta.Index - s.snapIndex
 	if err := s.log.DeleteFirst(n); err != nil {
 		return fmt.Errorf("raft: log.deleteFirst(%d) failed: %v", n, err)
 	}
-	s.firstLogIndex = index + 1
+	s.snapIndex, s.snapTerm = meta.Index, meta.Term
 	return nil
 }
 

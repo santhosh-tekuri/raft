@@ -1,7 +1,6 @@
 package raft
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -49,46 +48,62 @@ func (repl *replication) runLoop(req *appendEntriesReq) {
 	var noContact time.Time
 
 	debug(repl, "repl.start ldrLastIndex:", ldrLastIndex, "matchIndex:", matchIndex, "nextIndex:", nextIndex)
+	var reqMsg request
+	var respMsg message
+	var sendEntries bool
+mainLoop:
 	for {
-		// find prevEntry ----------------------------
-		prevIndex, prevTerm, err := nextIndex-1, uint64(0), errNoEntryFound
-		if prevIndex == 0 {
-			prevTerm, err = 0, nil
-		} else if prevIndex < repl.ldrStartIndex {
-			prevTerm, err = repl.storage.getEntryTerm(prevIndex)
-		} else if repl.storage.hasEntry(prevIndex) {
-			prevTerm, err = req.term, nil
-		}
-		if err == errNoEntryFound {
-			prevIndex, prevTerm = repl.getSnapLog()
-		} else if err != nil {
-			panic(err)
-		}
-
 		// prepare request----------------------------
-		var reqMsg request
-		var respMsg message
+		debug(repl, "matchIndex", matchIndex, "nextIndex", nextIndex)
+		assert(matchIndex < nextIndex, "%s assert %d<%d", repl, matchIndex, nextIndex)
+		if repl.storage.hasEntry(nextIndex) {
+			req.prevLogIndex = nextIndex - 1
 
-		if prevIndex == nextIndex-1 {
-			req.prevLogIndex, req.prevLogTerm = prevIndex, prevTerm
+			// fill req.prevLogTerm
+			if req.prevLogIndex == 0 {
+				req.prevLogTerm = 0
+			} else if req.prevLogIndex >= repl.ldrStartIndex { // being smart!!!
+				req.prevLogTerm = req.term
+			} else if snapIndex, snapTerm := repl.getSnapLog(); req.prevLogIndex == snapIndex {
+				req.prevLogTerm = snapTerm
+			} else {
+				prevTerm, err := repl.storage.getEntryTerm(req.prevLogIndex)
+				if err == errNoEntryFound {
+					continue mainLoop // leader compacted logs
+				} else if err != nil {
+					assert(false, err.Error())
+				}
+				req.prevLogTerm = prevTerm
+			}
+
 			reqMsg, respMsg = req, &appendEntriesResp{}
 
-			var n uint64 // number of entries to be sent
-			if matchIndex+1 == nextIndex {
+			var n uint64
+			if sendEntries {
+				assert(matchIndex+1 == nextIndex, "%s assert %d+1!=%d", repl, matchIndex, nextIndex)
 				n = min(ldrLastIndex-matchIndex, maxAppendEntries)
 			}
-			if n == 0 {
-				req.entries = nil
-			} else {
+			if n > 0 {
 				req.entries = make([]*entry, n)
 				for i := range req.entries {
 					req.entries[i] = &entry{}
-					repl.storage.getEntry(nextIndex+uint64(i), req.entries[i])
+					err := repl.storage.getEntry(nextIndex+uint64(i), req.entries[i])
+					if err == errNoEntryFound {
+						continue mainLoop // leader compacted logs
+					} else if err != nil {
+						assert(false, err.Error())
+					}
+				}
+				debug(repl, "sending", req)
+			} else {
+				req.entries = nil
+				if sendEntries {
+					debug(repl, "sending heartbeat")
 				}
 			}
 		} else {
-			debug(repl, "preparing installSnapReq")
-			meta, snapshot, err := repl.storage.snapshots.Open(prevIndex)
+			debug(repl, nextIndex, "is not in log, preparing installSnapReq")
+			meta, snapshot, err := repl.storage.snapshots.Open()
 			if err != nil {
 				panic(err)
 			}
@@ -107,7 +122,7 @@ func (repl *replication) runLoop(req *appendEntriesReq) {
 		// send request ----------------------------------
 		var failures uint64
 		for {
-			err = repl.doRPC(reqMsg, respMsg)
+			err := repl.doRPC(reqMsg, respMsg)
 			if err != nil {
 				if noContact.IsZero() {
 					noContact = time.Now()
@@ -140,43 +155,36 @@ func (repl *replication) runLoop(req *appendEntriesReq) {
 		// process response ------------------------------
 		if reqMsg.rpcType() == rpcAppendEntries {
 			resp := respMsg.(*appendEntriesResp)
+			sendEntries = resp.success
 			if resp.success {
 				old := matchIndex
-				if len(req.entries) == 0 {
-					matchIndex = req.prevLogIndex
-				} else {
-					matchIndex = resp.lastLogIndex
-					nextIndex = matchIndex + 1
-				}
+				matchIndex, _ = lastEntry(req)
+				nextIndex = matchIndex + 1
 				if matchIndex != old {
 					debug(repl, "matchIndex:", matchIndex)
 					repl.notifyLdr(matchIndex, noContact)
 				}
 			} else {
-				if matchIndex+1 != nextIndex {
-					nextIndex = max(min(nextIndex-1, resp.lastLogIndex+1), 1)
-					debug(repl, "nextIndex:", nextIndex)
-				} else {
-					// todo: notify leader, that we stopped and dont panic
-					assert(false, fmt.Sprintf("Raft: faulty follower %s. remove it from cluster", repl.status.id))
-				}
+				nextIndex = min(nextIndex-1, resp.lastLogIndex+1)
+				debug(repl, "nextIndex:", nextIndex)
+				assert(matchIndex < nextIndex, "%s assert %d<%d => faulty follower", repl, matchIndex, nextIndex)
 			}
 		} else {
 			req, resp := reqMsg.(*installSnapReq), respMsg.(*installSnapResp)
+			sendEntries = resp.success
 			if resp.success {
-				nextIndex = req.lastIndex + 1
 				matchIndex = req.lastIndex
+				nextIndex = matchIndex + 1
 				debug(repl, "matchIndex:", matchIndex)
 				repl.notifyLdr(matchIndex, noContact)
 			} else {
-				panic("faulty follower: installSnapshot failed")
+				assert(false, "%s installSnapshot failed", repl)
 			}
 		}
 
-		if matchIndex == ldrLastIndex {
-			// nothing to replicate. start heartbeat timer
+		if sendEntries && matchIndex == ldrLastIndex {
+			// nothing to send. start heartbeat timer
 			select {
-
 			case <-repl.stopCh:
 				return
 			case update := <-repl.ldrUpdateCh:
