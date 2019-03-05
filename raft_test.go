@@ -237,8 +237,8 @@ func TestRaft_Bootstrap(t *testing.T) {
 
 	// bootstrap one of the nodes
 	nodes := make(map[ID]Node, 3)
-	for id, r := range c.rr {
-		nodes[r.ID()] = Node{ID: r.ID(), Addr: id + ":8888", Voter: true}
+	for _, r := range c.rr {
+		nodes[r.ID()] = Node{ID: r.ID(), Addr: id2Addr(r.ID()), Voter: true}
 	}
 	if err := waitBootstrap(c.rr["M1"], nodes, c.longTimeout); err != nil {
 		t.Fatal(err)
@@ -314,6 +314,14 @@ func TestMain(m *testing.M) {
 
 // ---------------------------------------------
 
+func id2Addr(id ID) string {
+	return string(id) + ":8888"
+}
+
+func (c *cluster) inmemStorage(r *Raft) *inmemStorage {
+	return r.storage.log.(*inmemStorage)
+}
+
 func launchCluster(t *testing.T, n int) (c *cluster, ldr *Raft, followers []*Raft) {
 	t.Helper()
 	c = newCluster(t)
@@ -356,8 +364,14 @@ type cluster struct {
 	*events
 }
 
-func (c *cluster) inmemStorage(r *Raft) *inmemStorage {
-	return c.storage[string(r.ID())].Log.(*inmemStorage)
+// if last param is error, call t.Fatal
+func (c *cluster) ensure(v ...interface{}) {
+	c.Helper()
+	if len(v) > 0 {
+		if err, ok := v[len(v)-1].(error); ok {
+			c.Fatal(err)
+		}
+	}
 }
 
 func (c *cluster) exclude(excludes ...*Raft) []*Raft {
@@ -373,10 +387,6 @@ loop:
 		members = append(members, r)
 	}
 	return members
-}
-
-func id2Addr(id ID) string {
-	return string(id) + ":8888"
 }
 
 func (c *cluster) launch(n int, bootstrap bool) map[ID]*Raft {
@@ -752,7 +762,7 @@ func waitNewEntry(r *Raft, ne NewEntry, timeout time.Duration) (fsmReply, error)
 		}
 		return result, nil
 	case <-timer:
-		return fsmReply{}, errors.New("waitUpdate: result timeout")
+		return fsmReply{}, errors.New("waitNewEntry: result timeout")
 	}
 }
 
@@ -762,30 +772,6 @@ func waitUpdate(r *Raft, cmd string, timeout time.Duration) (fsmReply, error) {
 
 func waitQuery(r *Raft, query string, timeout time.Duration) (fsmReply, error) {
 	return waitNewEntry(r, QueryEntry([]byte(query)), timeout)
-}
-
-// trace ----------------------------------------------------------------------
-
-func (ob observer) waitFor(condition func() bool, timeout time.Duration) bool {
-	var timeoutCh <-chan time.Time
-	if timeout <= 0 {
-		timeoutCh = make(chan time.Time)
-	}
-	timeoutCh = time.After(timeout)
-
-	if condition() {
-		return true
-	}
-	for {
-		select {
-		case <-ob.ch:
-			if condition() {
-				return true
-			}
-		case <-timeoutCh:
-			return false
-		}
-	}
 }
 
 // events ---------------------------------------------
@@ -845,6 +831,28 @@ type observer struct {
 	filter func(event) bool
 	ch     chan event
 	id     int
+}
+
+func (ob observer) waitFor(condition func() bool, timeout time.Duration) bool {
+	var timeoutCh <-chan time.Time
+	if timeout <= 0 {
+		timeoutCh = make(chan time.Time)
+	}
+	timeoutCh = time.After(timeout)
+
+	if condition() {
+		return true
+	}
+	for {
+		select {
+		case <-ob.ch:
+			if condition() {
+				return true
+			}
+		case <-timeoutCh:
+			return false
+		}
+	}
 }
 
 type events struct {
@@ -1077,7 +1085,7 @@ func (fsm *fsmMock) RestoreFrom(r io.Reader) error {
 	return nil
 }
 
-// ------------------------------------------------------------------
+// inmemStorage ------------------------------------------------------------------
 
 var (
 	ErrNotFound   = errors.New("not found")

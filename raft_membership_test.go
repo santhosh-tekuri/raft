@@ -62,9 +62,7 @@ func TestRaft_AddNonVoter_committedByAll(t *testing.T) {
 	defer c.unregister(configRelated)
 
 	// add M4 as nonvoter, wait for success reply
-	if _, err := waitTask(ldr, AddNonvoter(m4.ID(), "M4:8888", false), 0); err != nil {
-		t.Fatal(err)
-	}
+	c.ensure(waitTask(ldr, AddNonvoter(m4.ID(), id2Addr(m4.ID()), false), 0))
 
 	// ensure that leader raised configChange
 	select {
@@ -165,9 +163,7 @@ func TestRaft_AddNonVoter_catchesUp_followsLeader(t *testing.T) {
 	m4 := c.launch(1, false)["M4"]
 
 	// add M4 as nonvoter, wait for success reply
-	if _, err := waitTask(ldr, AddNonvoter(m4.ID(), "M4:8888", false), 0); err != nil {
-		t.Fatal(err)
-	}
+	c.ensure(waitTask(ldr, AddNonvoter(m4.ID(), id2Addr(m4.ID()), false), 0))
 
 	// ensure that M4 got its FSM replicated
 	c.waitFSMLen(10, m4)
@@ -189,9 +185,7 @@ func TestRaft_AddNonVoter_nonVoterReconnects_catchesUp(t *testing.T) {
 	m4 := c.launch(1, false)["M4"]
 
 	// add M4 as nonvoter, wait for success reply
-	if _, err := waitTask(ldr, AddNonvoter(m4.ID(), "M4:8888", false), 0); err != nil {
-		t.Fatal(err)
-	}
+	c.ensure(waitTask(ldr, AddNonvoter(m4.ID(), id2Addr(m4.ID()), false), 0))
 
 	// now disconnect nonvoter m4
 	m4StateChanged := c.registerFor(stateChanged, m4)
@@ -244,9 +238,7 @@ func TestRaft_AddNonVoter_leaderChanged_followsNewLeader(t *testing.T) {
 	m4 := c.launch(1, false)["M4"]
 
 	// add M4 as nonvoter, wait for success reply
-	if _, err := waitTask(ldr, AddNonvoter(m4.ID(), "M4:8888", false), 0); err != nil {
-		t.Fatal(err)
-	}
+	c.ensure(waitTask(ldr, AddNonvoter(m4.ID(), id2Addr(m4.ID()), false), 0))
 
 	// now shutdown the leader
 	ldr.Shutdown().Wait()
