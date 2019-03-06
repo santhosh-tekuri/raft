@@ -67,9 +67,9 @@ func (r *Raft) canChangeConfig() error {
 	return nil
 }
 
-func (ldr *leadership) addNonvoter(t addNonvoter) {
+func (l *ldrShip) addNonvoter(t addNonvoter) {
 	// validate
-	if err := ldr.canChangeConfig(); err != nil {
+	if err := l.canChangeConfig(); err != nil {
 		t.reply(err)
 		return
 	}
@@ -80,10 +80,10 @@ func (ldr *leadership) addNonvoter(t addNonvoter) {
 		if t.node.Voter {
 			return errors.New("must be nonvoter")
 		}
-		if _, ok := ldr.configs.Latest.Nodes[t.node.ID]; ok {
+		if _, ok := l.configs.Latest.Nodes[t.node.ID]; ok {
 			return fmt.Errorf("node %s already exists", t.node.ID)
 		}
-		if n, ok := ldr.configs.Latest.nodeForAddr(t.node.Addr); ok {
+		if n, ok := l.configs.Latest.nodeForAddr(t.node.Addr); ok {
 			return fmt.Errorf("address %s, already used by %s", n.Addr, n.ID)
 		}
 		return nil
@@ -93,16 +93,16 @@ func (ldr *leadership) addNonvoter(t addNonvoter) {
 		return
 	}
 
-	config := ldr.configs.Latest.clone()
+	config := l.configs.Latest.clone()
 	config.Nodes[t.node.ID] = t.node
-	ldr.storeConfig(t.task, config)
-	debug(ldr, "addNonvoter", t.node)
-	ldr.startReplication(t.node)
+	l.storeConfig(t.task, config)
+	debug(l, "addNonvoter", t.node)
+	l.startReplication(t.node)
 }
 
-func (ldr *leadership) removeNode(t removeNode) {
+func (l *ldrShip) removeNode(t removeNode) {
 	// validate
-	if err := ldr.canChangeConfig(); err != nil {
+	if err := l.canChangeConfig(); err != nil {
 		t.reply(err)
 		return
 	}
@@ -110,11 +110,11 @@ func (ldr *leadership) removeNode(t removeNode) {
 		if t.id == "" {
 			return errors.New("empty node id")
 		}
-		n, ok := ldr.configs.Latest.Nodes[t.id]
+		n, ok := l.configs.Latest.Nodes[t.id]
 		if !ok {
 			return fmt.Errorf("node %s does not exist", t.id)
 		}
-		if n.Voter && ldr.configs.Latest.numVoters() == 1 {
+		if n.Voter && l.configs.Latest.numVoters() == 1 {
 			return errors.New("last voter cannot be removed")
 		}
 		return nil
@@ -124,23 +124,23 @@ func (ldr *leadership) removeNode(t removeNode) {
 		return
 	}
 
-	config := ldr.configs.Latest.clone()
+	config := l.configs.Latest.clone()
 	delete(config.Nodes, t.id)
-	ldr.storeConfig(t.task, config)
+	l.storeConfig(t.task, config)
 
 	// stop replication
-	debug(ldr, "removeNode", t.id)
-	repl := ldr.repls[t.id]
+	debug(l, "removeNode", t.id)
+	repl := l.repls[t.id]
 	close(repl.stopCh)
-	delete(ldr.repls, t.id)
+	delete(l.repls, t.id)
 
 	// now majority might have changed. needs to be recalculated
-	ldr.onMajorityCommit()
+	l.onMajorityCommit()
 }
 
-func (ldr *leadership) changeAddrs(t changeAddrs) {
+func (l *ldrShip) changeAddrs(t changeAddrs) {
 	// validate
-	if err := ldr.canChangeConfig(); err != nil {
+	if err := l.canChangeConfig(); err != nil {
 		t.reply(err)
 		return
 	}
@@ -150,7 +150,7 @@ func (ldr *leadership) changeAddrs(t changeAddrs) {
 			if id == "" {
 				return errors.New("empty node id")
 			}
-			if _, ok := ldr.configs.Latest.Nodes[id]; !ok {
+			if _, ok := l.configs.Latest.Nodes[id]; !ok {
 				return fmt.Errorf("node %s does not exist", id)
 			}
 			if err := validateAddr(addr); err != nil {
@@ -161,7 +161,7 @@ func (ldr *leadership) changeAddrs(t changeAddrs) {
 			}
 			addrs[addr] = true
 		}
-		for _, n := range ldr.configs.Latest.Nodes {
+		for _, n := range l.configs.Latest.Nodes {
 			if _, ok := t.addrs[n.ID]; !ok {
 				if addrs[n.Addr] {
 					return fmt.Errorf("address %s is already used by node %s", n.Addr, n.ID)
@@ -176,22 +176,22 @@ func (ldr *leadership) changeAddrs(t changeAddrs) {
 		return
 	}
 
-	config := ldr.configs.Latest.clone()
+	config := l.configs.Latest.clone()
 	for id, addr := range t.addrs {
 		n := config.Nodes[id]
 		n.Addr = addr
 		config.Nodes[id] = n
 	}
-	ldr.storeConfig(t.task, config)
+	l.storeConfig(t.task, config)
 }
 
-func (ldr *leadership) storeConfig(t *task, newConfig Config) {
+func (l *ldrShip) storeConfig(t *task, newConfig Config) {
 	// append to log
 	ne := NewEntry{
 		entry: newConfig.encode(),
 		task:  t,
 	}
-	ldr.storeEntry(ne)
+	l.storeEntry(ne)
 	newConfig.Index, newConfig.Term = ne.index, ne.term
-	ldr.changeConfig(newConfig)
+	l.changeConfig(newConfig)
 }

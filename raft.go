@@ -80,7 +80,7 @@ type Raft struct {
 	dialFn    dialFn // used for mocking in tests
 	connPools map[ID]*connPool
 
-	ldr        *leadership
+	ldr        *ldrShip
 	taskCh     chan Task
 	newEntryCh chan NewEntry
 

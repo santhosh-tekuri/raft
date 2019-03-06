@@ -11,7 +11,7 @@ import (
 const minCheckInterval = 10 * time.Millisecond
 
 func (r *Raft) runLeader() {
-	ldr := &leadership{
+	ldr := &ldrShip{
 		Raft:       r,
 		leaseTimer: time.NewTimer(time.Hour),
 		newEntries: list.New(),
@@ -24,7 +24,7 @@ func (r *Raft) runLeader() {
 	r.ldr = nil
 }
 
-type leadership struct {
+type ldrShip struct {
 	*Raft
 
 	// if quorum of nodes are not reachable for this duration
@@ -47,131 +47,131 @@ type leadership struct {
 	fromReplsCh chan interface{}
 }
 
-func (ldr *leadership) init() {
-	assert(ldr.leader == ldr.id, "%s ldr.leader: got %s, want %s", ldr, ldr.leader, ldr.id)
+func (l *ldrShip) init() {
+	assert(l.leader == l.id, "%s ldr.leader: got %s, want %s", l, l.leader, l.id)
 
-	ldr.leaseTimer.Stop() // we start it on detecting failures
-	ldr.startIndex = ldr.lastLogIndex + 1
-	ldr.fromReplsCh = make(chan interface{}, len(ldr.configs.Latest.Nodes))
+	l.leaseTimer.Stop() // we start it on detecting failures
+	l.startIndex = l.lastLogIndex + 1
+	l.fromReplsCh = make(chan interface{}, len(l.configs.Latest.Nodes))
 
 	// add a blank no-op entry into log at the start of its term
-	ldr.storeEntry(NewEntry{
+	l.storeEntry(NewEntry{
 		entry: &entry{
 			typ: entryNop,
 		},
 	})
 
 	// start replication routine for each follower
-	for _, node := range ldr.configs.Latest.Nodes {
-		ldr.startReplication(node)
+	for _, node := range l.configs.Latest.Nodes {
+		l.startReplication(node)
 	}
 }
 
-func (ldr *leadership) runLoop() {
-	for ldr.state == Leader {
+func (l *ldrShip) runLoop() {
+	for l.state == Leader {
 		select {
-		case <-ldr.shutdownCh:
+		case <-l.shutdownCh:
 			return
 
-		case rpc := <-ldr.server.rpcCh:
-			ldr.replyRPC(rpc)
+		case rpc := <-l.server.rpcCh:
+			l.replyRPC(rpc)
 
-		case update := <-ldr.fromReplsCh:
-			ldr.checkReplUpdates(update)
+		case update := <-l.fromReplsCh:
+			l.checkReplUpdates(update)
 
-		case <-ldr.leaseTimer.C:
-			ldr.checkLeaderLease()
+		case <-l.leaseTimer.C:
+			l.checkLeaderLease()
 
-		case ne := <-ldr.Raft.newEntryCh:
-			ldr.storeEntry(ne)
+		case ne := <-l.Raft.newEntryCh:
+			l.storeEntry(ne)
 
-		case t := <-ldr.taskCh:
-			ldr.executeTask(t)
+		case t := <-l.taskCh:
+			l.executeTask(t)
 
-		case t := <-ldr.snapTakenCh:
-			ldr.onSnapshotTaken(t)
+		case t := <-l.snapTakenCh:
+			l.onSnapshotTaken(t)
 		}
 	}
 }
 
-func (ldr *leadership) release() {
-	if !ldr.leaseTimer.Stop() {
+func (l *ldrShip) release() {
+	if !l.leaseTimer.Stop() {
 		select {
-		case <-ldr.leaseTimer.C:
+		case <-l.leaseTimer.C:
 		default:
 		}
 	}
 
-	for id, repl := range ldr.repls {
+	for id, repl := range l.repls {
 		close(repl.stopCh)
-		delete(ldr.repls, id)
+		delete(l.repls, id)
 	}
 
-	if ldr.leader == ldr.id {
-		ldr.leader = ""
+	if l.leader == l.id {
+		l.leader = ""
 	}
 
 	// respond to any pending user entries
 	var err error
-	if ldr.shutdownCalled() {
+	if l.shutdownCalled() {
 		err = ErrServerClosed
 	} else {
-		err = NotLeaderError{ldr.leaderAddr(), true}
+		err = NotLeaderError{l.leaderAddr(), true}
 	}
 
-	for ldr.newEntries.Len() > 0 {
-		ne := ldr.newEntries.Remove(ldr.newEntries.Front()).(NewEntry)
+	for l.newEntries.Len() > 0 {
+		ne := l.newEntries.Remove(l.newEntries.Front()).(NewEntry)
 		ne.reply(err)
 	}
 
 	// wait for replicators to finish
-	ldr.wg.Wait()
+	l.wg.Wait()
 }
 
-func (ldr *leadership) storeEntry(ne NewEntry) {
-	ne.entry.index, ne.entry.term = ldr.lastLogIndex+1, ldr.term
+func (l *ldrShip) storeEntry(ne NewEntry) {
+	ne.entry.index, ne.entry.term = l.lastLogIndex+1, l.term
 
 	// append entry to local log
-	debug(ldr, "log.append", ne.typ, ne.index)
+	debug(l, "log.append", ne.typ, ne.index)
 	if ne.typ != entryQuery && ne.typ != entryBarrier {
-		ldr.storage.appendEntry(ne.entry)
+		l.storage.appendEntry(ne.entry)
 	}
-	ldr.newEntries.PushBack(ne)
+	l.newEntries.PushBack(ne)
 
 	// we updated lastLogIndex, so notify replicators
 	if ne.typ == entryQuery || ne.typ == entryBarrier {
-		ldr.applyCommitted(ldr.newEntries)
+		l.applyCommitted(l.newEntries)
 	} else {
-		ldr.notifyReplicators()
+		l.notifyReplicators()
 	}
 }
 
-func (ldr *leadership) startReplication(node Node) {
+func (l *ldrShip) startReplication(node Node) {
 	repl := &replication{
 		status:        replStatus{id: node.ID},
-		ldrStartIndex: ldr.startIndex,
-		connPool:      ldr.getConnPool(node.ID),
-		hbTimeout:     ldr.hbTimeout,
-		storage:       ldr.storage,
+		ldrStartIndex: l.startIndex,
+		connPool:      l.getConnPool(node.ID),
+		hbTimeout:     l.hbTimeout,
+		storage:       l.storage,
 		stopCh:        make(chan struct{}),
-		toLeaderCh:    ldr.fromReplsCh,
+		toLeaderCh:    l.fromReplsCh,
 		fromLeaderCh:  make(chan leaderUpdate, 1),
-		trace:         &ldr.trace,
-		str:           fmt.Sprintf("%v %s", ldr, string(node.ID)),
+		trace:         &l.trace,
+		str:           fmt.Sprintf("%v %s", l, string(node.ID)),
 	}
-	ldr.repls[node.ID] = repl
+	l.repls[node.ID] = repl
 
 	// send initial empty AppendEntries RPCs (heartbeat) to each follower
 	req := &appendEntriesReq{
-		term:           ldr.term,
-		leader:         ldr.id,
-		ldrCommitIndex: ldr.commitIndex,
-		prevLogIndex:   ldr.lastLogIndex,
-		prevLogTerm:    ldr.lastLogTerm,
+		term:           l.term,
+		leader:         l.id,
+		ldrCommitIndex: l.commitIndex,
+		prevLogIndex:   l.lastLogIndex,
+		prevLogTerm:    l.lastLogTerm,
 	}
 
-	ldr.wg.Add(1)
-	if node.ID == ldr.id {
+	l.wg.Add(1)
+	if node.ID == l.id {
 		go func() {
 			// self replication: when leaderUpdate comes
 			// just notify that it is replicated
@@ -179,7 +179,7 @@ func (ldr *leadership) startReplication(node Node) {
 			// to handle the case of single node cluster
 			// todo: is this really needed? we can optimize it
 			//       by avoiding this extra goroutine
-			defer ldr.wg.Done()
+			defer l.wg.Done()
 			repl.notifyLdr(matchIndex{&repl.status, req.prevLogIndex})
 			for {
 				select {
@@ -195,14 +195,14 @@ func (ldr *leadership) startReplication(node Node) {
 		debug(repl, ">> firstHeartbeat")
 		_ = repl.doRPC(req, &appendEntriesResp{})
 		go func() {
-			defer ldr.wg.Done()
+			defer l.wg.Done()
 			repl.runLoop(req)
 			debug(repl, "repl.end")
 		}()
 	}
 }
 
-func (ldr *leadership) checkReplUpdates(update interface{}) {
+func (l *ldrShip) checkReplUpdates(update interface{}) {
 	matchUpdated, noContactUpdated := false, false
 	for {
 		switch update := update.(type) {
@@ -212,49 +212,49 @@ func (ldr *leadership) checkReplUpdates(update interface{}) {
 		case noContact:
 			noContactUpdated = true
 			update.status.noContact = update.time
-			if ldr.trace.Unreachable != nil {
-				ldr.trace.Unreachable(ldr.liveInfo(), update.status.id, update.time)
+			if l.trace.Unreachable != nil {
+				l.trace.Unreachable(l.liveInfo(), update.status.id, update.time)
 			}
 		case newTerm:
 			// if response contains term T > currentTerm:
 			// set currentTerm = T, convert to follower
-			debug(ldr, "leader -> follower")
-			ldr.state = Follower
-			ldr.setTerm(update.val)
-			ldr.leader = ""
-			ldr.stateChanged()
+			debug(l, "leader -> follower")
+			l.state = Follower
+			l.setTerm(update.val)
+			l.leader = ""
+			l.stateChanged()
 			return
 		}
 
 		// get any waiting update
 		select {
-		case <-ldr.shutdownCh:
+		case <-l.shutdownCh:
 			return
-		case update = <-ldr.fromReplsCh:
+		case update = <-l.fromReplsCh:
 			continue
 		default:
 		}
 		break
 	}
 	if matchUpdated {
-		ldr.onMajorityCommit()
+		l.onMajorityCommit()
 	}
 	if noContactUpdated {
-		ldr.checkLeaderLease()
+		l.checkLeaderLease()
 	}
 }
 
-func (ldr *leadership) checkLeaderLease() {
+func (l *ldrShip) checkLeaderLease() {
 	voters, reachable := 0, 0
 	now, firstFailure := time.Now(), time.Time{}
-	for _, node := range ldr.configs.Latest.Nodes {
+	for _, node := range l.configs.Latest.Nodes {
 		if node.Voter {
 			voters++
-			repl := ldr.repls[node.ID]
+			repl := l.repls[node.ID]
 			noContact := repl.status.noContact
 			if noContact.IsZero() {
 				reachable++
-			} else if now.Sub(noContact) <= ldr.ldrLeaseTimeout {
+			} else if now.Sub(noContact) <= l.ldrLeaseTimeout {
 				reachable++
 				if firstFailure.IsZero() || noContact.Before(firstFailure) {
 					firstFailure = noContact
@@ -265,45 +265,45 @@ func (ldr *leadership) checkLeaderLease() {
 
 	// todo: if quorum unreachable raise alert
 	if reachable < voters/2+1 {
-		debug(ldr, "leader -> follower quorumUnreachable")
-		ldr.state = Follower
-		ldr.leader = ""
-		ldr.stateChanged()
+		debug(l, "leader -> follower quorumUnreachable")
+		l.state = Follower
+		l.leader = ""
+		l.stateChanged()
 		return
 	}
 
-	if !ldr.leaseTimer.Stop() {
+	if !l.leaseTimer.Stop() {
 		select {
-		case <-ldr.leaseTimer.C:
+		case <-l.leaseTimer.C:
 		default:
 		}
 	}
 
 	if !firstFailure.IsZero() {
-		d := ldr.ldrLeaseTimeout - now.Sub(firstFailure)
+		d := l.ldrLeaseTimeout - now.Sub(firstFailure)
 		if d < minCheckInterval {
 			d = minCheckInterval
 		}
-		ldr.leaseTimer.Reset(d)
+		l.leaseTimer.Reset(d)
 	}
 }
 
 // computes N such that, a majority of matchIndex[i] ≥ N
-func (ldr *leadership) majorityMatchIndex() uint64 {
-	numVoters := ldr.configs.Latest.numVoters()
+func (l *ldrShip) majorityMatchIndex() uint64 {
+	numVoters := l.configs.Latest.numVoters()
 	if numVoters == 1 {
-		for _, node := range ldr.configs.Latest.Nodes {
+		for _, node := range l.configs.Latest.Nodes {
 			if node.Voter {
-				return ldr.repls[node.ID].status.matchIndex
+				return l.repls[node.ID].status.matchIndex
 			}
 		}
 	}
 
 	matched := make(decrUint64Slice, numVoters)
 	i := 0
-	for _, node := range ldr.configs.Latest.Nodes {
+	for _, node := range l.configs.Latest.Nodes {
 		if node.Voter {
-			matched[i] = ldr.repls[node.ID].status.matchIndex
+			matched[i] = l.repls[node.ID].status.matchIndex
 			i++
 		}
 	}
@@ -315,25 +315,25 @@ func (ldr *leadership) majorityMatchIndex() uint64 {
 
 // If majorityMatchIndex(N) > commitIndex,
 // and log[N].term == currentTerm: set commitIndex = N
-func (ldr *leadership) onMajorityCommit() {
-	majorityMatchIndex := ldr.majorityMatchIndex()
+func (l *ldrShip) onMajorityCommit() {
+	majorityMatchIndex := l.majorityMatchIndex()
 
 	// note: if majorityMatchIndex >= ldr.startIndex, it also mean
 	// majorityMatchIndex.term == currentTerm
-	if majorityMatchIndex > ldr.commitIndex && majorityMatchIndex >= ldr.startIndex {
-		ldr.commitIndex = majorityMatchIndex
-		debug(ldr, "commitIndex", ldr.commitIndex)
-		ldr.applyCommitted(ldr.newEntries)
-		ldr.notifyReplicators() // we updated commit index
+	if majorityMatchIndex > l.commitIndex && majorityMatchIndex >= l.startIndex {
+		l.commitIndex = majorityMatchIndex
+		debug(l, "commitIndex", l.commitIndex)
+		l.applyCommitted(l.newEntries)
+		l.notifyReplicators() // we updated commit index
 	}
 }
 
-func (ldr *leadership) notifyReplicators() {
+func (l *ldrShip) notifyReplicators() {
 	update := leaderUpdate{
-		lastIndex:   ldr.lastLogIndex,
-		commitIndex: ldr.commitIndex,
+		lastIndex:   l.lastLogIndex,
+		commitIndex: l.commitIndex,
 	}
-	for _, repl := range ldr.repls {
+	for _, repl := range l.repls {
 		select {
 		case repl.fromLeaderCh <- update:
 		case <-repl.fromLeaderCh:

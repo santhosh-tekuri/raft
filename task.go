@@ -138,7 +138,7 @@ type Info interface {
 
 type liveInfo struct {
 	r   *Raft
-	ldr *leadership
+	ldr *ldrShip
 }
 
 func (info liveInfo) ID() ID               { return info.r.id }
@@ -314,8 +314,8 @@ func (r *Raft) executeTask(t Task) {
 	}
 }
 
-func (ldr *leadership) executeTask(t Task) {
-	if ldr.shutdownCalled() {
+func (l *ldrShip) executeTask(t Task) {
+	if l.shutdownCalled() {
 		t.reply(ErrServerClosed)
 		return
 	}
@@ -324,16 +324,16 @@ func (ldr *leadership) executeTask(t Task) {
 	case NewEntry:
 		t.reply(errors.New("raft: use Raft.NewEntries() for NewEntry"))
 	case addNonvoter:
-		ldr.addNonvoter(t)
+		l.addNonvoter(t)
 	case removeNode:
-		ldr.removeNode(t)
+		l.removeNode(t)
 	case changeAddrs:
-		ldr.changeAddrs(t)
+		l.changeAddrs(t)
 	case inspect:
-		t.fn(liveInfo{r: ldr.Raft, ldr: ldr})
+		t.fn(liveInfo{r: l.Raft, ldr: l})
 		t.reply(nil)
 	default:
-		ldr.Raft.executeTask(t)
+		l.Raft.executeTask(t)
 	}
 }
 
