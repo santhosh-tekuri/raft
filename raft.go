@@ -210,7 +210,7 @@ func (r *Raft) stateLoop() {
 			// wait for snapshot to complete
 			r.onSnapshotTaken(<-r.snapTakenCh)
 		}
-		defer r.wg.Done()
+		r.wg.Done()
 	}()
 	for {
 		select {

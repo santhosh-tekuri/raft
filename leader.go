@@ -86,7 +86,7 @@ func (l *ldrShip) runLoop() {
 			l.storeEntry(ne)
 
 		case t := <-l.taskCh:
-			l.executeTask(t)
+			l.Raft.executeTask(t)
 
 		case t := <-l.snapTakenCh:
 			l.onSnapshotTaken(t)
@@ -118,7 +118,6 @@ func (l *ldrShip) release() {
 	} else {
 		err = NotLeaderError{l.leaderAddr(), true}
 	}
-
 	for l.newEntries.Len() > 0 {
 		ne := l.newEntries.Remove(l.newEntries.Front()).(NewEntry)
 		ne.reply(err)
@@ -126,6 +125,7 @@ func (l *ldrShip) release() {
 
 	// wait for replicators to finish
 	l.wg.Wait()
+	l.fromReplsCh = nil
 }
 
 func (l *ldrShip) storeEntry(ne NewEntry) {

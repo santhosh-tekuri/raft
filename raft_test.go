@@ -656,7 +656,7 @@ func (c *cluster) waitUnreachableDetected(ldr, failed *Raft) {
 	unreachable := c.registerFor(unreachable, ldr)
 	defer c.unregister(unreachable)
 	if !unreachable.waitFor(condition, c.longTimeout) {
-		c.Fatalf("waitUnreachableDetected: ldr %s failed %s", ldr.ID(), failed.ID())
+		c.Fatalf("waitUnreachableDetected: ldr %s failed to detect %s is unreachable", ldr.ID(), failed.ID())
 	}
 }
 

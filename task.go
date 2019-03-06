@@ -137,8 +137,7 @@ type Info interface {
 }
 
 type liveInfo struct {
-	r   *Raft
-	ldr *ldrShip
+	r *Raft
 }
 
 func (info liveInfo) ID() ID               { return info.r.id }
@@ -154,11 +153,11 @@ func (info liveInfo) Configs() Configs     { return info.r.configs.clone() }
 func (info liveInfo) Trace() *Trace        { return &info.r.trace }
 
 func (info liveInfo) Replication() map[ID]ReplStatus {
-	if info.ldr == nil {
+	if info.r.state != Leader {
 		return nil
 	}
 	m := make(map[ID]ReplStatus)
-	for id, repl := range info.ldr.repls {
+	for id, repl := range info.r.ldr.repls {
 		m[id] = ReplStatus{
 			MatchIndex:  repl.status.matchIndex,
 			Unreachable: repl.status.noContact,
@@ -289,11 +288,6 @@ type fsmRestoreReq struct {
 // ------------------------------------------------------------------------
 
 func (r *Raft) executeTask(t Task) {
-	if r.shutdownCalled() {
-		t.reply(ErrServerClosed)
-		return
-	}
-
 	switch t := t.(type) {
 	case bootstrap:
 		r.bootstrap(t)
@@ -307,19 +301,20 @@ func (r *Raft) executeTask(t Task) {
 		r.snapTakenCh = make(chan snapTaken)
 		go r.takeSnapshot(t)
 	case inspect:
-		t.fn(liveInfo{r: r})
+		t.fn(r.liveInfo())
 		t.reply(nil)
 	default:
-		t.reply(NotLeaderError{r.leaderAddr(), false})
+		if r.state == Leader {
+			r.ldr.executeTask(t)
+		} else {
+			t.reply(NotLeaderError{r.leaderAddr(), false})
+		}
 	}
 }
 
-func (l *ldrShip) executeTask(t Task) {
-	if l.shutdownCalled() {
-		t.reply(ErrServerClosed)
-		return
-	}
+var errInvalidTask = errors.New("raft: invalid task")
 
+func (l *ldrShip) executeTask(t Task) {
 	switch t := t.(type) {
 	case NewEntry:
 		t.reply(errors.New("raft: use Raft.NewEntries() for NewEntry"))
@@ -329,11 +324,8 @@ func (l *ldrShip) executeTask(t Task) {
 		l.removeNode(t)
 	case changeAddrs:
 		l.changeAddrs(t)
-	case inspect:
-		t.fn(liveInfo{r: l.Raft, ldr: l})
-		t.reply(nil)
 	default:
-		l.Raft.executeTask(t)
+		t.reply(errInvalidTask)
 	}
 }
 

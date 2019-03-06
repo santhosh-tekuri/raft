@@ -34,13 +34,10 @@ func (f *flrShip) runLoop() {
 			return
 
 		case rpc := <-f.server.rpcCh:
+			// a server remains in follower state as long as it receives valid
+			// RPCs from a leader or candidate
 			if validReq := f.replyRPC(rpc); validReq {
-				if yes, _ := f.canStartElection(); yes {
-					// a server remains in follower state as long as it receives valid
-					// RPCs from a leader or candidate
-					f.electionAborted = false
-					f.timeoutCh = afterRandomTimeout(f.hbTimeout)
-				}
+				f.resetTimer()
 			}
 
 			// If timeout elapses without receiving AppendEntries
@@ -55,16 +52,19 @@ func (f *flrShip) runLoop() {
 		case t := <-f.taskCh:
 			f.executeTask(t)
 			if f.electionAborted {
-				if yes, _ := f.canStartElection(); yes {
-					// we got new config, which allows us to start election
-					f.electionAborted = false
-					f.timeoutCh = afterRandomTimeout(f.hbTimeout)
-				}
+				f.resetTimer()
 			}
 
 		case t := <-f.snapTakenCh:
 			f.onSnapshotTaken(t)
 		}
+	}
+}
+
+func (f *flrShip) resetTimer() {
+	if yes, _ := f.canStartElection(); yes {
+		f.electionAborted = false
+		f.timeoutCh = afterRandomTimeout(f.hbTimeout)
 	}
 }
 
