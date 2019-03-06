@@ -25,10 +25,18 @@ func (r *Raft) runLeader() {
 
 // ----------------------------------------------
 
-type replUpdate struct {
-	status     *replStatus
-	matchIndex uint64
-	noContact  time.Time
+type matchIndex struct {
+	status *replStatus
+	val    uint64
+}
+
+type noContact struct {
+	status *replStatus
+	time   time.Time
+}
+
+type newTerm struct {
+	val uint64
 }
 
 type replStatus struct {
@@ -69,11 +77,8 @@ type leadership struct {
 	repls map[ID]*replication
 	wg    sync.WaitGroup
 
-	// to receive new term notifications from replicators
-	newTermCh chan uint64
-
 	// to receive updates from replicators
-	replUpdatedCh chan replUpdate
+	fromReplsCh chan interface{}
 }
 
 func (ldr *leadership) runLoop() {
@@ -88,8 +93,7 @@ func (ldr *leadership) runLoop() {
 		},
 	})
 
-	ldr.newTermCh = make(chan uint64, len(ldr.configs.Latest.Nodes))
-	ldr.replUpdatedCh = make(chan replUpdate, len(ldr.configs.Latest.Nodes))
+	ldr.fromReplsCh = make(chan interface{}, len(ldr.configs.Latest.Nodes))
 
 	defer func() {
 		ldr.leaseTimer.Stop()
@@ -127,39 +131,38 @@ func (ldr *leadership) runLoop() {
 		case <-ldr.shutdownCh:
 			return
 
-		case newTerm := <-ldr.newTermCh:
-			// if response contains term T > currentTerm:
-			// set currentTerm = T, convert to follower
-			debug(ldr, "leader -> follower")
-			ldr.state = Follower
-			ldr.setTerm(newTerm)
-			ldr.leader = ""
-			ldr.stateChanged()
-			return
-
 		case rpc := <-ldr.server.rpcCh:
 			ldr.replyRPC(rpc)
 
-		case replUpdate := <-ldr.replUpdatedCh:
+		case update := <-ldr.fromReplsCh:
 			matchUpdated, noContactUpdated := false, false
 		loop:
 			// get pending repl updates
 			for {
-				if replUpdate.status.matchIndex != replUpdate.matchIndex {
+				switch update := update.(type) {
+				case matchIndex:
 					matchUpdated = true
-					replUpdate.status.matchIndex = replUpdate.matchIndex
-				}
-				if !replUpdate.status.noContact.Equal(replUpdate.noContact) {
+					update.status.matchIndex = update.val
+				case noContact:
 					noContactUpdated = true
-					replUpdate.status.noContact = replUpdate.noContact
+					update.status.noContact = update.time
 					if ldr.trace.Unreachable != nil {
-						ldr.trace.Unreachable(ldr.liveInfo(), replUpdate.status.id, replUpdate.noContact)
+						ldr.trace.Unreachable(ldr.liveInfo(), update.status.id, update.time)
 					}
+				case newTerm:
+					// if response contains term T > currentTerm:
+					// set currentTerm = T, convert to follower
+					debug(ldr, "leader -> follower")
+					ldr.state = Follower
+					ldr.setTerm(update.val)
+					ldr.leader = ""
+					ldr.stateChanged()
+					return
 				}
 				select {
 				case <-ldr.shutdownCh:
 					return
-				case replUpdate = <-ldr.replUpdatedCh:
+				case update = <-ldr.fromReplsCh:
 					break
 				default:
 					break loop
@@ -195,9 +198,8 @@ func (ldr *leadership) startReplication(node Node) {
 		hbTimeout:     ldr.hbTimeout,
 		storage:       ldr.storage,
 		stopCh:        make(chan struct{}),
-		replUpdatedCh: ldr.replUpdatedCh,
-		newTermCh:     ldr.newTermCh,
-		ldrUpdateCh:   make(chan leaderUpdate, 1),
+		toLeaderCh:    ldr.fromReplsCh,
+		fromLeaderCh:  make(chan leaderUpdate, 1),
 		trace:         &ldr.trace,
 		str:           fmt.Sprintf("%v %s", ldr, string(node.ID)),
 	}
@@ -222,13 +224,13 @@ func (ldr *leadership) startReplication(node Node) {
 			// todo: is this really needed? we can optimize it
 			//       by avoiding this extra goroutine
 			defer ldr.wg.Done()
-			repl.notifyLdr(req.prevLogIndex, time.Time{})
+			repl.notifyLdr(matchIndex{&repl.status, req.prevLogIndex})
 			for {
 				select {
 				case <-repl.stopCh:
 					return
-				case update := <-repl.ldrUpdateCh:
-					repl.notifyLdr(update.lastIndex, time.Time{})
+				case update := <-repl.fromLeaderCh:
+					repl.notifyLdr(matchIndex{&repl.status, update.lastIndex})
 				}
 			}
 		}()
@@ -347,15 +349,15 @@ func (ldr *leadership) onMajorityCommit() {
 }
 
 func (ldr *leadership) notifyReplicators() {
-	leaderUpdate := leaderUpdate{
+	update := leaderUpdate{
 		lastIndex:   ldr.lastLogIndex,
 		commitIndex: ldr.commitIndex,
 	}
 	for _, repl := range ldr.repls {
 		select {
-		case repl.ldrUpdateCh <- leaderUpdate:
-		case <-repl.ldrUpdateCh:
-			repl.ldrUpdateCh <- leaderUpdate
+		case repl.fromLeaderCh <- update:
+		case <-repl.fromLeaderCh:
+			repl.fromLeaderCh <- update
 		}
 	}
 }

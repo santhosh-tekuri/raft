@@ -30,12 +30,11 @@ type replication struct {
 	noContact time.Time
 
 	// leader notifies replication with update
-	ldrUpdateCh chan leaderUpdate
+	fromLeaderCh chan leaderUpdate
 
 	// replication notifies leader about our progress
-	replUpdatedCh chan<- replUpdate
-	newTermCh     chan<- uint64
-	stopCh        chan struct{}
+	toLeaderCh chan<- interface{}
+	stopCh     chan struct{}
 
 	trace *Trace
 	str   string // used for debug() calls
@@ -76,9 +75,9 @@ func (repl *replication) runLoop(req *appendEntriesReq) {
 			select {
 			case <-repl.stopCh:
 				return
-			case update := <-repl.ldrUpdateCh:
+			case update := <-repl.fromLeaderCh:
 				repl.ldrLastIndex, req.ldrCommitIndex = update.lastIndex, update.commitIndex
-				debug(repl, "{last:", repl.ldrLastIndex, "commit:", req.ldrCommitIndex, "} <-ldrUpdateCh")
+				debug(repl, "{last:", repl.ldrLastIndex, "commit:", req.ldrCommitIndex, "} <-fromLeaderCh")
 			case <-afterRandomTimeout(repl.hbTimeout / 10):
 			}
 		} else {
@@ -86,9 +85,9 @@ func (repl *replication) runLoop(req *appendEntriesReq) {
 			select {
 			case <-repl.stopCh:
 				return
-			case update := <-repl.ldrUpdateCh:
+			case update := <-repl.fromLeaderCh:
 				repl.ldrLastIndex, req.ldrCommitIndex = update.lastIndex, update.commitIndex
-				debug(repl, "{last:", repl.ldrLastIndex, "commit:", req.ldrCommitIndex, "} <-ldrUpdateCh")
+				debug(repl, "{last:", repl.ldrLastIndex, "commit:", req.ldrCommitIndex, "} <-fromLeaderCh")
 			default:
 			}
 		}
@@ -155,7 +154,7 @@ func (repl *replication) sendAppEntriesReq(req *appendEntriesReq) error {
 		repl.nextIndex = repl.matchIndex + 1
 		if repl.matchIndex != old {
 			debug(repl, "matchIndex:", repl.matchIndex)
-			repl.notifyLdr(repl.matchIndex, repl.noContact)
+			repl.notifyLdr(matchIndex{&repl.status, repl.matchIndex})
 		}
 	} else {
 		if resp.lastLogIndex < repl.matchIndex {
@@ -188,18 +187,17 @@ func (repl *replication) sendInstallSnapReq(appReq *appendEntriesReq) error {
 		repl.matchIndex = req.lastIndex
 		repl.nextIndex = repl.matchIndex + 1
 		debug(repl, "matchIndex:", repl.matchIndex)
-		repl.notifyLdr(repl.matchIndex, repl.noContact)
+		repl.notifyLdr(matchIndex{&repl.status, repl.matchIndex})
 		return nil
 	} else {
 		return errors.New("installSnap.success is false")
 	}
 }
 
-func (repl *replication) notifyLdr(matchIndex uint64, noContact time.Time) {
-	update := replUpdate{status: &repl.status, matchIndex: matchIndex, noContact: noContact}
+func (repl *replication) notifyLdr(update interface{}) {
 	select {
 	case <-repl.stopCh:
-	case repl.replUpdatedCh <- update:
+	case repl.toLeaderCh <- update:
 	}
 }
 
@@ -211,7 +209,7 @@ func (repl *replication) retryRPC(req request, resp message) error {
 			if repl.noContact.IsZero() {
 				repl.noContact = time.Now()
 				debug(repl, "noContact", err)
-				repl.notifyLdr(repl.matchIndex, repl.noContact)
+				repl.notifyLdr(noContact{&repl.status, repl.noContact})
 			}
 			failures++
 			select {
@@ -226,13 +224,10 @@ func (repl *replication) retryRPC(req request, resp message) error {
 	if !repl.noContact.IsZero() {
 		repl.noContact = time.Time{} // zeroing
 		debug(repl, "yesContact")
-		repl.notifyLdr(repl.matchIndex, repl.noContact)
+		repl.notifyLdr(noContact{&repl.status, repl.noContact})
 	}
 	if resp.getTerm() > req.getTerm() {
-		select {
-		case <-repl.stopCh:
-		case repl.newTermCh <- resp.getTerm():
-		}
+		repl.notifyLdr(newTerm{resp.getTerm()})
 		return errStop
 	}
 	return nil
