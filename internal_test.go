@@ -15,7 +15,8 @@ func RequestVote(from, to *Raft) (granted bool, err error) {
 			candidate:    info.ID(),
 		}
 		connPool := from.getConnPool(to.id)
-		resp, errr := from.requestVote(connPool, req)
+		cand := candShip{Raft: from}
+		resp, errr := cand.requestVote(connPool, req)
 		granted, err = resp.granted, errr
 	})
 	from.Tasks() <- t
