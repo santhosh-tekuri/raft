@@ -6,10 +6,6 @@ import (
 	"time"
 )
 
-type leaderUpdate struct {
-	lastIndex, commitIndex uint64
-}
-
 type replication struct {
 	// this is owned by ldr goroutine
 	status replStatus
@@ -40,9 +36,6 @@ type replication struct {
 	str   string // used for debug() calls
 }
 
-const maxAppendEntries = 64 // todo: should be configurable
-
-// todo: lots of panics!!!
 func (repl *replication) runLoop(req *appendEntriesReq) {
 	defer func() {
 		if repl.conn != nil {
@@ -194,13 +187,6 @@ func (repl *replication) sendInstallSnapReq(appReq *appendEntriesReq) error {
 	}
 }
 
-func (repl *replication) notifyLdr(update interface{}) {
-	select {
-	case <-repl.stopCh:
-	case repl.toLeaderCh <- update:
-	}
-}
-
 func (repl *replication) retryRPC(req request, resp message) error {
 	var failures uint64
 	for {
@@ -255,6 +241,13 @@ func (repl *replication) doRPC(req request, resp message) error {
 	return err
 }
 
+func (repl *replication) notifyLdr(update interface{}) {
+	select {
+	case <-repl.stopCh:
+	case repl.toLeaderCh <- update:
+	}
+}
+
 func (repl *replication) getSnapLog() (snapIndex, snapTerm uint64) {
 	// snapshoting might be in progress
 	repl.storage.snapMu.RLock()
@@ -286,11 +279,47 @@ func (req *installLatestSnapReq) encode(w io.Writer) error {
 	return req.installSnapReq.encode(w)
 }
 
+type leaderUpdate struct {
+	lastIndex, commitIndex uint64
+}
+
+type matchIndex struct {
+	status *replStatus
+	val    uint64
+}
+
+type noContact struct {
+	status *replStatus
+	time   time.Time
+}
+
+type newTerm struct {
+	val uint64
+}
+
+type replStatus struct {
+	id ID
+
+	// owned exclusively by leader goroutine
+	// used to compute majorityMatchIndex
+	matchIndex uint64
+
+	// from what time the replication unable to reach this node
+	// zero value means it is reachable
+	noContact time.Time
+}
+
+// did we have success full contact after time t
+func (rs *replStatus) contactedAfter(t time.Time) bool {
+	return rs.noContact.IsZero() || rs.noContact.After(t)
+}
+
 // ------------------------------------------------
 
 const (
-	maxFailureScale = 12
-	failureWait     = 10 * time.Millisecond
+	maxAppendEntries = 64 // todo: should be configurable
+	maxFailureScale  = 12
+	failureWait      = 10 * time.Millisecond
 )
 
 // backOff is used to compute an exponential backOff

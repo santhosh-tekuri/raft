@@ -17,46 +17,12 @@ func (r *Raft) runLeader() {
 		newEntries: list.New(),
 		repls:      make(map[ID]*replication),
 	}
-	ldr.leaseTimer.Stop() // we start it on detecting failures
 	r.ldr = ldr
+	ldr.init()
 	ldr.runLoop()
+	ldr.release()
 	r.ldr = nil
 }
-
-// ----------------------------------------------
-
-type matchIndex struct {
-	status *replStatus
-	val    uint64
-}
-
-type noContact struct {
-	status *replStatus
-	time   time.Time
-}
-
-type newTerm struct {
-	val uint64
-}
-
-type replStatus struct {
-	id ID
-
-	// owned exclusively by leader goroutine
-	// used to compute majorityMatchIndex
-	matchIndex uint64
-
-	// from what time the replication unable to reach this node
-	// zero value means it is reachable
-	noContact time.Time
-}
-
-// did we have success full contact after time t
-func (rs *replStatus) contactedAfter(t time.Time) bool {
-	return rs.noContact.IsZero() || rs.noContact.After(t)
-}
-
-// -------------------------------------------------------
 
 type leadership struct {
 	*Raft
@@ -81,10 +47,12 @@ type leadership struct {
 	fromReplsCh chan interface{}
 }
 
-func (ldr *leadership) runLoop() {
+func (ldr *leadership) init() {
 	assert(ldr.leader == ldr.id, "%s ldr.leader: got %s, want %s", ldr, ldr.leader, ldr.id)
 
+	ldr.leaseTimer.Stop() // we start it on detecting failures
 	ldr.startIndex = ldr.lastLogIndex + 1
+	ldr.fromReplsCh = make(chan interface{}, len(ldr.configs.Latest.Nodes))
 
 	// add a blank no-op entry into log at the start of its term
 	ldr.storeEntry(NewEntry{
@@ -93,39 +61,13 @@ func (ldr *leadership) runLoop() {
 		},
 	})
 
-	ldr.fromReplsCh = make(chan interface{}, len(ldr.configs.Latest.Nodes))
-
-	defer func() {
-		ldr.leaseTimer.Stop()
-		for _, repl := range ldr.repls {
-			close(repl.stopCh)
-		}
-
-		if ldr.leader == ldr.id {
-			ldr.leader = ""
-		}
-
-		// respond to any pending user entries
-		var err error
-		if ldr.shutdownCalled() {
-			err = ErrServerClosed
-		} else {
-			err = NotLeaderError{ldr.leaderAddr(), true}
-		}
-		for e := ldr.newEntries.Front(); e != nil; e = e.Next() {
-			e.Value.(NewEntry).task.reply(err)
-		}
-
-		// wait for replicators to finish
-		ldr.wg.Wait()
-	}()
-
 	// start replication routine for each follower
-
 	for _, node := range ldr.configs.Latest.Nodes {
 		ldr.startReplication(node)
 	}
+}
 
+func (ldr *leadership) runLoop() {
 	for ldr.state == Leader {
 		select {
 		case <-ldr.shutdownCh:
@@ -135,45 +77,7 @@ func (ldr *leadership) runLoop() {
 			ldr.replyRPC(rpc)
 
 		case update := <-ldr.fromReplsCh:
-			matchUpdated, noContactUpdated := false, false
-		loop:
-			// get pending repl updates
-			for {
-				switch update := update.(type) {
-				case matchIndex:
-					matchUpdated = true
-					update.status.matchIndex = update.val
-				case noContact:
-					noContactUpdated = true
-					update.status.noContact = update.time
-					if ldr.trace.Unreachable != nil {
-						ldr.trace.Unreachable(ldr.liveInfo(), update.status.id, update.time)
-					}
-				case newTerm:
-					// if response contains term T > currentTerm:
-					// set currentTerm = T, convert to follower
-					debug(ldr, "leader -> follower")
-					ldr.state = Follower
-					ldr.setTerm(update.val)
-					ldr.leader = ""
-					ldr.stateChanged()
-					return
-				}
-				select {
-				case <-ldr.shutdownCh:
-					return
-				case update = <-ldr.fromReplsCh:
-					break
-				default:
-					break loop
-				}
-			}
-			if matchUpdated {
-				ldr.onMajorityCommit()
-			}
-			if noContactUpdated {
-				ldr.checkLeaderLease()
-			}
+			ldr.checkReplUpdates(update)
 
 		case <-ldr.leaseTimer.C:
 			ldr.checkLeaderLease()
@@ -187,6 +91,58 @@ func (ldr *leadership) runLoop() {
 		case t := <-ldr.snapTakenCh:
 			ldr.onSnapshotTaken(t)
 		}
+	}
+}
+
+func (ldr *leadership) release() {
+	if !ldr.leaseTimer.Stop() {
+		select {
+		case <-ldr.leaseTimer.C:
+		default:
+		}
+	}
+
+	for id, repl := range ldr.repls {
+		close(repl.stopCh)
+		delete(ldr.repls, id)
+	}
+
+	if ldr.leader == ldr.id {
+		ldr.leader = ""
+	}
+
+	// respond to any pending user entries
+	var err error
+	if ldr.shutdownCalled() {
+		err = ErrServerClosed
+	} else {
+		err = NotLeaderError{ldr.leaderAddr(), true}
+	}
+
+	for ldr.newEntries.Len() > 0 {
+		ne := ldr.newEntries.Remove(ldr.newEntries.Front()).(NewEntry)
+		ne.reply(err)
+	}
+
+	// wait for replicators to finish
+	ldr.wg.Wait()
+}
+
+func (ldr *leadership) storeEntry(ne NewEntry) {
+	ne.entry.index, ne.entry.term = ldr.lastLogIndex+1, ldr.term
+
+	// append entry to local log
+	debug(ldr, "log.append", ne.typ, ne.index)
+	if ne.typ != entryQuery && ne.typ != entryBarrier {
+		ldr.storage.appendEntry(ne.entry)
+	}
+	ldr.newEntries.PushBack(ne)
+
+	// we updated lastLogIndex, so notify replicators
+	if ne.typ == entryQuery || ne.typ == entryBarrier {
+		ldr.applyCommitted(ldr.newEntries)
+	} else {
+		ldr.notifyReplicators()
 	}
 }
 
@@ -246,21 +202,45 @@ func (ldr *leadership) startReplication(node Node) {
 	}
 }
 
-func (ldr *leadership) storeEntry(ne NewEntry) {
-	ne.entry.index, ne.entry.term = ldr.lastLogIndex+1, ldr.term
+func (ldr *leadership) checkReplUpdates(update interface{}) {
+	matchUpdated, noContactUpdated := false, false
+	for {
+		switch update := update.(type) {
+		case matchIndex:
+			matchUpdated = true
+			update.status.matchIndex = update.val
+		case noContact:
+			noContactUpdated = true
+			update.status.noContact = update.time
+			if ldr.trace.Unreachable != nil {
+				ldr.trace.Unreachable(ldr.liveInfo(), update.status.id, update.time)
+			}
+		case newTerm:
+			// if response contains term T > currentTerm:
+			// set currentTerm = T, convert to follower
+			debug(ldr, "leader -> follower")
+			ldr.state = Follower
+			ldr.setTerm(update.val)
+			ldr.leader = ""
+			ldr.stateChanged()
+			return
+		}
 
-	// append entry to local log
-	debug(ldr, "log.append", ne.typ, ne.index)
-	if ne.typ != entryQuery && ne.typ != entryBarrier {
-		ldr.storage.appendEntry(ne.entry)
+		// get any waiting update
+		select {
+		case <-ldr.shutdownCh:
+			return
+		case update = <-ldr.fromReplsCh:
+			continue
+		default:
+		}
+		break
 	}
-	ldr.newEntries.PushBack(ne)
-
-	// we updated lastLogIndex, so notify replicators
-	if ne.typ == entryQuery || ne.typ == entryBarrier {
-		ldr.applyCommitted(ldr.newEntries)
-	} else {
-		ldr.notifyReplicators()
+	if matchUpdated {
+		ldr.onMajorityCommit()
+	}
+	if noContactUpdated {
+		ldr.checkLeaderLease()
 	}
 }
 
@@ -361,8 +341,6 @@ func (ldr *leadership) notifyReplicators() {
 		}
 	}
 }
-
-// -------------------------------------------------------
 
 // -------------------------------------------------------
 
