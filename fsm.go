@@ -2,12 +2,8 @@ package raft
 
 import (
 	"container/list"
-	"errors"
 	"io"
 )
-
-var ErrSnapshotThreshold = errors.New("raft: not enough outstanding logs to snapshot")
-var ErrNoUpdates = errors.New("raft: no updates to FSM")
 
 type FSM interface {
 	Execute(cmd []byte) interface{}

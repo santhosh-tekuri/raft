@@ -5,10 +5,6 @@ import (
 	"fmt"
 )
 
-var ErrAlreadyBootstrapped = errors.New("raft.Bootstrap: already bootstrapped")
-var ErrConfigChangeInProgress = errors.New("raft: configChange is in progress")
-var ErrNotCommitReady = errors.New("raft: not ready to commit")
-
 func (r *Raft) bootstrap(t bootstrap) {
 	// validate
 	if !r.configs.IsBootstrap() {

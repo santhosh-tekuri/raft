@@ -1,11 +1,26 @@
 package raft
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"net"
 	"sync"
 	"time"
+)
+
+var (
+	// ErrServerClosed is returned by the Raft's Serve and ListenAndServe
+	// methods after a call to Shutdown
+	ErrServerClosed = errors.New("raft: server closed")
+
+	// ErrAlreadyBootstrapped is returned when bootstrap task received
+	// by already bootstrapped server
+	ErrAlreadyBootstrapped    = errors.New("raft.Bootstrap: already bootstrapped")
+	ErrConfigChangeInProgress = errors.New("raft: configChange is in progress")
+	ErrNotCommitReady         = errors.New("raft: not ready to commit")
+	ErrSnapshotThreshold      = errors.New("raft: not enough outstanding logs to snapshot")
+	ErrNoUpdates              = errors.New("raft: no updates to FSM")
 )
 
 type State byte

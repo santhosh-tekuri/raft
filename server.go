@@ -2,16 +2,11 @@ package raft
 
 import (
 	"bufio"
-	"errors"
 	"io"
 	"net"
 	"sync"
 	"time"
 )
-
-// ErrServerClosed is returned by the Raft's Serve and ListenAndServe
-// methods after a call to Shutdown
-var ErrServerClosed = errors.New("raft: Server closed")
 
 type rpc struct {
 	req     request
