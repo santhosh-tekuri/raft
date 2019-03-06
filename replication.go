@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"errors"
 	"io"
 	"time"
 )
@@ -13,11 +14,20 @@ type replication struct {
 	// this is owned by ldr goroutine
 	status replStatus
 
+	connPool  *connPool
+	storage   *storage
+	hbTimeout time.Duration
+	conn      *netConn
+
 	ldrStartIndex uint64
-	connPool      *connPool
-	storage       *storage
-	hbTimeout     time.Duration
-	conn          *netConn
+	ldrLastIndex  uint64
+	matchIndex    uint64
+	nextIndex     uint64
+	sendEntries   bool
+
+	// from this time node is unreachable
+	// zero value means node is reachable
+	noContact time.Time
 
 	// leader notifies replication with update
 	ldrUpdateCh chan leaderUpdate
@@ -41,150 +51,34 @@ func (repl *replication) runLoop(req *appendEntriesReq) {
 		}
 	}()
 
-	ldrLastIndex := req.prevLogIndex
-	matchIndex, nextIndex := uint64(0), ldrLastIndex+1
+	repl.ldrLastIndex = req.prevLogIndex
+	repl.matchIndex, repl.nextIndex = uint64(0), repl.ldrLastIndex+1
 
-	// from this time node is unreachable
-	// zero value means node is reachable
-	var noContact time.Time
-
-	debug(repl, "repl.start ldrLastIndex:", ldrLastIndex, "matchIndex:", matchIndex, "nextIndex:", nextIndex)
-	var reqMsg request
-	var respMsg message
-	var sendEntries bool
-mainLoop:
+	debug(repl, "repl.start")
 	for {
-		// prepare request----------------------------
-		debug(repl, "matchIndex", matchIndex, "nextIndex", nextIndex)
-		assert(matchIndex < nextIndex, "%s assert %d<%d", repl, matchIndex, nextIndex)
-		if repl.storage.hasEntry(nextIndex) {
-			req.prevLogIndex = nextIndex - 1
+		debug(repl, "matchIndex", repl.matchIndex, "nextIndex", repl.nextIndex)
+		assert(repl.matchIndex < repl.nextIndex, "%s assert %d<%d", repl, repl.matchIndex, repl.nextIndex)
 
-			// fill req.prevLogTerm
-			if req.prevLogIndex == 0 {
-				req.prevLogTerm = 0
-			} else if req.prevLogIndex >= repl.ldrStartIndex { // being smart!!!
-				req.prevLogTerm = req.term
-			} else if snapIndex, snapTerm := repl.getSnapLog(); req.prevLogIndex == snapIndex {
-				req.prevLogTerm = snapTerm
-			} else {
-				prevTerm, err := repl.storage.getEntryTerm(req.prevLogIndex)
-				if err == errNoEntryFound {
-					continue mainLoop // leader compacted logs
-				} else if err != nil {
-					assert(false, err.Error())
-				}
-				req.prevLogTerm = prevTerm
-			}
-
-			reqMsg, respMsg = req, &appendEntriesResp{}
-
-			var n uint64
-			if sendEntries {
-				assert(matchIndex+1 == nextIndex, "%s assert %d+1!=%d", repl, matchIndex, nextIndex)
-				n = min(ldrLastIndex-matchIndex, maxAppendEntries)
-			}
-			if n > 0 {
-				req.entries = make([]*entry, n)
-				for i := range req.entries {
-					req.entries[i] = &entry{}
-					err := repl.storage.getEntry(nextIndex+uint64(i), req.entries[i])
-					if err == errNoEntryFound {
-						continue mainLoop // leader compacted logs
-					} else if err != nil {
-						assert(false, err.Error())
-					}
-				}
-				debug(repl, "sending", req)
-			} else {
-				req.entries = nil
-				if sendEntries {
-					debug(repl, "sending heartbeat")
-				}
-			}
-		} else {
-			debug(repl, nextIndex, "is not in log, preparing installSnapReq")
-			reqMsg = &installLatestSnapReq{
-				installSnapReq: installSnapReq{
-					term:   req.term,
-					leader: req.leader,
-				},
-				snapshots: repl.storage.snapshots,
-			}
-			respMsg = &installSnapResp{}
+		err := repl.sendAppEntriesReq(req)
+		if err == errNoEntryFound {
+			err = repl.sendInstallSnapReq(req)
 		}
 
-		// send request ----------------------------------
-		var failures uint64
-		for {
-			err := repl.doRPC(reqMsg, respMsg)
-			if err != nil {
-				if noContact.IsZero() {
-					noContact = time.Now()
-					debug(repl, "noContact", err)
-					repl.notifyLdr(matchIndex, noContact)
-				}
-				failures++
-				select {
-				case <-repl.stopCh:
-					return
-				case <-time.After(backOff(failures)):
-					continue
-				}
-			}
-			break
-		}
-		if !noContact.IsZero() {
-			noContact = time.Time{} // zeroing
-			debug(repl, "yesContact")
-			repl.notifyLdr(matchIndex, noContact)
-		}
-		if respMsg.getTerm() > req.term {
-			select {
-			case <-repl.stopCh:
-			case repl.newTermCh <- respMsg.getTerm():
-			}
+		if err == errStop {
 			return
+		} else if err != nil {
+			assert(false, "unexpected error: %v", err)
+			continue
 		}
 
-		// process response ------------------------------
-		if reqMsg.rpcType() == rpcAppendEntries {
-			resp := respMsg.(*appendEntriesResp)
-			sendEntries = resp.success
-			if resp.success {
-				old := matchIndex
-				matchIndex, _ = lastEntry(req)
-				nextIndex = matchIndex + 1
-				if matchIndex != old {
-					debug(repl, "matchIndex:", matchIndex)
-					repl.notifyLdr(matchIndex, noContact)
-				}
-			} else {
-				nextIndex = min(nextIndex-1, resp.lastLogIndex+1)
-				debug(repl, "nextIndex:", nextIndex)
-				assert(matchIndex < nextIndex, "%s assert %d<%d => faulty follower", repl, matchIndex, nextIndex)
-			}
-		} else {
-			req, resp := reqMsg.(*installLatestSnapReq), respMsg.(*installSnapResp)
-			sendEntries = resp.success
-			if resp.success {
-				matchIndex = req.lastIndex
-				nextIndex = matchIndex + 1
-				debug(repl, "matchIndex:", matchIndex)
-				repl.notifyLdr(matchIndex, noContact)
-			} else {
-				assert(false, "%s installSnapshot failed", repl)
-			}
-		}
-
-		if sendEntries && matchIndex == ldrLastIndex {
+		if repl.sendEntries && repl.matchIndex == repl.ldrLastIndex {
 			// nothing to send. start heartbeat timer
 			select {
 			case <-repl.stopCh:
 				return
 			case update := <-repl.ldrUpdateCh:
-				ldrLastIndex, req.ldrCommitIndex = update.lastIndex, update.commitIndex
-				debug(repl, "{last:", ldrLastIndex, "commit:", req.ldrCommitIndex, "} <-ldrUpdateCh")
+				repl.ldrLastIndex, req.ldrCommitIndex = update.lastIndex, update.commitIndex
+				debug(repl, "{last:", repl.ldrLastIndex, "commit:", req.ldrCommitIndex, "} <-ldrUpdateCh")
 			case <-afterRandomTimeout(repl.hbTimeout / 10):
 			}
 		} else {
@@ -193,11 +87,111 @@ mainLoop:
 			case <-repl.stopCh:
 				return
 			case update := <-repl.ldrUpdateCh:
-				ldrLastIndex, req.ldrCommitIndex = update.lastIndex, update.commitIndex
-				debug(repl, "{last:", ldrLastIndex, "commit:", req.ldrCommitIndex, "} <-ldrUpdateCh")
+				repl.ldrLastIndex, req.ldrCommitIndex = update.lastIndex, update.commitIndex
+				debug(repl, "{last:", repl.ldrLastIndex, "commit:", req.ldrCommitIndex, "} <-ldrUpdateCh")
 			default:
 			}
 		}
+	}
+}
+
+var errStop = errors.New("got stop signal")
+
+func (repl *replication) sendAppEntriesReq(req *appendEntriesReq) error {
+	req.prevLogIndex = repl.nextIndex - 1
+
+	// fill req.prevLogTerm
+	if req.prevLogIndex == 0 {
+		req.prevLogTerm = 0
+	} else {
+		snapIndex, snapTerm := repl.getSnapLog()
+		if req.prevLogIndex < snapTerm {
+			return errNoEntryFound
+		}
+		if req.prevLogIndex == snapIndex {
+			req.prevLogTerm = snapTerm
+		} else if req.prevLogIndex >= repl.ldrStartIndex { // being smart!!!
+			req.prevLogTerm = req.term
+		} else {
+			prevTerm, err := repl.storage.getEntryTerm(req.prevLogIndex)
+			if err != nil {
+				return err
+			}
+			req.prevLogTerm = prevTerm
+		}
+	}
+
+	var n uint64
+	if repl.sendEntries {
+		assert(repl.matchIndex == req.prevLogIndex, "%s assert %d==%d", repl, repl.matchIndex, req.prevLogIndex)
+		n = min(repl.ldrLastIndex-repl.matchIndex, maxAppendEntries)
+	}
+	if n > 0 {
+		req.entries = make([]*entry, n)
+		for i := range req.entries {
+			req.entries[i] = &entry{}
+			err := repl.storage.getEntry(repl.nextIndex+uint64(i), req.entries[i])
+			if err != nil {
+				return err
+			}
+		}
+		debug(repl, "sending", req)
+	} else {
+		req.entries = nil
+		if repl.sendEntries {
+			debug(repl, "sending heartbeat")
+		}
+	}
+
+	resp := &appendEntriesResp{}
+	if err := repl.retryRPC(req, resp); err != nil {
+		return err
+	}
+
+	repl.sendEntries = resp.success
+	if resp.success {
+		old := repl.matchIndex
+		repl.matchIndex, _ = lastEntry(req)
+		repl.nextIndex = repl.matchIndex + 1
+		if repl.matchIndex != old {
+			debug(repl, "matchIndex:", repl.matchIndex)
+			repl.notifyLdr(repl.matchIndex, repl.noContact)
+		}
+	} else {
+		if resp.lastLogIndex < repl.matchIndex {
+			// this happens if someone restarted follower storage with empty storage
+			// todo: can we treat replicate entire snap+log to such follower ??
+			return errors.New("faulty follower: denies matchIndex")
+		}
+		repl.nextIndex = min(repl.nextIndex-1, resp.lastLogIndex+1)
+		debug(repl, "nextIndex:", repl.nextIndex)
+	}
+	return nil
+}
+
+func (repl *replication) sendInstallSnapReq(appReq *appendEntriesReq) error {
+	req := &installLatestSnapReq{
+		installSnapReq: installSnapReq{
+			term:   appReq.term,
+			leader: appReq.leader,
+		},
+		snapshots: repl.storage.snapshots,
+	}
+
+	resp := &installSnapResp{}
+	if err := repl.retryRPC(req, resp); err != nil {
+		return err
+	}
+
+	repl.sendEntries = resp.success
+	if resp.success {
+		repl.matchIndex = req.lastIndex
+		repl.nextIndex = repl.matchIndex + 1
+		debug(repl, "matchIndex:", repl.matchIndex)
+		repl.notifyLdr(repl.matchIndex, repl.noContact)
+		return nil
+	} else {
+		return errors.New("installSnap.success is false")
 	}
 }
 
@@ -207,6 +201,41 @@ func (repl *replication) notifyLdr(matchIndex uint64, noContact time.Time) {
 	case <-repl.stopCh:
 	case repl.replUpdatedCh <- update:
 	}
+}
+
+func (repl *replication) retryRPC(req request, resp message) error {
+	var failures uint64
+	for {
+		err := repl.doRPC(req, resp)
+		if err != nil {
+			if repl.noContact.IsZero() {
+				repl.noContact = time.Now()
+				debug(repl, "noContact", err)
+				repl.notifyLdr(repl.matchIndex, repl.noContact)
+			}
+			failures++
+			select {
+			case <-repl.stopCh:
+				return errStop
+			case <-time.After(backOff(failures)):
+				continue
+			}
+		}
+		break
+	}
+	if !repl.noContact.IsZero() {
+		repl.noContact = time.Time{} // zeroing
+		debug(repl, "yesContact")
+		repl.notifyLdr(repl.matchIndex, repl.noContact)
+	}
+	if resp.getTerm() > req.getTerm() {
+		select {
+		case <-repl.stopCh:
+		case repl.newTermCh <- resp.getTerm():
+		}
+		return errStop
+	}
+	return nil
 }
 
 func (repl *replication) doRPC(req request, resp message) error {

@@ -149,13 +149,6 @@ func (s *storage) setVotedFor(id ID) {
 	s.votedFor = id
 }
 
-// note: this method assumes that index<=lastLogIndex
-func (s *storage) hasEntry(index uint64) bool {
-	s.snapMu.RLock()
-	defer s.snapMu.RUnlock()
-	return index > s.snapIndex
-}
-
 func (s *storage) getEntryTerm(index uint64) (uint64, error) {
 	e := &entry{}
 	err := s.getEntry(index, e)
