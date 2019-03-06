@@ -1,66 +1,97 @@
 package raft
 
+import "time"
+
 func (r *Raft) runFollower() {
-	assert(r.leader != r.id, "%s r.leader: got %s, want !=%s", r, r.leader, r.id)
+	f := flrShip{Raft: r}
+	f.init()
+	f.runLoop()
+	f.release()
+}
+
+type flrShip struct {
+	*Raft
+	timeoutCh       <-chan time.Time
+	electionAborted bool
+}
+
+func (f *flrShip) init() {
+	f.timeoutCh = afterRandomTimeout(f.hbTimeout)
+	f.electionAborted = false
+}
+
+func (f *flrShip) release() {
+	f.timeoutCh = nil
+}
+
+func (f *flrShip) runLoop() {
+	assert(f.leader != f.id, "%s r.leader: got %s, want !=%s", f, f.leader, f.id)
 
 	// todo: use single timer by resetting
-	timeoutCh := afterRandomTimeout(r.hbTimeout)
-	for r.state == Follower {
+	for f.state == Follower {
 		select {
-		case <-r.shutdownCh:
+		case <-f.shutdownCh:
 			return
 
-		case rpc := <-r.server.rpcCh:
-			if validReq := r.replyRPC(rpc); validReq {
-				if yes, _ := r.canStartElection(); yes {
+		case rpc := <-f.server.rpcCh:
+			if validReq := f.replyRPC(rpc); validReq {
+				if yes, _ := f.canStartElection(); yes {
 					// a server remains in follower state as long as it receives valid
 					// RPCs from a leader or candidate
-					timeoutCh = afterRandomTimeout(r.hbTimeout)
+					f.electionAborted = false
+					f.timeoutCh = afterRandomTimeout(f.hbTimeout)
 				}
 			}
 
 			// If timeout elapses without receiving AppendEntries
 			// RPC from current leader or granting vote to candidate:
 			// convert to candidate
-		case <-timeoutCh:
-			debug(r, "heartbeatTimeout leader:", r.leader)
-			r.leader = ""
+		case <-f.timeoutCh:
+			f.onTimeout()
 
-			if can, reason := r.canStartElection(); !can {
-				debug(r, "electionAborted", reason)
-				if r.trace.ElectionAborted != nil {
-					r.trace.ElectionAborted(r.liveInfo(), reason)
+		case ne := <-f.newEntryCh:
+			ne.reply(NotLeaderError{f.leaderAddr(), false})
+
+		case t := <-f.taskCh:
+			f.executeTask(t)
+			if f.electionAborted {
+				if yes, _ := f.canStartElection(); yes {
+					// we got new config, which allows us to start election
+					f.electionAborted = false
+					f.timeoutCh = afterRandomTimeout(f.hbTimeout)
 				}
-				continue // timer will be restarted on configChange
 			}
 
-			debug(r, "follower -> candidate")
-			r.state = Candidate
-			r.stateChanged()
-
-		case ne := <-r.newEntryCh:
-			ne.reply(NotLeaderError{r.leaderAddr(), false})
-
-		case t := <-r.taskCh:
-			before, _ := r.canStartElection()
-			r.executeTask(t)
-			if now, _ := r.canStartElection(); !before && now {
-				// we got new config, which allows us to start election
-				timeoutCh = afterRandomTimeout(r.hbTimeout)
-			}
-
-		case t := <-r.snapTakenCh:
-			r.onSnapshotTaken(t)
+		case t := <-f.snapTakenCh:
+			f.onSnapshotTaken(t)
 		}
 	}
 }
 
-func (r *Raft) canStartElection() (can bool, reason string) {
-	if r.configs.IsBootstrap() {
+func (f *flrShip) onTimeout() {
+	debug(f, "heartbeatTimeout leader:", f.leader)
+	f.leader = ""
+
+	if can, reason := f.canStartElection(); !can {
+		debug(f, "electionAborted", reason)
+		f.electionAborted = true
+		if f.trace.ElectionAborted != nil {
+			f.trace.ElectionAborted(f.liveInfo(), reason)
+		}
+		return
+	}
+
+	debug(f, "follower -> candidate")
+	f.state = Candidate
+	f.stateChanged()
+}
+
+func (f *flrShip) canStartElection() (can bool, reason string) {
+	if f.configs.IsBootstrap() {
 		return false, "no known peers"
 	}
-	if r.configs.IsCommitted() {
-		n, ok := r.configs.Latest.Nodes[r.id]
+	if f.configs.IsCommitted() {
+		n, ok := f.configs.Latest.Nodes[f.id]
 		if !ok {
 			return false, "not part of cluster"
 		}

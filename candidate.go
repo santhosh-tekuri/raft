@@ -6,6 +6,7 @@ func (r *Raft) runCandidate() {
 	c := candShip{Raft: r}
 	c.init()
 	c.runLoop()
+	c.release()
 }
 
 type candShip struct {
@@ -53,7 +54,9 @@ func (c *candShip) runLoop() {
 }
 
 func (c *candShip) startElection() {
-	c.timeoutCh = afterRandomTimeout(c.hbTimeout)
+	d := randomDuration(c.hbTimeout)
+	c.timeoutCh = time.After(d)
+	deadline := time.Now().Add(d)
 	c.votesNeeded = c.configs.Latest.quorum()
 	c.voteCh = make(chan voteResult, len(c.configs.Latest.Nodes))
 
@@ -89,7 +92,7 @@ func (c *candShip) startElection() {
 			continue
 		}
 		connPool := c.getConnPool(n.ID)
-		go func() {
+		go func(ch chan voteResult) {
 			result := voteResult{
 				voteResp: &voteResp{
 					term:    req.term,
@@ -98,19 +101,19 @@ func (c *candShip) startElection() {
 				from: connPool.id,
 			}
 			defer func() {
-				c.voteCh <- result
+				ch <- result
 			}()
-			resp, err := c.requestVote(connPool, req)
+			resp, err := c.requestVote(connPool, req, deadline)
 			if err != nil {
 				result.err = err
 				return
 			}
 			result.voteResp = resp
-		}()
+		}(c.voteCh)
 	}
 }
 
-func (c *candShip) requestVote(pool *connPool, req *voteReq) (*voteResp, error) {
+func (c *candShip) requestVote(pool *connPool, req *voteReq, deadline time.Time) (*voteResp, error) {
 	debug(c.id, ">> requestVote", pool.id)
 	conn, err := pool.getConn()
 	if err != nil {
@@ -120,6 +123,7 @@ func (c *candShip) requestVote(pool *connPool, req *voteReq) (*voteResp, error) 
 	if c.trace.sending != nil {
 		c.trace.sending(c.id, pool.id, req)
 	}
+	_ = conn.conn.SetDeadline(deadline)
 	if err = conn.doRPC(req, resp); err != nil {
 		_ = conn.close()
 		return nil, err

@@ -276,6 +276,10 @@ func (e NotLeaderError) Error() string {
 	return "raft: this node is not the leader" + contact
 }
 
+func randomDuration(min time.Duration) time.Duration {
+	return min + time.Duration(rand.Int63())%min
+}
+
 func afterRandomTimeout(min time.Duration) <-chan time.Time {
-	return time.After(min + time.Duration(rand.Int63())%min)
+	return time.After(randomDuration(min))
 }
