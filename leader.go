@@ -10,20 +10,6 @@ import (
 
 const minCheckInterval = 10 * time.Millisecond
 
-func (r *Raft) runLeader() {
-	ldr := &ldrShip{
-		Raft:       r,
-		leaseTimer: time.NewTimer(time.Hour),
-		newEntries: list.New(),
-		repls:      make(map[ID]*replication),
-	}
-	r.ldr = ldr
-	ldr.init()
-	ldr.runLoop()
-	ldr.release()
-	r.ldr = nil
-}
-
 type ldrShip struct {
 	*Raft
 
@@ -67,33 +53,6 @@ func (l *ldrShip) init() {
 	}
 }
 
-func (l *ldrShip) runLoop() {
-	for l.state == Leader {
-		select {
-		case <-l.shutdownCh:
-			return
-
-		case rpc := <-l.server.rpcCh:
-			l.replyRPC(rpc)
-
-		case update := <-l.fromReplsCh:
-			l.checkReplUpdates(update)
-
-		case <-l.leaseTimer.C:
-			l.checkLeaderLease()
-
-		case ne := <-l.Raft.newEntryCh:
-			l.storeEntry(ne)
-
-		case t := <-l.taskCh:
-			l.Raft.executeTask(t)
-
-		case t := <-l.snapTakenCh:
-			l.onSnapshotTaken(t)
-		}
-	}
-}
-
 func (l *ldrShip) release() {
 	if !l.leaseTimer.Stop() {
 		select {
@@ -113,7 +72,7 @@ func (l *ldrShip) release() {
 
 	// respond to any pending user entries
 	var err error
-	if l.shutdownCalled() {
+	if l.isClosed() {
 		err = ErrServerClosed
 	} else {
 		err = NotLeaderError{l.leaderAddr(), true}

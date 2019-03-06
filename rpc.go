@@ -15,11 +15,11 @@ func (r *Raft) replyRPC(rpc *rpc) bool {
 	if r.trace.received != nil {
 		r.trace.received(r.id, rpc.req.from(), rpc.req)
 	}
-	var resetElectionTimer = true
+	var resetTimer = true
 	switch req := rpc.req.(type) {
 	case *voteReq:
 		reply := r.onVoteRequest(req)
-		rpc.resp, resetElectionTimer = reply, reply.granted
+		rpc.resp, resetTimer = reply, reply.granted
 	case *appendEntriesReq:
 		rpc.resp = r.onAppendEntriesRequest(req)
 	case *installSnapReq:
@@ -31,7 +31,7 @@ func (r *Raft) replyRPC(rpc *rpc) bool {
 	if r.trace.sending != nil {
 		r.trace.sending(r.id, rpc.req.from(), rpc.resp)
 	}
-	return resetElectionTimer
+	return resetTimer
 }
 
 func (r *Raft) onVoteRequest(req *voteReq) *voteResp {

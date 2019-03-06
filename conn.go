@@ -135,3 +135,20 @@ func (pool *connPool) returnConn(conn *netConn) {
 		_ = conn.close()
 	}
 }
+
+// -----------------------------------------------------
+
+func (r *Raft) getConnPool(id ID) *connPool {
+	pool, ok := r.connPools[id]
+	if !ok {
+		pool = &connPool{
+			id:       id,
+			resolver: r.resolver,
+			dialFn:   r.dialFn,
+			timeout:  10 * time.Second, // todo
+			max:      3,                //todo
+		}
+		r.connPools[id] = pool
+	}
+	return pool
+}

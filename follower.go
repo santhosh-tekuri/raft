@@ -2,13 +2,6 @@ package raft
 
 import "time"
 
-func (r *Raft) runFollower() {
-	f := flrShip{Raft: r}
-	f.init()
-	f.runLoop()
-	f.release()
-}
-
 type flrShip struct {
 	*Raft
 	timeoutCh       <-chan time.Time
@@ -22,43 +15,6 @@ func (f *flrShip) init() {
 
 func (f *flrShip) release() {
 	f.timeoutCh = nil
-}
-
-func (f *flrShip) runLoop() {
-	assert(f.leader != f.id, "%s r.leader: got %s, want !=%s", f, f.leader, f.id)
-
-	// todo: use single timer by resetting
-	for f.state == Follower {
-		select {
-		case <-f.shutdownCh:
-			return
-
-		case rpc := <-f.server.rpcCh:
-			// a server remains in follower state as long as it receives valid
-			// RPCs from a leader or candidate
-			if validReq := f.replyRPC(rpc); validReq {
-				f.resetTimer()
-			}
-
-			// If timeout elapses without receiving AppendEntries
-			// RPC from current leader or granting vote to candidate:
-			// convert to candidate
-		case <-f.timeoutCh:
-			f.onTimeout()
-
-		case ne := <-f.newEntryCh:
-			ne.reply(NotLeaderError{f.leaderAddr(), false})
-
-		case t := <-f.taskCh:
-			f.executeTask(t)
-			if f.electionAborted {
-				f.resetTimer()
-			}
-
-		case t := <-f.snapTakenCh:
-			f.onSnapshotTaken(t)
-		}
-	}
 }
 
 func (f *flrShip) resetTimer() {

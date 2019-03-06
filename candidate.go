@@ -2,13 +2,6 @@ package raft
 
 import "time"
 
-func (r *Raft) runCandidate() {
-	c := candShip{Raft: r}
-	c.init()
-	c.runLoop()
-	c.release()
-}
-
 type candShip struct {
 	*Raft
 	timeoutCh   <-chan time.Time
@@ -23,34 +16,6 @@ func (c *candShip) init() {
 func (c *candShip) release() {
 	c.timeoutCh = nil
 	c.voteCh = nil
-}
-
-func (c *candShip) runLoop() {
-	assert(c.leader == "", "%s r.leader: got %s, want ", c, c.leader)
-	for c.state == Candidate {
-		select {
-		case <-c.shutdownCh:
-			return
-
-		case rpc := <-c.server.rpcCh:
-			c.replyRPC(rpc)
-
-		case vote := <-c.voteCh:
-			c.onVoteResult(vote)
-
-		case <-c.timeoutCh:
-			c.startElection()
-
-		case ne := <-c.newEntryCh:
-			ne.reply(NotLeaderError{c.leaderAddr(), false})
-
-		case t := <-c.taskCh:
-			c.executeTask(t)
-
-		case t := <-c.snapTakenCh:
-			c.onSnapshotTaken(t)
-		}
-	}
 }
 
 func (c *candShip) startElection() {
