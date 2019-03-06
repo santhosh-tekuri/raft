@@ -22,14 +22,14 @@ type rpc struct {
 }
 
 type server struct {
-	listenerMu sync.RWMutex
-	listener   net.Listener
-	rpcCh      chan *rpc
+	listener net.Listener
+	rpcCh    chan *rpc
 
 	// interval to check for shutdown signal
 	idleTimeout time.Duration
 
 	// to handle safe shutdown
+	shutdownMu sync.RWMutex
 	shutdownCh chan struct{}
 	wg         sync.WaitGroup
 }
@@ -44,17 +44,17 @@ func newServer(idleTimeout time.Duration) *server {
 
 // todo: note that we dont support multiple listeners
 func (s *server) serve(l net.Listener) error {
-	s.wg.Add(1) // The first increment must be synchronized with Wait
 	defer s.wg.Done()
 
-	s.listenerMu.Lock()
+	s.shutdownMu.Lock()
 	select {
 	case <-s.shutdownCh:
 		_ = l.Close()
 	default:
 	}
+	s.wg.Add(1) // The first increment must be synchronized with Wait
 	s.listener = l
-	s.listenerMu.Unlock()
+	s.shutdownMu.Unlock()
 
 	for {
 		conn, err := s.listener.Accept()
@@ -155,11 +155,11 @@ func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) erro
 func (s *server) shutdown() {
 	close(s.shutdownCh)
 
-	s.listenerMu.RLock()
+	s.shutdownMu.RLock()
 	if s.listener != nil {
 		_ = s.listener.Close()
 	}
-	s.listenerMu.RUnlock()
+	s.shutdownMu.RUnlock()
 
 	s.wg.Wait()
 	close(s.rpcCh)
