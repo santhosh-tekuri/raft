@@ -38,7 +38,7 @@ func newServer(idleTimeout time.Duration) *server {
 }
 
 // todo: note that we dont support multiple listeners
-func (s *server) serve(l net.Listener) error {
+func (s *server) serve(l net.Listener) {
 	defer s.wg.Done()
 
 	s.shutdownMu.Lock()
@@ -56,7 +56,7 @@ func (s *server) serve(l net.Listener) error {
 		if err != nil {
 			select {
 			case <-s.shutdownCh:
-				return ErrServerClosed
+				return
 			default:
 				continue
 			}

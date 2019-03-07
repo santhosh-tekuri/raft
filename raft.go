@@ -110,8 +110,9 @@ func (r *Raft) Serve(l net.Listener) error {
 		}
 	}
 
-	go r.stateLoop()
-	return r.server.serve(l)
+	go r.server.serve(l)
+	r.stateLoop()
+	return ErrServerClosed
 }
 
 func (r *Raft) stateLoop() {
