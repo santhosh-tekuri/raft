@@ -39,7 +39,6 @@ func (f *flrShip) onTimeout() {
 
 	debug(f, "follower -> candidate")
 	f.state = Candidate
-	f.stateChanged()
 }
 
 func (f *flrShip) canStartElection() (can bool, reason string) {

@@ -185,6 +185,9 @@ func (r *Raft) stateLoop() {
 				l.checkLeaderLease()
 			}
 		}
+		if r.trace.StateChanged != nil {
+			r.trace.StateChanged(r.liveInfo())
+		}
 		ships[rstate].release()
 	}
 }

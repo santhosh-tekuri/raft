@@ -115,7 +115,6 @@ func (c *candShip) onVoteResult(vote voteResult) {
 		debug(c, "candidate -> follower")
 		c.state = Follower
 		c.setTerm(vote.term)
-		c.stateChanged()
 		return
 	}
 
@@ -126,7 +125,6 @@ func (c *candShip) onVoteResult(vote voteResult) {
 			debug(c, "candidate -> leader")
 			c.state = Leader
 			c.leader = c.id
-			c.stateChanged()
 		}
 	}
 }

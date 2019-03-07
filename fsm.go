@@ -89,7 +89,6 @@ func (r *Raft) applyCommitted(newEntries *list.List) {
 			debug(r, "leader -> follower notVoter")
 			r.state = Follower
 			r.leader = ""
-			r.stateChanged()
 		}
 		// todo: we can provide option to shutdown
 		//       if it is no longer part of new config

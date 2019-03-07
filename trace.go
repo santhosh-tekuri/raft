@@ -61,9 +61,3 @@ func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
 func (r *Raft) liveInfo() Info {
 	return liveInfo{r: r}
 }
-
-func (r *Raft) stateChanged() {
-	if r.trace.StateChanged != nil {
-		r.trace.StateChanged(r.liveInfo())
-	}
-}

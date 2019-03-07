@@ -181,7 +181,6 @@ func (l *ldrShip) checkReplUpdates(update interface{}) {
 			l.state = Follower
 			l.setTerm(update.val)
 			l.leader = ""
-			l.stateChanged()
 			return
 		}
 
@@ -227,7 +226,6 @@ func (l *ldrShip) checkLeaderLease() {
 		debug(l, "leader -> follower quorumUnreachable")
 		l.state = Follower
 		l.leader = ""
-		l.stateChanged()
 		return
 	}
 

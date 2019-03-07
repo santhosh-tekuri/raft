@@ -49,7 +49,6 @@ func (r *Raft) onVoteRequest(req *voteReq) *voteResp {
 		debug(r, "stateChange", req.term, Follower)
 		r.state = Follower
 		r.setTerm(req.term)
-		r.stateChanged()
 	}
 
 	// if we have leader, we only vote for him
@@ -100,7 +99,6 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp 
 		debug(r, "stateChange", req.term, Follower)
 		r.state = Follower
 		r.setTerm(req.term)
-		r.stateChanged()
 	}
 
 	r.leader = req.leader
@@ -220,7 +218,6 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq) (resp *installSnapResp,
 		debug(r, "stateChange", req.term, Follower)
 		r.state = Follower
 		r.setTerm(req.term)
-		r.stateChanged()
 	}
 
 	r.leader = req.leader
