@@ -176,11 +176,23 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp 
 	lastIndex, lastTerm := index, term
 	if lastTerm == req.term && req.ldrCommitIndex > r.commitIndex {
 		r.setCommitIndex(min(req.ldrCommitIndex, lastIndex))
-		r.applyCommitted(nil) // apply newly committed logs
+		r.applyCommitted() // apply newly committed logs
 	}
 
 	resp.success = true
 	return resp
+}
+
+// if commitIndex > lastApplied: increment lastApplied, apply
+// log[lastApplied] to state machine
+func (r *Raft) applyCommitted() {
+	for r.lastApplied < r.commitIndex {
+		// get lastApplied+1 entry
+		e := &entry{}
+		r.storage.getEntry(r.lastApplied+1, e)
+		r.applyEntry(NewEntry{entry: e})
+		r.lastApplied++
+	}
 }
 
 func lastEntry(req *appendEntriesReq) (index, term uint64) {

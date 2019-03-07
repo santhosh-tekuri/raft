@@ -99,7 +99,7 @@ func (l *ldrShip) storeEntry(ne NewEntry) {
 
 	// we updated lastLogIndex, so notify replicators
 	if ne.typ == entryQuery || ne.typ == entryBarrier {
-		l.applyCommitted(l.newEntries)
+		l.applyCommitted()
 	} else {
 		l.notifyReplicators()
 	}
@@ -279,8 +279,52 @@ func (l *ldrShip) onMajorityCommit() {
 	// majorityMatchIndex.term == currentTerm
 	if majorityMatchIndex > l.commitIndex && majorityMatchIndex >= l.startIndex {
 		l.setCommitIndex(majorityMatchIndex)
-		l.applyCommitted(l.newEntries)
+		l.applyCommitted()
 		l.notifyReplicators() // we updated commit index
+	}
+}
+
+// if commitIndex > lastApplied: increment lastApplied, apply
+// log[lastApplied] to state machine
+func (l *ldrShip) applyCommitted() {
+	for {
+		// send query/barrier entries if any to fsm
+		for l.newEntries.Len() > 0 {
+			elem := l.newEntries.Front()
+			ne := elem.Value.(NewEntry)
+			if ne.index == l.lastApplied+1 && (ne.typ == entryQuery || ne.typ == entryBarrier) {
+				l.newEntries.Remove(elem)
+				debug(l, "fms <- {", ne.typ, ne.index, "}")
+				select {
+				case <-l.shutdownCh:
+					ne.reply(ErrServerClosed)
+					return
+				case l.fsmTaskCh <- ne:
+				}
+			} else {
+				break
+			}
+		}
+
+		if l.lastApplied+1 > l.commitIndex {
+			return
+		}
+
+		// get lastApplied+1 entry
+		var ne NewEntry
+		if l.newEntries.Len() > 0 {
+			elem := l.newEntries.Front()
+			if elem.Value.(NewEntry).index == l.lastApplied+1 {
+				ne = l.newEntries.Remove(elem).(NewEntry)
+			}
+		}
+		if ne.entry == nil {
+			ne.entry = &entry{}
+			l.storage.getEntry(l.lastApplied+1, ne.entry)
+		}
+
+		l.applyEntry(ne)
+		l.lastApplied++
 	}
 }
 
