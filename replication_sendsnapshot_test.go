@@ -6,8 +6,17 @@ import (
 	"github.com/fortytw2/leaktest"
 )
 
-func TestReplication_SendSnapshot_sendSnapshot2Follower(t *testing.T) {
-	Debug("\nTestReplication_SendSnapshot_followerWithNoSnapshotEntries --------------------------")
+func TestReplication_sendSnapshot(t *testing.T) {
+	t.Run("case1", func(t *testing.T) {
+		testReplicationSendSnapshot(t, false)
+	})
+	t.Run("case2", func(t *testing.T) {
+		testReplicationSendSnapshot(t, true)
+	})
+}
+
+func testReplicationSendSnapshot(t *testing.T, updateFSMAfterSnap bool) {
+	Debug("\nTestReplication_sendSnapshot_", updateFSMAfterSnap, "--------------------------")
 	defer leaktest.Check(t)()
 
 	// launch 3 node cluster
@@ -15,8 +24,19 @@ func TestReplication_SendSnapshot_sendSnapshot2Follower(t *testing.T) {
 	defer c.shutdown()
 
 	// send 10 updates, wait for them
+	updates := uint64(10)
 	c.sendUpdates(ldr, 1, 10)
 	c.waitBarrier(ldr, 0)
+
+	// add two nonVoters M4; wait all commit them
+	c.ensure(waitAddNonVoter(ldr, "M4", false))
+	c.waitCatchup()
+
+	// now send one update
+	// why this: because snapIndex is determined by fsm
+	//           and fsm does not know about config changes
+	updates++
+	c.ensure(waitUpdate(ldr, "msg:11", 0))
 
 	// take snapshot
 	c.takeSnapshot(ldr, 1, nil)
@@ -25,18 +45,19 @@ func TestReplication_SendSnapshot_sendSnapshot2Follower(t *testing.T) {
 		c.Fatalf("ldr.numEntries: got %d, want 0", n)
 	}
 
-	// now add a nonVoter M4
-	m4 := c.launch(1, false)["M4"]
-	if err := waitAddNonVoter(ldr, m4.ID(), false); err != nil {
-		c.Fatal(err)
+	if updateFSMAfterSnap {
+		// send 10 more updates, ensure all alive get them
+		updates += 10
+		c.sendUpdates(ldr, 1, 10)
+		c.waitFSMLen(updates)
 	}
 
-	// ensure M4 catches up with leader
-	c.waitFSMLen(10, m4)
-
-	debug("******************************")
+	// now launch nonVoter M4; ensure he catches up
+	m4 := c.launch(1, false)["M4"]
+	c.waitFSMLen(updates, m4)
 
 	// send 10 more updates, ensure all alive get them
+	updates += 10
 	c.sendUpdates(ldr, 1, 10)
-	c.waitFSMLen(20)
+	c.waitFSMLen(updates)
 }

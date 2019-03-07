@@ -89,10 +89,10 @@ func (l *ldrShip) addNonvoter(t addNonvoter) {
 		return
 	}
 
+	debug(l, "addNonvoter", t.node)
 	config := l.configs.Latest.clone()
 	config.Nodes[t.node.ID] = t.node
 	l.storeConfig(t.task, config)
-	debug(l, "addNonvoter", t.node)
 	l.startReplication(t.node)
 }
 
@@ -120,12 +120,12 @@ func (l *ldrShip) removeNode(t removeNode) {
 		return
 	}
 
+	debug(l, "removeNode", t.id)
 	config := l.configs.Latest.clone()
 	delete(config.Nodes, t.id)
 	l.storeConfig(t.task, config)
 
 	// stop replication
-	debug(l, "removeNode", t.id)
 	repl := l.repls[t.id]
 	close(repl.stopCh)
 	delete(l.repls, t.id)
@@ -172,6 +172,7 @@ func (l *ldrShip) changeAddrs(t changeAddrs) {
 		return
 	}
 
+	debug(l, "changeAddrs", t.addrs)
 	config := l.configs.Latest.clone()
 	for id, addr := range t.addrs {
 		n := config.Nodes[id]

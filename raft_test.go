@@ -631,20 +631,35 @@ func (c *cluster) ensureFSMSame(want []string, rr ...*Raft) {
 	}
 }
 
-func (c *cluster) waitCatchup(r *Raft) {
+func (c *cluster) waitCatchup(rr ...*Raft) {
 	c.Helper()
 	leaders := c.getInState(Leader)
 	if len(leaders) != 1 {
 		c.Fatalf("leaders: got %d, want 1", len(leaders))
 	}
-	ldrLastLogIndex := leaders[0].Info().LastLogIndex()
+	if len(rr) == 0 {
+		rr = c.exclude(leaders[0])
+	}
+	ldr := leaders[0].Info()
+	print := false
 	condition := func() bool {
-		info := r.Info()
-		return info.Committed() == ldrLastLogIndex
+		for _, r := range rr {
+			info := r.Info()
+			if info.LastLogIndex() < ldr.LastLogIndex() ||
+				info.Committed() < ldr.Committed() {
+				if print {
+					c.Logf("waitCatchup: %s lastLogIndex:%d committed:%d", r.ID(), info.LastLogIndex(), info.Committed())
+				}
+				return false
+			}
+		}
+		return true
 	}
 	if !waitForCondition(condition, c.commitTimeout, c.longTimeout) {
-		info := r.Info()
-		c.Fatalf("%s catchup: got %d, want %d", info.ID(), info.Committed(), ldrLastLogIndex)
+		c.Logf("waitCatchup: ldr %s lastLogIndex:%d committed:%d", ldr.ID(), ldr.LastLogIndex(), ldr.Committed())
+		print = true
+		condition()
+		c.Fatal("waitCatchup: timeout")
 	}
 }
 

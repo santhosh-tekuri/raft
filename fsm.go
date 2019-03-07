@@ -182,6 +182,7 @@ func (r *Raft) takeSnapshot(t takeSnapshot) {
 	resp := req.Result().(fsmSnapResp)
 	defer resp.state.Release()
 
+	debug(r.id, "takingSnap:", resp.index)
 	sink, err := r.snapshots.New(resp.index, resp.term, t.config)
 	if err != nil {
 		debug(r, "snapshots.New failed", err)
