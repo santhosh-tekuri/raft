@@ -132,53 +132,48 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp 
 	}
 
 	// we came here, it means we got valid request
-	if len(req.entries) > 0 {
-		var newEntries []*entry
-		var prevLogTerm = req.prevLogTerm
-		// if new entry conflicts, delete it and all that follow it
-		for i, ne := range req.entries {
-			if ne.index > r.lastLogIndex {
-				newEntries = req.entries[i:]
-				break
-			}
-			e := &entry{}
-			_ = r.storage.getEntry(ne.index, e)
-			if e.term != ne.term { // conflicts
-				debug(r, "log.deleteGTE", ne.index)
-				r.storage.deleteGTE(ne.index, prevLogTerm)
-				if ne.index <= r.configs.Latest.Index {
-					r.revertConfig()
-				}
-				newEntries = req.entries[i:]
-				break
-			}
-			prevLogTerm = ne.term
+	index, term := req.prevLogIndex, req.prevLogTerm
+	for _, ne := range req.entries {
+		prevTerm := term
+		index, term = ne.index, ne.term
+		if ne.index == r.snapIndex {
+			continue
 		}
+		if ne.index <= r.lastLogIndex {
+			me := &entry{}
+			_ = r.storage.getEntry(ne.index, me)
+			if me.term == ne.term {
+				continue
+			}
 
-		// append new entries not already in the log
-		if len(newEntries) > 0 {
-			debug(r, "received", req)
-			debug(r, "log.appendN", "from:", newEntries[0].index, "n:", len(newEntries))
-			for _, e := range newEntries {
-				r.storage.appendEntry(e)
-				if e.typ == entryConfig {
-					var newConfig Config
-					if err := newConfig.decode(e); err != nil {
-						panic(err)
-					}
-					r.changeConfig(newConfig)
-				}
+			// new entry conflicts with our entry
+			// delete it and all that follow it
+			debug(r, "log.deleteGTE", ne.index)
+			r.storage.deleteGTE(ne.index, prevTerm)
+			if ne.index <= r.configs.Latest.Index {
+				r.revertConfig()
 			}
 		}
+		// new entry not in the log, append it
+		r.storage.appendEntry(ne)
+		if ne.typ == entryConfig {
+			var newConfig Config
+			if err := newConfig.decode(ne); err != nil {
+				panic(err)
+			}
+			r.changeConfig(newConfig)
+		}
+	}
+	resp.lastLogIndex = r.lastLogIndex
 
-		resp.lastLogIndex = r.lastLogIndex
-	} else {
+	// if no entries
+	if index == req.prevLogIndex {
 		debug(r, "received heartbeat")
 	}
 
 	// If leaderCommit > commitIndex, set commitIndex =
 	// min(leaderCommit, index of last new entry)
-	lastIndex, lastTerm := lastEntry(req)
+	lastIndex, lastTerm := index, term
 	if lastTerm == req.term && req.ldrCommitIndex > r.commitIndex {
 		r.commitIndex = min(req.ldrCommitIndex, lastIndex)
 		r.applyCommitted(nil) // apply newly committed logs

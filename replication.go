@@ -175,7 +175,10 @@ func (repl *replication) sendInstallSnapReq(appReq *appendEntriesReq) error {
 		return err
 	}
 
-	repl.sendEntries = resp.success
+	// we have to still send one appEntries, to update his commit index
+	// so we should not update sendEntries=true, beacuse if we have
+	// no entries beyond snapshot, we sleep for hbTimeout
+	//repl.sendEntries = resp.success // NOTE: dont do this
 	if resp.success {
 		repl.matchIndex = req.lastIndex
 		repl.nextIndex = repl.matchIndex + 1

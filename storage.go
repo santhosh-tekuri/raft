@@ -149,6 +149,7 @@ func (s *storage) setVotedFor(id ID) {
 	s.votedFor = id
 }
 
+// NOTE: this should not be called with snapIndex
 func (s *storage) getEntryTerm(index uint64) (uint64, error) {
 	e := &entry{}
 	err := s.getEntry(index, e)
