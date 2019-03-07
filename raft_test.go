@@ -1274,14 +1274,18 @@ func timeAfter(timeout time.Duration) <-chan time.Time {
 	return time.After(timeout)
 }
 
-func waitWG(wg *sync.WaitGroup, timeout time.Duration) error {
-	doneCh := make(chan struct{})
+func wgChannel(wg *sync.WaitGroup) <-chan struct{} {
+	ch := make(chan struct{})
 	go func() {
 		wg.Wait()
-		close(doneCh)
+		close(ch)
 	}()
+	return ch
+}
+
+func waitWG(wg *sync.WaitGroup, timeout time.Duration) error {
 	select {
-	case <-doneCh:
+	case <-wgChannel(wg):
 		return nil
 	case <-timeAfter(timeout):
 		return errors.New("waitWG: timeout")

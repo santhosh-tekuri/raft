@@ -199,8 +199,6 @@ func (r *Raft) release() {
 	r.server.shutdown()
 	debug(r, "server shutdown")
 	close(r.fsmTaskCh)
-	close(r.newEntryCh)
-	close(r.taskCh)
 
 	// wait for snapshot to complete
 	if r.snapTakenCh != nil {

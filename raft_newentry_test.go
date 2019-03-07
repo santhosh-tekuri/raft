@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestRaft_Update(t *testing.T) {
@@ -34,7 +35,7 @@ func updateConcurrent(t *testing.T) {
 	defer c.shutdown()
 
 	// concurrently apply
-	wg := sync.WaitGroup{}
+	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {
 		wg.Add(1)
 		go func(i int) {
@@ -57,6 +58,44 @@ func updateConcurrent(t *testing.T) {
 	// check the FSMs
 	c.waitFSMLen(100)
 	c.ensureFSMSame(nil)
+}
+
+func TODO_TestRaft_BackPressure(t *testing.T) {
+	c, ldr, _ := launchCluster(t, 3)
+	defer c.shutdown()
+
+	stateChanged := c.registerFor(stateChanged, ldr)
+	defer c.unregister(stateChanged)
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c.sendUpdates(ldr, 1, 100000)
+		}()
+	}
+
+	wgCh := wgChannel(&wg)
+	timer := time.Tick(15 * time.Second)
+	for {
+		select {
+		case <-wgCh:
+			fmt.Println("waitgroup finished")
+			info := ldr.Info()
+			fmt.Println("lastLogIndex:", info.LastLogIndex(), "committed:", info.Committed())
+			return
+		case e := <-stateChanged.ch:
+			fmt.Println("statechanged:", e.state)
+			info := ldr.Info()
+			fmt.Println("lastLogIndex:", info.LastLogIndex(), "committed:", info.Committed())
+			t.Fatalf("leader changed state to %s", e.state)
+		case <-timer:
+			waitInspect(ldr, func(info Info) {
+				fmt.Println("lastLogIndex:", info.LastLogIndex(), "committed:", info.Committed())
+				fmt.Println("xxx", ldr.newEntryCh)
+			})
+		}
+	}
 }
 
 func TestRaft_Barrier(t *testing.T) {
