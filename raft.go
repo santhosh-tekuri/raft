@@ -223,6 +223,10 @@ func (r *Raft) Shutdown() *sync.WaitGroup {
 	return &r.wg
 }
 
+func (r *Raft) Closed() <-chan struct{} {
+	return r.shutdownCh
+}
+
 // tells whether shutdown was called
 func (r *Raft) isClosed() bool {
 	select {

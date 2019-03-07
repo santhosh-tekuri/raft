@@ -216,9 +216,13 @@ func (r *Raft) Info() Info {
 			json: r.JSON().(json),
 		}
 	})
-	r.taskCh <- task
-	<-task.Done()
-	return info
+	select {
+	case <-r.shutdownCh:
+		return nil
+	case r.taskCh <- task:
+		<-task.Done()
+		return info
+	}
 }
 
 // ------------------------------------------------------------------------
