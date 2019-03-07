@@ -104,7 +104,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp 
 	r.leader = req.leader
 
 	// reply false if log at req.prevLogIndex does not match
-	if req.prevLogIndex > 0 {
+	if req.prevLogIndex > r.snapIndex {
 		if req.prevLogIndex > r.lastLogIndex {
 			// no entry found
 			debug(r, "received", req)
@@ -113,13 +113,14 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp 
 		}
 
 		var prevLogTerm uint64
+		var prevEntry *entry
 		if req.prevLogIndex == r.lastLogIndex {
 			prevLogTerm = r.lastLogTerm
-		} else if req.prevLogIndex == r.snapIndex {
-			prevLogTerm = r.snapTerm
 		} else {
 			var err error
-			prevLogTerm, err = r.storage.getEntryTerm(req.prevLogIndex)
+			prevEntry = &entry{}
+			err = r.storage.getEntry(req.prevLogIndex, prevEntry)
+			prevLogTerm = prevEntry.term
 			// we never get ErrnotFound here, because we are the goroutine who is compacting
 			assert(err == nil, "unexpected error: %v", err)
 		}
@@ -129,14 +130,20 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp 
 			debug(r, "rejectAppendEntries", "term mismatch", req.prevLogTerm, prevLogTerm)
 			return resp
 		}
+
+		// valid req: can we commit req.prevLogIndex ?
+		if r.canCommit(req, req.prevLogIndex, req.prevLogTerm) {
+			r.setCommitIndex(req.prevLogIndex)
+			r.applyCommitted(prevEntry)
+		}
 	}
 
-	// we came here, it means we got valid request
+	// valid req: let us consume entries
 	index, term := req.prevLogIndex, req.prevLogTerm
 	for _, ne := range req.entries {
 		prevTerm := term
 		index, term = ne.index, ne.term
-		if ne.index == r.snapIndex {
+		if ne.index <= r.snapIndex {
 			continue
 		}
 		if ne.index <= r.lastLogIndex {
@@ -163,6 +170,11 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp 
 			}
 			r.changeConfig(newConfig)
 		}
+
+		if r.canCommit(req, ne.index, ne.term) {
+			r.setCommitIndex(ne.index)
+			r.applyCommitted(ne)
+		}
 	}
 	resp.lastLogIndex = r.lastLogIndex
 
@@ -171,28 +183,32 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp 
 		debug(r, "received heartbeat")
 	}
 
-	// If leaderCommit > commitIndex, set commitIndex =
-	// min(leaderCommit, index of last new entry)
-	lastIndex, lastTerm := index, term
-	if lastTerm == req.term && req.ldrCommitIndex > r.commitIndex {
-		r.setCommitIndex(min(req.ldrCommitIndex, lastIndex))
-		r.applyCommitted() // apply newly committed logs
-	}
-
 	resp.success = true
 	return resp
 }
 
 // if commitIndex > lastApplied: increment lastApplied, apply
 // log[lastApplied] to state machine
-func (r *Raft) applyCommitted() {
+func (r *Raft) applyCommitted(ne *entry) {
 	for r.lastApplied < r.commitIndex {
 		// get lastApplied+1 entry
-		e := &entry{}
-		r.storage.getEntry(r.lastApplied+1, e)
+		var e *entry
+		if ne != nil && ne.index == r.lastApplied+1 {
+			e = ne
+		} else {
+			e = &entry{}
+			r.storage.getEntry(r.lastApplied+1, e)
+		}
+
 		r.applyEntry(NewEntry{entry: e})
 		r.lastApplied++
 	}
+}
+
+func (r *Raft) canCommit(req *appendEntriesReq, index, term uint64) bool {
+	return req.ldrCommitIndex >= index && // did leader committed it ?
+		term == req.term && // don't commit any entry, until leader has committed an entry with his term
+		index > r.commitIndex // haven't we committed yet
 }
 
 func lastEntry(req *appendEntriesReq) (index, term uint64) {
