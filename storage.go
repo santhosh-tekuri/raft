@@ -212,13 +212,8 @@ func (s *storage) deleteGTE(index, prevTerm uint64) {
 	s.lastLogIndex, s.lastLogTerm = index-1, prevTerm
 }
 
-func (s *storage) bootstrap(nodes map[ID]Node) (Config, error) {
-	config := Config{
-		Nodes: nodes,
-		Index: 1,
-		Term:  1,
-	}
+func (s *storage) bootstrap(config Config) error {
 	s.appendEntry(config.encode())
 	s.setTerm(1)
-	return config, nil
+	return nil
 }

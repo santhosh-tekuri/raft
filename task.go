@@ -223,32 +223,35 @@ func (r *Raft) Info() Info {
 
 // ------------------------------------------------------------------------
 
-type addNonvoter struct {
+type ChangeConfig struct {
 	*task
-	node Node
+	add    map[ID]bool // [id]promote
+	remove map[ID]struct{}
+	addrs  map[ID]string
 }
 
-func AddNonvoter(id ID, addr string, promote bool) Task {
-	nonVoter := Node{ID: id, Addr: addr, Promote: promote}
-	return addNonvoter{task: newTask(), node: nonVoter}
+func (c *ChangeConfig) AddNonVoter(id ID, addr string, promote bool) {
+	c.add[id] = promote
+	c.addrs[id] = addr
 }
 
-type removeNode struct {
-	*task
-	id ID
+func (c *ChangeConfig) Remove(ids ...ID) {
+	for _, id := range ids {
+		c.remove[id] = struct{}{}
+	}
 }
 
-func RemoveNode(id ID) Task {
-	return removeNode{task: newTask(), id: id}
+func (c *ChangeConfig) ChangeAddr(id ID, addr string) {
+	c.addrs[id] = addr
 }
 
-type changeAddrs struct {
-	*task
-	addrs map[ID]string
-}
-
-func ChangeAddrs(addrs map[ID]string) Task {
-	return changeAddrs{task: newTask(), addrs: addrs}
+func NewChangeConfig() ChangeConfig {
+	return ChangeConfig{
+		task:   newTask(),
+		add:    make(map[ID]bool),
+		remove: make(map[ID]struct{}),
+		addrs:  make(map[ID]string),
+	}
 }
 
 // result is of type SnapshotMeta
@@ -318,12 +321,8 @@ func (l *ldrShip) executeTask(t Task) {
 	switch t := t.(type) {
 	case NewEntry:
 		t.reply(errors.New("raft: use Raft.NewEntries() for NewEntry"))
-	case addNonvoter:
-		l.addNonvoter(t)
-	case removeNode:
-		l.removeNode(t)
-	case changeAddrs:
-		l.changeAddrs(t)
+	case ChangeConfig:
+		l.changeConfig(t)
 	default:
 		t.reply(errInvalidTask)
 	}

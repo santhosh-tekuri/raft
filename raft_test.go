@@ -742,8 +742,14 @@ func waitBootstrap(r *Raft, nodes map[ID]Node, timeout time.Duration) error {
 	return err
 }
 
+func addNonvoter(id ID, addr string, promote bool) ChangeConfig {
+	change := NewChangeConfig()
+	change.AddNonVoter(id, addr, promote)
+	return change
+}
+
 func waitAddNonVoter(ldr *Raft, id ID, promote bool) error {
-	t := AddNonvoter(id, id2Addr(id), promote)
+	t := addNonvoter(id, id2Addr(id), promote)
 	if _, err := waitTask(ldr, t, 0); err != nil {
 		return err
 	}

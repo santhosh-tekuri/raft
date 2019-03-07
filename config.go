@@ -35,16 +35,12 @@ func (n Node) validate() error {
 	if n.ID == "" {
 		return errors.New("empty node id")
 	}
-	return validateAddr(n.Addr)
-}
-
-func validateAddr(addr string) error {
-	if addr == "" {
+	if n.Addr == "" {
 		return errors.New("empty address")
 	}
-	_, sport, err := net.SplitHostPort(addr)
+	_, sport, err := net.SplitHostPort(n.Addr)
 	if err != nil {
-		return fmt.Errorf("invalid address %s: %v", addr, err)
+		return fmt.Errorf("invalid address %s: %v", n.Addr, err)
 	}
 	port, err := strconv.Atoi(sport)
 	if err != nil {
@@ -162,6 +158,26 @@ func (c *Config) decode(e *entry) error {
 	return nil
 }
 
+func (c Config) validate() error {
+	addrs := make(map[string]bool)
+	for id, node := range c.Nodes {
+		if err := node.validate(); err != nil {
+			return err
+		}
+		if id != node.ID {
+			return fmt.Errorf("id mismatch for %s", node.ID)
+		}
+		if addrs[node.Addr] {
+			return fmt.Errorf("duplicate address %s", node.Addr)
+		}
+		addrs[node.Addr] = true
+	}
+	if c.numVoters() == 1 {
+		return errors.New("zero voters")
+	}
+	return nil
+}
+
 func (c Config) String() string {
 	var voters, nonvoters []string
 	for _, n := range c.Nodes {
@@ -196,6 +212,114 @@ func (c Configs) IsBootstrap() bool {
 func (c Configs) IsCommitted() bool {
 	return c.Latest.Index == c.Committed.Index
 }
+
+// ---------------------------------------------------------
+
+func (r *Raft) bootstrap(t bootstrap) {
+	if !r.configs.IsBootstrap() {
+		t.reply(ErrAlreadyBootstrapped)
+		return
+	}
+	config := Config{Nodes: t.nodes, Index: 1, Term: 1}
+	if err := config.validate(); err != nil {
+		t.reply(fmt.Errorf("raft.bootstrap: invalid config: %v", err))
+		return
+	}
+	self, ok := config.Nodes[r.id]
+	if !ok {
+		t.reply(fmt.Errorf("raft.bootstrap: invalid config: self %s does not exist", r.id))
+		return
+	}
+	if !self.Voter {
+		t.reply(fmt.Errorf("raft.bootstrap: invalid config: self %s must be voter", r.id))
+		return
+	}
+
+	debug(r, "bootstrapping....")
+	if err := r.storage.bootstrap(config); err != nil {
+		t.reply(err)
+		return
+	}
+	r.changeConfig(config)
+	t.reply(nil)
+}
+
+func (l *ldrShip) changeConfig(t ChangeConfig) {
+	if !l.configs.IsCommitted() {
+		t.reply(ErrConfigChangeInProgress)
+		return
+	}
+	if l.commitIndex < l.startIndex {
+		t.reply(ErrNotCommitReady)
+	}
+
+	config := l.configs.Latest.clone()
+	for id, promote := range t.add {
+		if _, ok := config.Nodes[id]; ok {
+			t.reply(fmt.Errorf("raft.changeConfig: invalid config: node %s already exists", id))
+			return
+		}
+		config.Nodes[id] = Node{ID: id, Addr: t.addrs[id], Promote: promote}
+	}
+	for id, addr := range t.addrs {
+		n, ok := config.Nodes[id]
+		if !ok {
+			t.reply(fmt.Errorf("raft.changeConfig: invalid config: node %s does not exist", id))
+			return
+		}
+		n.Addr = addr
+		config.Nodes[id] = n
+	}
+	voterRemoved := ID("")
+	for id := range t.remove {
+		n, ok := config.Nodes[id]
+		if !ok {
+			t.reply(fmt.Errorf("raft.changeConfig: invalid config: node %s does not exist", id))
+			return
+		}
+		if n.Voter {
+			if voterRemoved != "" {
+				t.reply(fmt.Errorf("raft.changeConfig: invalid config: cannot remove two voters %s, %s", voterRemoved, id))
+				return
+			}
+			voterRemoved = id
+		}
+		delete(config.Nodes, id)
+	}
+	if err := config.validate(); err != nil {
+		t.reply(fmt.Errorf("raft.changeConfig: invalid config: %v", err))
+		return
+	}
+
+	debug(l, "changeConfig", config)
+
+	// store config
+	ne := NewEntry{
+		entry: config.encode(),
+		task:  t.task,
+	}
+	l.storeEntry(ne)
+	config.Index, config.Term = ne.index, ne.term
+
+	l.Raft.changeConfig(config)
+
+	// stop repl of removed nodes
+	for id, repl := range l.repls {
+		if _, ok := config.Nodes[id]; !ok {
+			close(repl.stopCh)
+			delete(l.repls, id)
+		}
+	}
+
+	// start repl for new nodes
+	for id, node := range config.Nodes {
+		if _, ok := l.repls[id]; !ok {
+			l.startReplication(node)
+		}
+	}
+}
+
+// ---------------------------------------------------------
 
 func (r *Raft) changeConfig(new Config) {
 	debug(r, "changeConfig", new)

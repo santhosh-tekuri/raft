@@ -31,6 +31,5 @@ func BootstrapStorage(storage Storage, nodes map[ID]Node) error {
 	if err := store.init(); err != nil {
 		return err
 	}
-	_, err := store.bootstrap(nodes)
-	return err
+	return store.bootstrap(Config{Nodes: nodes, Index: 1, Term: 1})
 }
