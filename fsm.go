@@ -82,18 +82,6 @@ func (r *Raft) fsmLoop() {
 // 		- newEntries is not nil
 //      - reply end user with response
 func (r *Raft) applyCommitted(newEntries *list.List) {
-	// first commit latest config if not yet committed
-	if !r.configs.IsCommitted() && r.configs.Latest.Index <= r.commitIndex {
-		r.commitConfig()
-		if r.state == Leader && !r.configs.Latest.isVoter(r.id) {
-			debug(r, "leader -> follower notVoter")
-			r.state = Follower
-			r.leader = ""
-		}
-		// todo: we can provide option to shutdown
-		//       if it is no longer part of new config
-	}
-
 	for {
 		// send query/barrier entries to fsm
 		if newEntries != nil {

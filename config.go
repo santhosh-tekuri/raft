@@ -321,6 +321,23 @@ func (l *ldrShip) changeConfig(t ChangeConfig) {
 
 // ---------------------------------------------------------
 
+func (r *Raft) setCommitIndex(index uint64) {
+	r.commitIndex = index
+	debug(r, "commitIndex", r.commitIndex)
+	if !r.configs.IsCommitted() && r.configs.Latest.Index <= r.commitIndex {
+		r.commitConfig()
+		if r.state == Leader && !r.configs.Latest.isVoter(r.id) {
+			// if we are no longer voter after this config is committed,
+			// then what is the point of accepting fsm entries from user ????
+			debug(r, "leader -> follower notVoter")
+			r.state = Follower
+			r.leader = ""
+		}
+		// todo: we can provide option to shutdown
+		//       if it is no longer part of new config
+	}
+}
+
 func (r *Raft) changeConfig(new Config) {
 	debug(r, "changeConfig", new)
 	r.configs.Committed = r.configs.Latest

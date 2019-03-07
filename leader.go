@@ -278,8 +278,7 @@ func (l *ldrShip) onMajorityCommit() {
 	// note: if majorityMatchIndex >= ldr.startIndex, it also mean
 	// majorityMatchIndex.term == currentTerm
 	if majorityMatchIndex > l.commitIndex && majorityMatchIndex >= l.startIndex {
-		l.commitIndex = majorityMatchIndex
-		debug(l, "commitIndex", l.commitIndex)
+		l.setCommitIndex(majorityMatchIndex)
 		l.applyCommitted(l.newEntries)
 		l.notifyReplicators() // we updated commit index
 	}
