@@ -1267,6 +1267,27 @@ func (s *inmemStorage) Open() (SnapshotMeta, io.ReadCloser, error) {
 
 // ------------------------------------------------------------------
 
+func timeAfter(timeout time.Duration) <-chan time.Time {
+	if timeout == 0 {
+		return nil
+	}
+	return time.After(timeout)
+}
+
+func waitWG(wg *sync.WaitGroup, timeout time.Duration) error {
+	doneCh := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(doneCh)
+	}()
+	select {
+	case <-doneCh:
+		return nil
+	case <-timeAfter(timeout):
+		return errors.New("waitWG: timeout")
+	}
+}
+
 func waitForCondition(condition func() bool, sleep, timeout time.Duration) bool {
 	limit := time.Now().Add(timeout)
 	for time.Now().Before(limit) {

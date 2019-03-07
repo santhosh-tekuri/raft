@@ -4,10 +4,14 @@ import (
 	"fmt"
 	"sync"
 	"testing"
-	"time"
 )
 
-func TestRaft_ApplyNonLeader(t *testing.T) {
+func TestRaft_Update(t *testing.T) {
+	t.Run("nonLeader", updateNonLeader)
+	t.Run("concurrent", updateConcurrent)
+}
+
+func updateNonLeader(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -25,7 +29,7 @@ func TestRaft_ApplyNonLeader(t *testing.T) {
 	}
 }
 
-func TestRaft_ApplyConcurrent(t *testing.T) {
+func updateConcurrent(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -43,17 +47,7 @@ func TestRaft_ApplyConcurrent(t *testing.T) {
 	}
 
 	// wait to finish
-	doneCh := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(doneCh)
-	}()
-	select {
-	case <-doneCh:
-		break
-	case <-time.After(c.longTimeout):
-		t.Fatal("timeout")
-	}
+	c.ensure(waitWG(&wg, c.longTimeout))
 
 	// check If anything failed
 	if t.Failed() {
