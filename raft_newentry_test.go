@@ -5,13 +5,9 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/fortytw2/leaktest"
 )
 
 func TestRaft_ApplyNonLeader(t *testing.T) {
-	Debug("\nTestRaft_ApplyNonLeader --------------------------")
-	defer leaktest.Check(t)()
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -30,8 +26,6 @@ func TestRaft_ApplyNonLeader(t *testing.T) {
 }
 
 func TestRaft_ApplyConcurrent(t *testing.T) {
-	Debug("\nTestRaft_ApplyConcurrent --------------------------")
-	defer leaktest.Check(t)()
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -72,8 +66,6 @@ func TestRaft_ApplyConcurrent(t *testing.T) {
 }
 
 func TestRaft_Barrier(t *testing.T) {
-	Debug("\nTestRaft_Barrier --------------------------")
-	defer leaktest.Check(t)()
 	c, ldr, followers := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -101,8 +93,6 @@ func TestRaft_Barrier(t *testing.T) {
 }
 
 func TestRaft_Query(t *testing.T) {
-	Debug("\nTestRaft_Query --------------------------")
-	defer leaktest.Check(t)()
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 

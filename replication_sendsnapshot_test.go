@@ -2,8 +2,6 @@ package raft
 
 import (
 	"testing"
-
-	"github.com/fortytw2/leaktest"
 )
 
 func TestReplication_sendSnapshot(t *testing.T) {
@@ -16,9 +14,6 @@ func TestReplication_sendSnapshot(t *testing.T) {
 }
 
 func testReplicationSendSnapshot(t *testing.T, updateFSMAfterSnap bool) {
-	Debug("\nTestReplication_sendSnapshot_", updateFSMAfterSnap, "--------------------------")
-	defer leaktest.Check(t)()
-
 	// launch 3 node cluster
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()

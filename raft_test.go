@@ -20,8 +20,6 @@ import (
 )
 
 func TestRaft_Voting(t *testing.T) {
-	Debug("\nTestRaft_Voting --------------------------")
-	defer leaktest.Check(t)()
 	c, ldr, followers := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -44,8 +42,6 @@ func TestRaft_Voting(t *testing.T) {
 }
 
 func TestRaft_SingleNode(t *testing.T) {
-	Debug("\nTestRaft_SingleNode --------------------------")
-	defer leaktest.Check(t)()
 	c, ldr, _ := launchCluster(t, 1)
 	defer c.shutdown()
 
@@ -84,8 +80,6 @@ func TestRaft_SingleNode(t *testing.T) {
 }
 
 func TestRaft_Shutdown(t *testing.T) {
-	Debug("\nTestRaft_Shutdown --------------------------")
-	defer leaktest.Check(t)()
 	c := newCluster(t)
 	c.launch(1, true)
 
@@ -97,8 +91,6 @@ func TestRaft_Shutdown(t *testing.T) {
 }
 
 func TestRaft_TripleNode(t *testing.T) {
-	Debug("\nTestRaft_TripleNode --------------------------")
-	defer leaktest.Check(t)()
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -117,8 +109,6 @@ func TestRaft_TripleNode(t *testing.T) {
 }
 
 func TestRaft_LeaderFail(t *testing.T) {
-	Debug("\nTestRaft_LeaderFail --------------------------")
-	defer leaktest.Check(t)()
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -179,8 +169,6 @@ func TestRaft_LeaderFail(t *testing.T) {
 }
 
 func TestRaft_BehindFollower(t *testing.T) {
-	Debug("\nTestRaft_BehindFollower --------------------------")
-	defer leaktest.Check(t)()
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -209,8 +197,6 @@ func TestRaft_BehindFollower(t *testing.T) {
 }
 
 func TestRaft_Bootstrap(t *testing.T) {
-	Debug("\nTestRaft_Bootstrap --------------------------")
-	defer leaktest.Check(t)()
 	c := newCluster(t)
 
 	electionAborted := c.registerFor(electionAborted)
@@ -274,8 +260,6 @@ func TestRaft_Bootstrap(t *testing.T) {
 }
 
 func TestRaft_LeaderLeaseExpire(t *testing.T) {
-	Debug("\nTestRaft_LeaderLeaseExpire --------------------------")
-	defer leaktest.Check(t)()
 	c, ldr, followers := launchCluster(t, 2)
 	defer c.shutdown()
 
@@ -333,9 +317,11 @@ func launchCluster(t *testing.T, n int) (c *cluster, ldr *Raft, followers []*Raf
 }
 
 func newCluster(t *testing.T) *cluster {
+	Debug(t.Name(), "--------------------------")
 	heartbeatTimeout := 50 * time.Millisecond
 	c := &cluster{
 		T:                t,
+		checkLeak:        leaktest.Check(t),
 		network:          fnet.New(),
 		rr:               make(map[string]*Raft),
 		storage:          make(map[string]Storage),
@@ -354,6 +340,7 @@ func newCluster(t *testing.T) *cluster {
 
 type cluster struct {
 	*testing.T
+	checkLeak        func()
 	rr               map[string]*Raft
 	storage          map[string]Storage
 	network          *fnet.Network
@@ -429,14 +416,21 @@ func (c *cluster) launch(n int, bootstrap bool) map[ID]*Raft {
 }
 
 func (c *cluster) shutdown(rr ...*Raft) {
+	c.Helper()
+	checkLeak := false
 	if len(rr) == 0 {
 		Debug("<<----------------------------------shutting down cluster")
+		checkLeak = true
 		rr = c.exclude()
 	}
 	for _, r := range rr {
 		Debug("<<----------------------------------shutting down", r.ID())
 		r.Shutdown().Wait()
 		Debug(r.ID(), "<< shutdown()")
+	}
+	if checkLeak && c.checkLeak != nil {
+		c.checkLeak()
+		c.checkLeak = nil
 	}
 }
 

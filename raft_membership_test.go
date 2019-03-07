@@ -4,13 +4,9 @@ import (
 	"reflect"
 	"testing"
 	"time"
-
-	"github.com/fortytw2/leaktest"
 )
 
 func TestRaft_AddNonVoter_validations(t *testing.T) {
-	Debug("\nTestRaft_AddNonVoter_validations --------------------------")
-	defer leaktest.Check(t)()
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -49,8 +45,6 @@ func TestRaft_AddNonVoter_validations(t *testing.T) {
 }
 
 func TestRaft_AddNonVoter_committedByAll(t *testing.T) {
-	Debug("\nTestRaft_AddNonVoter_committedByAll --------------------------")
-	defer leaktest.Check(t)()
 	// launch 3 node cluster M1, M2, M3
 	c, ldr, followers := launchCluster(t, 3)
 	defer c.shutdown()
@@ -148,9 +142,6 @@ func TestRaft_AddNonVoter_committedByAll(t *testing.T) {
 }
 
 func TestRaft_AddNonVoter_catchesUp_followsLeader(t *testing.T) {
-	Debug("\nTestRaft_AddNonVoter_catchesUp_followsLeader --------------------------")
-	defer leaktest.Check(t)()
-
 	// launch 3 node cluster M1, M2, M3
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
@@ -174,9 +165,6 @@ func TestRaft_AddNonVoter_catchesUp_followsLeader(t *testing.T) {
 }
 
 func TestRaft_AddNonVoter_nonVoterReconnects_catchesUp(t *testing.T) {
-	Debug("\nTestRaft_AddNonVoter_nonVoterReconnects_catchesUp --------------------------")
-	defer leaktest.Check(t)()
-
 	// launch 3 node cluster M1, M2, M3
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
@@ -227,9 +215,6 @@ func TestRaft_AddNonVoter_nonVoterReconnects_catchesUp(t *testing.T) {
 }
 
 func TestRaft_AddNonVoter_leaderChanged_followsNewLeader(t *testing.T) {
-	Debug("\nTestRaft_AddNonVoter_leaderChanged_followsNewLeader --------------------------")
-	defer leaktest.Check(t)()
-
 	// launch 3 node cluster M1, M2, M3
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()

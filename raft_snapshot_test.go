@@ -2,13 +2,9 @@ package raft
 
 import (
 	"testing"
-
-	"github.com/fortytw2/leaktest"
 )
 
 func TestRaft_Snapshot_emptyFSM(t *testing.T) {
-	Debug("\nTestRaft_Snapshot_emptyFSM --------------------------")
-	defer leaktest.Check(t)()
 	c, ldr, _ := launchCluster(t, 1)
 	defer c.shutdown()
 
@@ -17,8 +13,6 @@ func TestRaft_Snapshot_emptyFSM(t *testing.T) {
 }
 
 func TestRaft_Snapshot_thresholdNotReached(t *testing.T) {
-	Debug("\nTestRaft_Snapshot_thresholdNotReached --------------------------")
-	defer leaktest.Check(t)()
 	c, ldr, _ := launchCluster(t, 1)
 	defer c.shutdown()
 
@@ -31,8 +25,6 @@ func TestRaft_Snapshot_thresholdNotReached(t *testing.T) {
 }
 
 func TestRaft_Snapshot_restoreOnRestart(t *testing.T) {
-	Debug("\nTestRaft_Snapshot_restoreOnRestart --------------------------")
-	defer leaktest.Check(t)()
 	c, ldr, _ := launchCluster(t, 1)
 	defer c.shutdown()
 
