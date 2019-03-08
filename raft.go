@@ -111,8 +111,9 @@ func (r *Raft) Serve(l net.Listener) error {
 		r.fsmTaskCh <- req
 		<-req.Done()
 		if req.Err() != nil {
-			r.commitIndex, r.lastApplied = r.snapIndex, r.snapIndex
+			return req.Err()
 		}
+		r.commitIndex, r.lastApplied = r.snapIndex, r.snapIndex
 	}
 
 	go r.server.serve(l)
