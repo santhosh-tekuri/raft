@@ -9,7 +9,7 @@ type flrShip struct {
 }
 
 func (f *flrShip) init() {
-	f.timeoutCh = afterRandomTimeout(f.hbTimeout)
+	f.timeoutCh = f.rtime.after(f.hbTimeout)
 	f.electionAborted = false
 }
 
@@ -20,7 +20,7 @@ func (f *flrShip) release() {
 func (f *flrShip) resetTimer() {
 	if yes, _ := f.canStartElection(); yes {
 		f.electionAborted = false
-		f.timeoutCh = afterRandomTimeout(f.hbTimeout)
+		f.timeoutCh = f.rtime.after(f.hbTimeout)
 	}
 }
 

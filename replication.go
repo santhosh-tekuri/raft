@@ -7,6 +7,8 @@ import (
 )
 
 type replication struct {
+	rtime randTime
+
 	// this is owned by ldr goroutine
 	status replStatus
 
@@ -71,7 +73,7 @@ func (repl *replication) runLoop(req *appendEntriesReq) {
 			case update := <-repl.fromLeaderCh:
 				repl.ldrLastIndex, req.ldrCommitIndex = update.lastIndex, update.commitIndex
 				debug(repl, "{last:", repl.ldrLastIndex, "commit:", req.ldrCommitIndex, "} <-fromLeaderCh")
-			case <-afterRandomTimeout(repl.hbTimeout / 10):
+			case <-repl.rtime.after(repl.hbTimeout / 10):
 			}
 		} else {
 			// check signal if any, without blocking

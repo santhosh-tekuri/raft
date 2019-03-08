@@ -19,7 +19,7 @@ func (c *candShip) release() {
 }
 
 func (c *candShip) startElection() {
-	d := randomDuration(c.hbTimeout)
+	d := c.rtime.duration(c.hbTimeout)
 	c.timeoutCh = time.After(d)
 	deadline := time.Now().Add(d)
 	c.votesNeeded = c.configs.Latest.quorum()

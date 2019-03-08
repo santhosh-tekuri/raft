@@ -2,8 +2,11 @@ package raft
 
 import (
 	"container/list"
+	crand "crypto/rand"
 	"errors"
 	"fmt"
+	"math"
+	"math/big"
 	"math/rand"
 	"net"
 	"sync"
@@ -11,6 +14,7 @@ import (
 )
 
 type Raft struct {
+	rtime  randTime
 	id     ID
 	server *server
 
@@ -55,6 +59,7 @@ func New(id ID, opt Options, fsm FSM, storage Storage) (*Raft, error) {
 
 	r := &Raft{
 		id:              id,
+		rtime:           newRandTime(),
 		server:          newServer(2 * opt.HeartbeatTimeout),
 		fsm:             fsm,
 		fsmTaskCh:       make(chan Task, 128), // todo configurable capacity
@@ -315,6 +320,32 @@ func DefaultOptions() Options {
 	}
 }
 
+// randTime -----------------------------------------------------------------
+
+type randTime struct {
+	r *rand.Rand
+}
+
+func newRandTime() randTime {
+	var seed int64
+	r, err := crand.Int(crand.Reader, big.NewInt(math.MaxInt64))
+	if err != nil {
+		fmt.Printf("failed to read random bytes: %v\n", err)
+		seed = time.Now().UnixNano()
+	} else {
+		seed = r.Int64()
+	}
+	return randTime{rand.New(rand.NewSource(seed))}
+}
+
+func (rt randTime) duration(min time.Duration) time.Duration {
+	return min + time.Duration(rt.r.Int63())%min
+}
+
+func (rt randTime) after(min time.Duration) <-chan time.Time {
+	return time.After(rt.duration(min))
+}
+
 // errors ----------------------------------
 
 var (
@@ -354,12 +385,4 @@ func (e NotLeaderError) Error() string {
 		return "raft: Lost leadership" + contact
 	}
 	return "raft: this node is not the leader" + contact
-}
-
-func randomDuration(min time.Duration) time.Duration {
-	return min + time.Duration(rand.Int63())%min
-}
-
-func afterRandomTimeout(min time.Duration) <-chan time.Time {
-	return time.After(randomDuration(min))
 }

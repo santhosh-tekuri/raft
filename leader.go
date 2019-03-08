@@ -107,6 +107,7 @@ func (l *ldrShip) storeEntry(ne NewEntry) {
 
 func (l *ldrShip) startReplication(node Node) {
 	repl := &replication{
+		rtime:         newRandTime(),
 		status:        replStatus{id: node.ID},
 		ldrStartIndex: l.startIndex,
 		connPool:      l.getConnPool(node.ID),
