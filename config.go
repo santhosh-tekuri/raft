@@ -305,17 +305,17 @@ func (l *ldrShip) changeConfig(t changeConfig) {
 	l.Raft.changeConfig(config)
 
 	// stop repl of removed nodes
-	for id, repl := range l.repls {
+	for id, m := range l.members {
 		if _, ok := config.Nodes[id]; !ok {
-			close(repl.stopCh)
-			delete(l.repls, id)
+			close(m.stopCh)
+			delete(l.members, id)
 		}
 	}
 
 	// start repl for new nodes
 	for id, node := range config.Nodes {
-		if _, ok := l.repls[id]; !ok {
-			l.startReplication(node)
+		if _, ok := l.members[id]; !ok {
+			l.addMember(node)
 		}
 	}
 }

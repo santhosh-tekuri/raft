@@ -43,7 +43,7 @@ func (f *flrShip) onTimeout() {
 
 func (f *flrShip) canStartElection() (can bool, reason string) {
 	if f.configs.IsBootstrap() {
-		return false, "no known peers"
+		return false, "no known members"
 	}
 	if f.configs.IsCommitted() {
 		n, ok := f.configs.Latest.Nodes[f.id]

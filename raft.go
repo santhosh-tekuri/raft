@@ -37,7 +37,7 @@ type Raft struct {
 	ldrLeaseTimeout time.Duration
 	trace           Trace
 
-	// dialing peers
+	// dialing members
 	resolver  *resolver
 	dialFn    dialFn // used for mocking in tests
 	connPools map[ID]*connPool
@@ -130,7 +130,7 @@ func (r *Raft) stateLoop() {
 			Raft:       r,
 			leaseTimer: time.NewTimer(time.Hour),
 			newEntries: list.New(),
-			repls:      make(map[ID]*replication),
+			members:    make(map[ID]*member),
 		}
 	)
 	r.ldr = l

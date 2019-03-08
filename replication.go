@@ -6,11 +6,11 @@ import (
 	"time"
 )
 
-type replication struct {
+type member struct {
 	rtime randTime
 
 	// this is owned by ldr goroutine
-	status replStatus
+	status memberStatus
 
 	connPool  *connPool
 	storage   *storage
@@ -27,10 +27,10 @@ type replication struct {
 	// zero value means node is reachable
 	noContact time.Time
 
-	// leader notifies replication with update
+	// leader notifies member with update
 	fromLeaderCh chan leaderUpdate
 
-	// replication notifies leader about our progress
+	// member notifies leader about its progress
 	toLeaderCh chan<- interface{}
 	stopCh     chan struct{}
 
@@ -38,54 +38,54 @@ type replication struct {
 	str   string // used for debug() calls
 }
 
-func (repl *replication) runLoop(req *appendEntriesReq) {
+func (m *member) replicate(req *appendEntriesReq) {
 	defer func() {
-		if repl.conn != nil {
-			repl.connPool.returnConn(repl.conn)
+		if m.conn != nil {
+			m.connPool.returnConn(m.conn)
 		}
 	}()
 
-	repl.ldrLastIndex = req.prevLogIndex
-	repl.matchIndex, repl.nextIndex = uint64(0), repl.ldrLastIndex+1
+	m.ldrLastIndex = req.prevLogIndex
+	m.matchIndex, m.nextIndex = uint64(0), m.ldrLastIndex+1
 
-	debug(repl, "repl.start")
+	debug(m, "m.start")
 	for {
-		debug(repl, "matchIndex", repl.matchIndex, "nextIndex", repl.nextIndex)
-		assert(repl.matchIndex < repl.nextIndex, "%s assert %d<%d", repl, repl.matchIndex, repl.nextIndex)
+		debug(m, "matchIndex", m.matchIndex, "nextIndex", m.nextIndex)
+		assert(m.matchIndex < m.nextIndex, "%s assert %d<%d", m, m.matchIndex, m.nextIndex)
 
-		err := repl.sendAppEntriesReq(req)
+		err := m.sendAppEntriesReq(req)
 		if err == errNoEntryFound {
-			err = repl.sendInstallSnapReq(req)
+			err = m.sendInstallSnapReq(req)
 		}
 
 		if err == errStop {
 			return
 		} else if err != nil {
-			if repl.trace.Error != nil {
-				repl.trace.Error(err)
+			if m.trace.Error != nil {
+				m.trace.Error(err)
 			}
 			assert(false, "unexpected error: %v", err) // todo
 			continue
 		}
 
-		if repl.sendEntries && repl.matchIndex == repl.ldrLastIndex {
+		if m.sendEntries && m.matchIndex == m.ldrLastIndex {
 			// nothing to send. start heartbeat timer
 			select {
-			case <-repl.stopCh:
+			case <-m.stopCh:
 				return
-			case update := <-repl.fromLeaderCh:
-				repl.ldrLastIndex, req.ldrCommitIndex = update.lastIndex, update.commitIndex
-				debug(repl, "{last:", repl.ldrLastIndex, "commit:", req.ldrCommitIndex, "} <-fromLeaderCh")
-			case <-repl.rtime.after(repl.hbTimeout / 10):
+			case update := <-m.fromLeaderCh:
+				m.ldrLastIndex, req.ldrCommitIndex = update.lastIndex, update.commitIndex
+				debug(m, "{last:", m.ldrLastIndex, "commit:", req.ldrCommitIndex, "} <-fromLeaderCh")
+			case <-m.rtime.after(m.hbTimeout / 10):
 			}
 		} else {
 			// check signal if any, without blocking
 			select {
-			case <-repl.stopCh:
+			case <-m.stopCh:
 				return
-			case update := <-repl.fromLeaderCh:
-				repl.ldrLastIndex, req.ldrCommitIndex = update.lastIndex, update.commitIndex
-				debug(repl, "{last:", repl.ldrLastIndex, "commit:", req.ldrCommitIndex, "} <-fromLeaderCh")
+			case update := <-m.fromLeaderCh:
+				m.ldrLastIndex, req.ldrCommitIndex = update.lastIndex, update.commitIndex
+				debug(m, "{last:", m.ldrLastIndex, "commit:", req.ldrCommitIndex, "} <-fromLeaderCh")
 			default:
 			}
 		}
@@ -94,23 +94,23 @@ func (repl *replication) runLoop(req *appendEntriesReq) {
 
 var errStop = errors.New("got stop signal")
 
-func (repl *replication) sendAppEntriesReq(req *appendEntriesReq) error {
-	req.prevLogIndex = repl.nextIndex - 1
+func (m *member) sendAppEntriesReq(req *appendEntriesReq) error {
+	req.prevLogIndex = m.nextIndex - 1
 
 	// fill req.prevLogTerm
 	if req.prevLogIndex == 0 {
 		req.prevLogTerm = 0
 	} else {
-		snapIndex, snapTerm := repl.getSnapLog()
+		snapIndex, snapTerm := m.getSnapLog()
 		if req.prevLogIndex < snapTerm {
 			return errNoEntryFound
 		}
 		if req.prevLogIndex == snapIndex {
 			req.prevLogTerm = snapTerm
-		} else if req.prevLogIndex >= repl.ldrStartIndex { // being smart!!!
+		} else if req.prevLogIndex >= m.ldrStartIndex { // being smart!!!
 			req.prevLogTerm = req.term
 		} else {
-			prevTerm, err := repl.storage.getEntryTerm(req.prevLogIndex)
+			prevTerm, err := m.storage.getEntryTerm(req.prevLogIndex)
 			if err != nil {
 				return err
 			}
@@ -119,97 +119,97 @@ func (repl *replication) sendAppEntriesReq(req *appendEntriesReq) error {
 	}
 
 	var n uint64
-	if repl.sendEntries {
-		assert(repl.matchIndex == req.prevLogIndex, "%s assert %d==%d", repl, repl.matchIndex, req.prevLogIndex)
-		n = min(repl.ldrLastIndex-repl.matchIndex, maxAppendEntries)
+	if m.sendEntries {
+		assert(m.matchIndex == req.prevLogIndex, "%s assert %d==%d", m, m.matchIndex, req.prevLogIndex)
+		n = min(m.ldrLastIndex-m.matchIndex, maxAppendEntries)
 	}
 	if n > 0 {
 		req.entries = make([]*entry, n)
 		for i := range req.entries {
 			req.entries[i] = &entry{}
-			err := repl.storage.getEntry(repl.nextIndex+uint64(i), req.entries[i])
+			err := m.storage.getEntry(m.nextIndex+uint64(i), req.entries[i])
 			if err != nil {
 				return err
 			}
 		}
-		debug(repl, "sending", req)
+		debug(m, "sending", req)
 	} else {
 		req.entries = nil
-		if repl.sendEntries {
-			debug(repl, "sending heartbeat")
+		if m.sendEntries {
+			debug(m, "sending heartbeat")
 		}
 	}
 
 	resp := &appendEntriesResp{}
-	if err := repl.retryRPC(req, resp); err != nil {
+	if err := m.retryRPC(req, resp); err != nil {
 		return err
 	}
 
-	repl.sendEntries = resp.success
+	m.sendEntries = resp.success
 	if resp.success {
-		old := repl.matchIndex
-		repl.matchIndex, _ = lastEntry(req)
-		repl.nextIndex = repl.matchIndex + 1
-		if repl.matchIndex != old {
-			debug(repl, "matchIndex:", repl.matchIndex)
-			repl.notifyLdr(matchIndex{&repl.status, repl.matchIndex})
+		old := m.matchIndex
+		m.matchIndex, _ = lastEntry(req)
+		m.nextIndex = m.matchIndex + 1
+		if m.matchIndex != old {
+			debug(m, "matchIndex:", m.matchIndex)
+			m.notifyLdr(matchIndex{&m.status, m.matchIndex})
 		}
 	} else {
-		if resp.lastLogIndex < repl.matchIndex {
+		if resp.lastLogIndex < m.matchIndex {
 			// this happens if someone restarted follower storage with empty storage
 			// todo: can we treat replicate entire snap+log to such follower ??
 			return errors.New("faulty follower: denies matchIndex")
 		}
-		repl.nextIndex = min(repl.nextIndex-1, resp.lastLogIndex+1)
-		debug(repl, "nextIndex:", repl.nextIndex)
+		m.nextIndex = min(m.nextIndex-1, resp.lastLogIndex+1)
+		debug(m, "nextIndex:", m.nextIndex)
 	}
 	return nil
 }
 
-func (repl *replication) sendInstallSnapReq(appReq *appendEntriesReq) error {
+func (m *member) sendInstallSnapReq(appReq *appendEntriesReq) error {
 	req := &installLatestSnapReq{
 		installSnapReq: installSnapReq{
 			term:   appReq.term,
 			leader: appReq.leader,
 		},
-		snapshots: repl.storage.snapshots,
+		snapshots: m.storage.snapshots,
 	}
 
 	resp := &installSnapResp{}
-	if err := repl.retryRPC(req, resp); err != nil {
+	if err := m.retryRPC(req, resp); err != nil {
 		return err
 	}
 
 	// we have to still send one appEntries, to update his commit index
 	// so we should not update sendEntries=true, beacuse if we have
 	// no entries beyond snapshot, we sleep for hbTimeout
-	//repl.sendEntries = resp.success // NOTE: dont do this
+	//m.sendEntries = resp.success // NOTE: dont do this
 	if resp.success {
-		repl.matchIndex = req.lastIndex
-		repl.nextIndex = repl.matchIndex + 1
-		debug(repl, "matchIndex:", repl.matchIndex)
-		repl.notifyLdr(matchIndex{&repl.status, repl.matchIndex})
+		m.matchIndex = req.lastIndex
+		m.nextIndex = m.matchIndex + 1
+		debug(m, "matchIndex:", m.matchIndex)
+		m.notifyLdr(matchIndex{&m.status, m.matchIndex})
 		return nil
 	} else {
 		return errors.New("installSnap.success is false")
 	}
 }
 
-func (repl *replication) retryRPC(req request, resp message) error {
+func (m *member) retryRPC(req request, resp message) error {
 	var failures uint64
 	for {
-		err := repl.doRPC(req, resp)
+		err := m.doRPC(req, resp)
 		if _, ok := err.(OpError); ok {
 			return err
 		} else if err != nil {
-			if repl.noContact.IsZero() {
-				repl.noContact = time.Now()
-				debug(repl, "noContact", err)
-				repl.notifyLdr(noContact{&repl.status, repl.noContact})
+			if m.noContact.IsZero() {
+				m.noContact = time.Now()
+				debug(m, "noContact", err)
+				m.notifyLdr(noContact{&m.status, m.noContact})
 			}
 			failures++
 			select {
-			case <-repl.stopCh:
+			case <-m.stopCh:
 				return errStop
 			case <-time.After(backOff(failures)):
 				continue
@@ -217,56 +217,56 @@ func (repl *replication) retryRPC(req request, resp message) error {
 		}
 		break
 	}
-	if !repl.noContact.IsZero() {
-		repl.noContact = time.Time{} // zeroing
-		debug(repl, "yesContact")
-		repl.notifyLdr(noContact{&repl.status, repl.noContact})
+	if !m.noContact.IsZero() {
+		m.noContact = time.Time{} // zeroing
+		debug(m, "yesContact")
+		m.notifyLdr(noContact{&m.status, m.noContact})
 	}
 	if resp.getTerm() > req.getTerm() {
-		repl.notifyLdr(newTerm{resp.getTerm()})
+		m.notifyLdr(newTerm{resp.getTerm()})
 		return errStop
 	}
 	return nil
 }
 
-func (repl *replication) doRPC(req request, resp message) error {
-	if repl.conn == nil {
-		conn, err := repl.connPool.getConn()
+func (m *member) doRPC(req request, resp message) error {
+	if m.conn == nil {
+		conn, err := m.connPool.getConn()
 		if err != nil {
 			return err
 		}
-		repl.conn = conn
+		m.conn = conn
 	}
-	if repl.trace.sending != nil {
-		repl.trace.sending(req.from(), repl.connPool.id, req)
+	if m.trace.sending != nil {
+		m.trace.sending(req.from(), m.connPool.id, req)
 	}
-	err := repl.conn.doRPC(req, resp)
+	err := m.conn.doRPC(req, resp)
 	if err != nil {
-		_ = repl.conn.close()
-		repl.conn = nil
+		_ = m.conn.close()
+		m.conn = nil
 	}
-	if repl.trace.sending != nil && err == nil {
-		repl.trace.received(req.from(), repl.connPool.id, resp)
+	if m.trace.sending != nil && err == nil {
+		m.trace.received(req.from(), m.connPool.id, resp)
 	}
 	return err
 }
 
-func (repl *replication) notifyLdr(update interface{}) {
+func (m *member) notifyLdr(update interface{}) {
 	select {
-	case <-repl.stopCh:
-	case repl.toLeaderCh <- update:
+	case <-m.stopCh:
+	case m.toLeaderCh <- update:
 	}
 }
 
-func (repl *replication) getSnapLog() (snapIndex, snapTerm uint64) {
+func (m *member) getSnapLog() (snapIndex, snapTerm uint64) {
 	// snapshoting might be in progress
-	repl.storage.snapMu.RLock()
-	defer repl.storage.snapMu.RUnlock()
-	return repl.storage.snapIndex, repl.storage.snapTerm
+	m.storage.snapMu.RLock()
+	defer m.storage.snapMu.RUnlock()
+	return m.storage.snapIndex, m.storage.snapTerm
 }
 
-func (repl *replication) String() string {
-	return repl.str
+func (m *member) String() string {
+	return m.str
 }
 
 // ------------------------------------------------
@@ -294,12 +294,12 @@ type leaderUpdate struct {
 }
 
 type matchIndex struct {
-	status *replStatus
+	status *memberStatus
 	val    uint64
 }
 
 type noContact struct {
-	status *replStatus
+	status *memberStatus
 	time   time.Time
 }
 
@@ -307,7 +307,7 @@ type newTerm struct {
 	val uint64
 }
 
-type replStatus struct {
+type memberStatus struct {
 	id ID
 
 	// owned exclusively by leader goroutine
@@ -320,7 +320,7 @@ type replStatus struct {
 }
 
 // did we have success full contact after time t
-func (rs *replStatus) contactedAfter(t time.Time) bool {
+func (rs *memberStatus) contactedAfter(t time.Time) bool {
 	return rs.noContact.IsZero() || rs.noContact.After(t)
 }
 

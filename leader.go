@@ -26,8 +26,8 @@ type ldrShip struct {
 	newEntries *list.List
 
 	// holds running replications, key is addr
-	repls map[ID]*replication
-	wg    sync.WaitGroup
+	members map[ID]*member
+	wg      sync.WaitGroup
 
 	// to receive updates from replicators
 	fromReplsCh chan interface{}
@@ -49,7 +49,7 @@ func (l *ldrShip) init() {
 
 	// start replication routine for each follower
 	for _, node := range l.configs.Latest.Nodes {
-		l.startReplication(node)
+		l.addMember(node)
 	}
 }
 
@@ -61,9 +61,9 @@ func (l *ldrShip) release() {
 		}
 	}
 
-	for id, repl := range l.repls {
-		close(repl.stopCh)
-		delete(l.repls, id)
+	for id, m := range l.members {
+		close(m.stopCh)
+		delete(l.members, id)
 	}
 
 	if l.leader == l.id {
@@ -101,14 +101,14 @@ func (l *ldrShip) storeEntry(ne NewEntry) {
 	if ne.typ == entryQuery || ne.typ == entryBarrier {
 		l.applyCommitted()
 	} else {
-		l.notifyReplicators()
+		l.notifyMembers()
 	}
 }
 
-func (l *ldrShip) startReplication(node Node) {
-	repl := &replication{
+func (l *ldrShip) addMember(node Node) {
+	m := &member{
 		rtime:         newRandTime(),
-		status:        replStatus{id: node.ID},
+		status:        memberStatus{id: node.ID},
 		ldrStartIndex: l.startIndex,
 		connPool:      l.getConnPool(node.ID),
 		hbTimeout:     l.hbTimeout,
@@ -119,7 +119,7 @@ func (l *ldrShip) startReplication(node Node) {
 		trace:         &l.trace,
 		str:           fmt.Sprintf("%v %s", l, string(node.ID)),
 	}
-	l.repls[node.ID] = repl
+	l.members[node.ID] = m
 
 	// send initial empty AppendEntries RPCs (heartbeat) to each follower
 	req := &appendEntriesReq{
@@ -140,24 +140,24 @@ func (l *ldrShip) startReplication(node Node) {
 			// todo: is this really needed? we can optimize it
 			//       by avoiding this extra goroutine
 			defer l.wg.Done()
-			repl.notifyLdr(matchIndex{&repl.status, req.prevLogIndex})
+			m.notifyLdr(matchIndex{&m.status, req.prevLogIndex})
 			for {
 				select {
-				case <-repl.stopCh:
+				case <-m.stopCh:
 					return
-				case update := <-repl.fromLeaderCh:
-					repl.notifyLdr(matchIndex{&repl.status, update.lastIndex})
+				case update := <-m.fromLeaderCh:
+					m.notifyLdr(matchIndex{&m.status, update.lastIndex})
 				}
 			}
 		}()
 	} else {
 		// don't retry on failure. so that we can respond to apply/inspect
-		debug(repl, ">> firstHeartbeat")
-		_ = repl.doRPC(req, &appendEntriesResp{})
+		debug(m, ">> firstHeartbeat")
+		_ = m.doRPC(req, &appendEntriesResp{})
 		go func() {
 			defer l.wg.Done()
-			repl.runLoop(req)
-			debug(repl, "repl.end")
+			m.replicate(req)
+			debug(m, "m.replicateEnd")
 		}()
 	}
 }
@@ -209,8 +209,8 @@ func (l *ldrShip) checkLeaderLease() {
 	for _, node := range l.configs.Latest.Nodes {
 		if node.Voter {
 			voters++
-			repl := l.repls[node.ID]
-			noContact := repl.status.noContact
+			m := l.members[node.ID]
+			noContact := m.status.noContact
 			if noContact.IsZero() {
 				reachable++
 			} else if now.Sub(noContact) <= l.ldrLeaseTimeout {
@@ -252,7 +252,7 @@ func (l *ldrShip) majorityMatchIndex() uint64 {
 	if numVoters == 1 {
 		for _, node := range l.configs.Latest.Nodes {
 			if node.Voter {
-				return l.repls[node.ID].status.matchIndex
+				return l.members[node.ID].status.matchIndex
 			}
 		}
 	}
@@ -261,7 +261,7 @@ func (l *ldrShip) majorityMatchIndex() uint64 {
 	i := 0
 	for _, node := range l.configs.Latest.Nodes {
 		if node.Voter {
-			matched[i] = l.repls[node.ID].status.matchIndex
+			matched[i] = l.members[node.ID].status.matchIndex
 			i++
 		}
 	}
@@ -281,7 +281,7 @@ func (l *ldrShip) onMajorityCommit() {
 	if majorityMatchIndex > l.commitIndex && majorityMatchIndex >= l.startIndex {
 		l.setCommitIndex(majorityMatchIndex)
 		l.applyCommitted()
-		l.notifyReplicators() // we updated commit index
+		l.notifyMembers() // we updated commit index
 	}
 }
 
@@ -330,16 +330,16 @@ func (l *ldrShip) applyCommitted() {
 	}
 }
 
-func (l *ldrShip) notifyReplicators() {
+func (l *ldrShip) notifyMembers() {
 	update := leaderUpdate{
 		lastIndex:   l.lastLogIndex,
 		commitIndex: l.commitIndex,
 	}
-	for _, repl := range l.repls {
+	for _, m := range l.members {
 		select {
-		case repl.fromLeaderCh <- update:
-		case <-repl.fromLeaderCh:
-			repl.fromLeaderCh <- update
+		case m.fromLeaderCh <- update:
+		case <-m.fromLeaderCh:
+			m.fromLeaderCh <- update
 		}
 	}
 }

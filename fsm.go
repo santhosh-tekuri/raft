@@ -156,7 +156,7 @@ func (r *Raft) onSnapshotTaken(t snapTaken) {
 	}
 
 	// compact log
-	// todo: we can check repl status and accordingly decide how much to delete
+	// todo: we can check member status and accordingly decide how much to delete
 	metaIndexExists := t.meta.Index > r.snapIndex && t.meta.Index <= r.lastLogIndex
 	if metaIndexExists {
 		if err := r.storage.deleteLTE(t.meta); err != nil {

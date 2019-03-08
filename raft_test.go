@@ -660,7 +660,7 @@ func (c *cluster) waitCatchup(rr ...*Raft) {
 func (c *cluster) waitUnreachableDetected(ldr, failed *Raft) {
 	c.Helper()
 	condition := func() bool {
-		return !ldr.Info().Replication()[failed.ID()].Unreachable.IsZero()
+		return !ldr.Info().Members()[failed.ID()].Unreachable.IsZero()
 	}
 	unreachable := c.registerFor(unreachable, ldr)
 	defer c.unregister(unreachable)

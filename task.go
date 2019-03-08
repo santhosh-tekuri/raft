@@ -101,24 +101,24 @@ func Bootstrap(nodes map[ID]Node) Task {
 
 // ------------------------------------------------------------------------
 
-type ReplStatus struct {
+type Member struct {
 	ID          ID        `json:"-"`
 	MatchIndex  uint64    `json:"matchIndexes"`
 	Unreachable time.Time `json:"unreachable,omitempty"`
 }
 
 type json struct {
-	ID           ID                `json:"id"`
-	Addr         string            `json:"addr"`
-	Term         uint64            `json:"term"`
-	State        State             `json:"state"`
-	Leader       ID                `json:"leader,omitempty"`
-	LastLogIndex uint64            `json:"lastLogIndex"`
-	LastLogTerm  uint64            `json:"lastLogTerm"`
-	Committed    uint64            `json:"committed"`
-	LastApplied  uint64            `json:"lastApplied"`
-	Configs      Configs           `json:"configs"`
-	Replication  map[ID]ReplStatus `json:"replication,omitempty"`
+	ID           ID            `json:"id"`
+	Addr         string        `json:"addr"`
+	Term         uint64        `json:"term"`
+	State        State         `json:"state"`
+	Leader       ID            `json:"leader,omitempty"`
+	LastLogIndex uint64        `json:"lastLogIndex"`
+	LastLogTerm  uint64        `json:"lastLogTerm"`
+	Committed    uint64        `json:"committed"`
+	LastApplied  uint64        `json:"lastApplied"`
+	Configs      Configs       `json:"configs"`
+	Members      map[ID]Member `json:"members,omitempty"`
 }
 
 type Info interface {
@@ -132,7 +132,7 @@ type Info interface {
 	Committed() uint64
 	LastApplied() uint64
 	Configs() Configs
-	Replication() map[ID]ReplStatus
+	Members() map[ID]Member
 	Trace() *Trace
 	JSON() interface{}
 }
@@ -153,18 +153,18 @@ func (info liveInfo) LastApplied() uint64  { return info.r.lastApplied }
 func (info liveInfo) Configs() Configs     { return info.r.configs.clone() }
 func (info liveInfo) Trace() *Trace        { return &info.r.trace }
 
-func (info liveInfo) Replication() map[ID]ReplStatus {
+func (info liveInfo) Members() map[ID]Member {
 	if info.r.state != Leader {
 		return nil
 	}
-	m := make(map[ID]ReplStatus)
-	for id, repl := range info.r.ldr.repls {
-		m[id] = ReplStatus{
-			MatchIndex:  repl.status.matchIndex,
-			Unreachable: repl.status.noContact,
+	members := make(map[ID]Member)
+	for id, m := range info.r.ldr.members {
+		members[id] = Member{
+			MatchIndex:  m.status.matchIndex,
+			Unreachable: m.status.noContact,
 		}
 	}
-	return m
+	return members
 }
 
 func (info liveInfo) JSON() interface{} {
@@ -179,7 +179,7 @@ func (info liveInfo) JSON() interface{} {
 		Committed:    info.Committed(),
 		LastApplied:  info.LastApplied(),
 		Configs:      info.Configs(),
-		Replication:  info.Replication(),
+		Members:      info.Members(),
 	}
 }
 
@@ -187,19 +187,19 @@ type cachedInfo struct {
 	json json
 }
 
-func (info cachedInfo) ID() ID                         { return info.json.ID }
-func (info cachedInfo) Addr() string                   { return info.json.Addr }
-func (info cachedInfo) Term() uint64                   { return info.json.Term }
-func (info cachedInfo) State() State                   { return info.json.State }
-func (info cachedInfo) Leader() ID                     { return info.json.Leader }
-func (info cachedInfo) LastLogIndex() uint64           { return info.json.LastLogIndex }
-func (info cachedInfo) LastLogTerm() uint64            { return info.json.LastLogTerm }
-func (info cachedInfo) Committed() uint64              { return info.json.Committed }
-func (info cachedInfo) LastApplied() uint64            { return info.json.LastApplied }
-func (info cachedInfo) Configs() Configs               { return info.json.Configs }
-func (info cachedInfo) Replication() map[ID]ReplStatus { return info.json.Replication }
-func (info cachedInfo) Trace() *Trace                  { return nil }
-func (info cachedInfo) JSON() interface{}              { return info.json }
+func (info cachedInfo) ID() ID                 { return info.json.ID }
+func (info cachedInfo) Addr() string           { return info.json.Addr }
+func (info cachedInfo) Term() uint64           { return info.json.Term }
+func (info cachedInfo) State() State           { return info.json.State }
+func (info cachedInfo) Leader() ID             { return info.json.Leader }
+func (info cachedInfo) LastLogIndex() uint64   { return info.json.LastLogIndex }
+func (info cachedInfo) LastLogTerm() uint64    { return info.json.LastLogTerm }
+func (info cachedInfo) Committed() uint64      { return info.json.Committed }
+func (info cachedInfo) LastApplied() uint64    { return info.json.LastApplied }
+func (info cachedInfo) Configs() Configs       { return info.json.Configs }
+func (info cachedInfo) Members() map[ID]Member { return info.json.Members }
+func (info cachedInfo) Trace() *Trace          { return nil }
+func (info cachedInfo) JSON() interface{}      { return info.json }
 
 type inspect struct {
 	*task

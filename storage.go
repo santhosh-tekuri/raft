@@ -162,7 +162,7 @@ func (s *storage) getEntryTerm(index uint64) (uint64, error) {
 	return e.term, err
 }
 
-// called by raft.runLoop and repl.runLoop. append call can be called during this
+// called by raft.runLoop and m.replicate. append call can be called during this
 // never called with invalid index
 func (s *storage) getEntry(index uint64, e *entry) error {
 	s.snapMu.RLock()
