@@ -194,7 +194,7 @@ func (s *storage) appendEntry(e *entry) {
 func (s *storage) deleteLTE(meta SnapshotMeta) error {
 	s.snapMu.Lock()
 	defer s.snapMu.Unlock()
-	debug("deleteLTE", meta.Index, s.snapIndex, s.lastLogIndex)
+	debug("deleteLTE meta.index:", meta.Index, "snapIndex:", s.snapIndex, "lastLogIndex:", s.lastLogIndex)
 	n := meta.Index - s.snapIndex
 	if err := s.log.DeleteFirst(n); err != nil {
 		return fmt.Errorf("raft: log.deleteFirst(%d) failed: %v", n, err)
