@@ -89,12 +89,14 @@ func New(id ID, opt Options, fsm FSM, storage Storage) (*Raft, error) {
 // todo: note that we dont support multiple listeners
 
 func (r *Raft) Serve(l net.Listener) error {
+	// ensure waitGroup FirstAdd and Wait order
 	r.shutdownMu.Lock()
 	closed := r.isClosed()
 	if !closed {
-		r.wg.Add(2)
+		r.wg.Add(1)
 	}
 	r.shutdownMu.Unlock()
+
 	if closed {
 		return ErrServerClosed
 	}
@@ -107,16 +109,15 @@ func (r *Raft) Serve(l net.Listener) error {
 	go r.fsmLoop()
 	// restore fsm from last snapshot, if present
 	if r.snapIndex > 0 {
-		req := fsmRestoreReq{task: newTask()}
-		r.fsmTaskCh <- req
-		<-req.Done()
-		if req.Err() != nil {
-			return req.Err()
+		if err := r.restoreFSMFromSnapshot(); err != nil {
+			close(r.fsmTaskCh) // to stop fsmLoop
+			return err
 		}
-		r.commitIndex, r.lastApplied = r.snapIndex, r.snapIndex
 	}
 
+	r.wg.Add(1)
 	go r.server.serve(l)
+
 	r.stateLoop()
 	return ErrServerClosed
 }

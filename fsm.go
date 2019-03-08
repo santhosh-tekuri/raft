@@ -97,6 +97,7 @@ func (r *Raft) applyEntry(ne NewEntry) {
 
 // todo: trace snapshot start and finish
 func (r *Raft) takeSnapshot(t takeSnapshot) {
+	// finally report back to raft, for log compaction
 	var err error
 	var meta SnapshotMeta
 	defer func() {
@@ -106,6 +107,7 @@ func (r *Raft) takeSnapshot(t takeSnapshot) {
 		r.snapTakenCh <- taken
 	}()
 
+	// get fsm state ---------------------------------------
 	req := fsmSnapReq{task: newTask(), index: t.lastSnapIndex + t.threshold}
 	r.fsmTaskCh <- req
 	select {
@@ -121,6 +123,7 @@ func (r *Raft) takeSnapshot(t takeSnapshot) {
 	resp := req.Result().(fsmSnapResp)
 	defer resp.state.Release()
 
+	// write snapshot to storage
 	debug(r.id, "takingSnap:", resp.index)
 	sink, err := r.snapshots.New(resp.index, resp.term, t.config)
 	if err != nil {
@@ -161,4 +164,42 @@ func (r *Raft) onSnapshotTaken(t snapTaken) {
 		}
 	}
 	t.req.reply(t.meta)
+}
+
+// takeSnapshot() -> fsmLoop
+type fsmSnapReq struct {
+	*task
+	index uint64
+}
+
+// takeSnapshot() <- fsmLoop
+type fsmSnapResp struct {
+	index uint64
+	term  uint64
+	state FSMState
+}
+
+// snapLoop -> raft (after snapshot taken)
+type snapTaken struct {
+	req  takeSnapshot
+	meta SnapshotMeta
+	err  error
+}
+
+// ---------------------------------------------------------------------------
+
+func (r *Raft) restoreFSMFromSnapshot() error {
+	req := fsmRestoreReq{task: newTask()}
+	r.fsmTaskCh <- req
+	<-req.Done()
+	if req.Err() != nil {
+		return req.Err()
+	}
+	r.commitIndex, r.lastApplied = r.snapIndex, r.snapIndex
+	return nil
+}
+
+// raft(onRestart/onInstallSnapReq) -> fsmLoop
+type fsmRestoreReq struct {
+	*task
 }

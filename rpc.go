@@ -297,15 +297,9 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq) (resp *installSnapResp,
 		r.snapIndex, r.snapTerm = meta.Index, meta.Term
 
 		// reset fsm from this snapshot
-		restoreReq := fsmRestoreReq{task: newTask()}
-		r.fsmTaskCh <- restoreReq
-		<-restoreReq.Done()
-		if restoreReq.Err() != nil {
-			err = restoreReq.Err()
-			debug(r, "fsmRestore failed:", err)
+		if err = r.restoreFSMFromSnapshot(); err != nil {
 			return
 		}
-
 		// load snapshot config as cluster configuration
 		r.changeConfig(meta.Config)
 		r.commitConfig()

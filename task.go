@@ -270,28 +270,6 @@ func TakeSnapshot(threshold uint64) Task {
 	return takeSnapshot{task: newTask(), threshold: threshold}
 }
 
-// snapLoop sends this to raft, after snapshot taken
-type snapTaken struct {
-	req  takeSnapshot
-	meta SnapshotMeta
-	err  error
-}
-
-type fsmSnapReq struct {
-	*task
-	index uint64
-}
-
-type fsmSnapResp struct {
-	index uint64
-	term  uint64
-	state FSMState
-}
-
-type fsmRestoreReq struct {
-	*task
-}
-
 // ------------------------------------------------------------------------
 
 func (r *Raft) executeTask(t Task) {
