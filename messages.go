@@ -44,7 +44,7 @@ type request interface {
 type entryType uint8
 
 const (
-	entryBarrier entryType = iota
+	entryBarrier entryType = iota + 1 // note: don't use zero value
 	entryUpdate
 	entryQuery
 	entryNop
