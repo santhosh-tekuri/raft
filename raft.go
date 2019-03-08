@@ -359,7 +359,8 @@ var (
 	// by already bootstrapped server
 	ErrAlreadyBootstrapped    = errors.New("raft.bootstrap: already bootstrapped")
 	ErrConfigChangeInProgress = errors.New("raft.configChange: another in progress")
-	ErrNotCommitReady         = errors.New("raft: not ready to commit")
+	ErrNotCommitReady         = errors.New("raft.configChange: not ready to commit")
+	ErrConfigChanged          = errors.New("raft.configChange: config changed meanwhile")
 	ErrSnapshotThreshold      = errors.New("raft.takeSnapshot: not enough outstanding logs to snapshot")
 	ErrSnapshotInProgress     = errors.New("raft.takeSnapshot: another snapshot in progress")
 	ErrNoUpdates              = errors.New("raft.takeSnapshot: no updates to FSM")

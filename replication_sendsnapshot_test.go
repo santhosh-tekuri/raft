@@ -24,7 +24,7 @@ func testReplicationSendSnapshot(t *testing.T, updateFSMAfterSnap bool) {
 	c.waitBarrier(ldr, 0)
 
 	// add two nonVoters M4; wait all commit them
-	c.ensure(waitAddNonVoter(ldr, "M4", false))
+	c.ensure(waitAddNonVoter(ldr, "M4", id2Addr("M4"), false))
 	c.waitCatchup()
 
 	// now send one update

@@ -2,6 +2,7 @@ package raft
 
 import (
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -227,34 +228,76 @@ func (r *Raft) Info() Info {
 
 // ------------------------------------------------------------------------
 
-type ChangeConfig struct {
-	*task
-	add    map[ID]bool // [id]promote
-	remove map[ID]struct{}
-	addrs  map[ID]string
-}
-
-func (c *ChangeConfig) AddNonVoter(id ID, addr string, promote bool) {
-	c.add[id] = promote
-	c.addrs[id] = addr
-}
-
-func (c *ChangeConfig) Remove(ids ...ID) {
-	for _, id := range ids {
-		c.remove[id] = struct{}{}
+func (c *Config) AddNonVoter(id ID, addr string, promote bool) error {
+	if _, ok := c.Nodes[id]; ok {
+		return fmt.Errorf("raft: node %s already exists", id)
 	}
+	n := Node{ID: id, Addr: addr, Promote: promote}
+	if err := n.validate(); err != nil {
+		return err
+	}
+	c.Nodes[id] = n
+	return nil
 }
 
-func (c *ChangeConfig) ChangeAddr(id ID, addr string) {
-	c.addrs[id] = addr
+func (c *Config) Remove(id ID) error {
+	if _, ok := c.Nodes[id]; !ok {
+		return fmt.Errorf("raft: node %s not found", id)
+	}
+	delete(c.Nodes, id)
+	return nil
 }
 
-func NewChangeConfig() ChangeConfig {
-	return ChangeConfig{
-		task:   newTask(),
-		add:    make(map[ID]bool),
-		remove: make(map[ID]struct{}),
-		addrs:  make(map[ID]string),
+func (c *Config) ChangeAddr(id ID, addr string) error {
+	n, ok := c.Nodes[id]
+	if !ok {
+		return fmt.Errorf("raft: node %s not found", id)
+	}
+	n.Addr = addr
+	if err := n.validate(); err != nil {
+		return err
+	}
+	cn, ok := c.nodeForAddr(addr)
+	if ok && cn.ID != id {
+		return fmt.Errorf("raft: address %s is used by node %s", addr, cn.ID)
+	}
+	c.Nodes[id] = n
+	return nil
+}
+
+func (c *Config) Promote(id ID) error {
+	n, ok := c.Nodes[id]
+	if !ok {
+		return fmt.Errorf("raft: node %s not found", id)
+	}
+	if n.Voter {
+		return errors.New("raft: only nonvoters can be promoted")
+	}
+	n.Promote = true
+	c.Nodes[id] = n
+	return nil
+}
+
+func (c *Config) Demote(id ID) error {
+	n, ok := c.Nodes[id]
+	if !ok {
+		return fmt.Errorf("raft: node %s not found", id)
+	}
+	n.Voter = false
+	n.Promote = false
+	c.Nodes[id] = n
+	return nil
+}
+
+type changeConfig struct {
+	*task
+	newConf Config
+}
+
+func ChangeConfig(newConf Config) Task {
+	return changeConfig{
+		task:    newTask(),
+		newConf: newConf,
 	}
 }
 
@@ -303,7 +346,7 @@ func (l *ldrShip) executeTask(t Task) {
 	switch t := t.(type) {
 	case NewEntry:
 		t.reply(errors.New("raft: use Raft.NewEntries() for NewEntry"))
-	case ChangeConfig:
+	case changeConfig:
 		l.changeConfig(t)
 	default:
 		t.reply(errInvalidTask)

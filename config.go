@@ -244,50 +244,51 @@ func (r *Raft) bootstrap(t bootstrap) {
 	t.reply(nil)
 }
 
-func (l *ldrShip) changeConfig(t ChangeConfig) {
+func (l *ldrShip) changeConfig(t changeConfig) {
 	if !l.configs.IsCommitted() {
 		t.reply(ErrConfigChangeInProgress)
 		return
 	}
 	if l.commitIndex < l.startIndex {
 		t.reply(ErrNotCommitReady)
+		return
+	}
+	if t.newConf.Index != l.configs.Latest.Index {
+		t.reply(ErrConfigChanged)
+		return
+	}
+	config := t.newConf.clone()
+	if err := config.validate(); err != nil {
+		t.reply(fmt.Errorf("raft.changeConfig: %v", err))
+		return
 	}
 
-	config := l.configs.Latest.clone()
-	for id, promote := range t.add {
-		if _, ok := config.Nodes[id]; ok {
-			t.reply(fmt.Errorf("raft.changeConfig: invalid config: node %s already exists", id))
-			return
-		}
-		config.Nodes[id] = Node{ID: id, Addr: t.addrs[id], Promote: promote}
-	}
-	for id, addr := range t.addrs {
-		n, ok := config.Nodes[id]
-		if !ok {
-			t.reply(fmt.Errorf("raft.changeConfig: invalid config: node %s does not exist", id))
-			return
-		}
-		n.Addr = addr
-		config.Nodes[id] = n
-	}
-	voterRemoved := ID("")
-	for id := range t.remove {
-		n, ok := config.Nodes[id]
-		if !ok {
-			t.reply(fmt.Errorf("raft.changeConfig: invalid config: node %s does not exist", id))
-			return
-		}
-		if n.Voter {
-			if voterRemoved != "" {
-				t.reply(fmt.Errorf("raft.changeConfig: invalid config: cannot remove two voters %s, %s", voterRemoved, id))
-				return
+	voters := func(c Config) map[ID]bool {
+		m := make(map[ID]bool)
+		for id, n := range c.Nodes {
+			if n.Voter {
+				m[id] = true
 			}
-			voterRemoved = id
 		}
-		delete(config.Nodes, id)
+		return m
 	}
-	if err := config.validate(); err != nil {
-		t.reply(fmt.Errorf("raft.changeConfig: invalid config: %v", err))
+
+	curVoters, newVoters := voters(l.configs.Latest), voters(config)
+
+	// remove common voters
+	for curVoter := range curVoters {
+		if newVoters[curVoter] {
+			delete(curVoters, curVoter)
+			delete(newVoters, curVoter)
+		}
+	}
+
+	if len(newVoters) > 0 {
+		t.reply(fmt.Errorf("raft.changeConfig: new voters found. please add them as nonvoters with promote flag"))
+		return
+	}
+	if len(curVoters) > 1 {
+		t.reply(errors.New("raft.changeConfig: only one voter can lose its voting right"))
 		return
 	}
 

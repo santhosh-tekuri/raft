@@ -13,25 +13,26 @@ func TestRaft_AddNonVoter_validations(t *testing.T) {
 	configs := ldr.Info().Configs()
 
 	// adding node with empty id should fail
-	if _, err := waitTask(ldr, addNonvoter("", "localhost:8888", false), 0); err == nil {
+	if err := waitAddNonVoter(ldr, "", "localhost:8888", false); err == nil {
 		t.Fatal(err)
 	}
 
 	// adding node with empty addr should fail
-	if _, err := waitTask(ldr, addNonvoter("M10", "", false), 0); err == nil {
+	if err := waitAddNonVoter(ldr, "M10", "", false); err == nil {
 		t.Fatal(err)
 	}
 
 	// adding node with existing id should fail
-	for _, n := range ldr.Info().Configs().Latest.Nodes {
-		if _, err := waitTask(ldr, addNonvoter(n.ID, "localhost:8888", false), 0); err == nil {
+	config := ldr.Info().Configs().Latest
+	for id := range config.Nodes {
+		if err := config.AddNonVoter(id, "localhost:8888", false); err == nil {
 			t.Fatal(err)
 		}
 	}
 
 	// adding node with existing addr should fail
 	for _, n := range ldr.Info().Configs().Latest.Nodes {
-		if _, err := waitTask(ldr, addNonvoter("M12", n.Addr, false), 0); err == nil {
+		if err := waitAddNonVoter(ldr, "M12", n.Addr, false); err == nil {
 			t.Fatal(err)
 		}
 	}
@@ -56,7 +57,7 @@ func TestRaft_AddNonVoter_committedByAll(t *testing.T) {
 	defer c.unregister(configRelated)
 
 	// add M4 as nonvoter, wait for success reply
-	c.ensure(waitTask(ldr, addNonvoter(m4.ID(), id2Addr(m4.ID()), false), 0))
+	c.ensure(waitAddNonVoter(ldr, m4.ID(), id2Addr(m4.ID()), false))
 
 	// ensure that leader raised configChange
 	select {
@@ -154,7 +155,7 @@ func TestRaft_AddNonVoter_catchesUp_followsLeader(t *testing.T) {
 	m4 := c.launch(1, false)["M4"]
 
 	// add M4 as nonvoter, wait for success reply
-	c.ensure(waitTask(ldr, addNonvoter(m4.ID(), id2Addr(m4.ID()), false), 0))
+	c.ensure(waitAddNonVoter(ldr, m4.ID(), id2Addr(m4.ID()), false))
 
 	// ensure that M4 got its FSM replicated
 	c.waitFSMLen(10, m4)
@@ -173,7 +174,7 @@ func TestRaft_AddNonVoter_nonVoterReconnects_catchesUp(t *testing.T) {
 	m4 := c.launch(1, false)["M4"]
 
 	// add M4 as nonvoter, wait for success reply
-	c.ensure(waitTask(ldr, addNonvoter(m4.ID(), id2Addr(m4.ID()), false), 0))
+	c.ensure(waitAddNonVoter(ldr, m4.ID(), id2Addr(m4.ID()), false))
 
 	// now disconnect nonvoter m4
 	m4StateChanged := c.registerFor(stateChanged, m4)
@@ -223,7 +224,7 @@ func TestRaft_AddNonVoter_leaderChanged_followsNewLeader(t *testing.T) {
 	m4 := c.launch(1, false)["M4"]
 
 	// add M4 as nonvoter, wait for success reply
-	c.ensure(waitTask(ldr, addNonvoter(m4.ID(), id2Addr(m4.ID()), false), 0))
+	c.ensure(waitAddNonVoter(ldr, m4.ID(), id2Addr(m4.ID()), false))
 
 	// now shutdown the leader
 	ldr.Shutdown().Wait()
