@@ -202,6 +202,7 @@ func (r *Raft) applyCommitted(ne *entry) {
 
 		r.applyEntry(NewEntry{entry: e})
 		r.lastApplied++
+		debug(r, "lastApplied", r.lastApplied)
 	}
 }
 

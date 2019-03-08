@@ -326,6 +326,7 @@ func (l *ldrShip) applyCommitted() {
 
 		l.applyEntry(ne)
 		l.lastApplied++
+		debug(l, "lastApplied", l.lastApplied)
 	}
 }
 
