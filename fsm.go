@@ -89,7 +89,7 @@ func (r *Raft) applyEntry(ne NewEntry) {
 		case r.fsmTaskCh <- ne:
 		}
 	default:
-		assert(true, "got unexpected entryType %d", ne.typ)
+		assert(false, "got unexpected entryType %d", ne.typ)
 	}
 }
 
