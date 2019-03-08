@@ -300,13 +300,13 @@ func (r *Raft) executeTask(t Task) {
 		r.bootstrap(t)
 	case takeSnapshot:
 		if r.snapTakenCh != nil {
-			t.reply("in progress")
+			t.reply(ErrSnapshotInProgress)
 			return
 		}
 		t.lastSnapIndex = r.snapIndex
 		t.config = r.configs.Committed
 		r.snapTakenCh = make(chan snapTaken)
-		go r.takeSnapshot(t)
+		go r.takeSnapshot(t) // goroutine tracked by r.snapTakenCh
 	case inspect:
 		t.fn(r.liveInfo())
 		t.reply(nil)
@@ -330,22 +330,4 @@ func (l *ldrShip) executeTask(t Task) {
 	default:
 		t.reply(errInvalidTask)
 	}
-}
-
-func (r *Raft) onSnapshotTaken(t snapTaken) {
-	r.snapTakenCh = nil
-
-	if t.err != nil {
-		t.req.reply(t.err)
-		return
-	}
-	// todo: we can check repl status and accordingly decide how much to delete
-	metaIndexExists := t.meta.Index > r.snapIndex && t.meta.Index <= r.lastLogIndex
-	if metaIndexExists {
-		if err := r.storage.deleteLTE(t.meta); err != nil {
-			// send to trace
-			assert(false, err.Error())
-		}
-	}
-	t.req.reply(t.meta)
 }

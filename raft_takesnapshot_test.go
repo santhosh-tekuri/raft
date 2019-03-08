@@ -7,6 +7,7 @@ import (
 func TestRaft_takeSnapshot(t *testing.T) {
 	t.Run("emptyFSM", takeSnapshotEmptyFSM)
 	t.Run("thresholdNotReached", takeSnapshotThresholdNotReached)
+	//todo: test ErrSnapshotInProgress
 	t.Run("restartSendUpdates", takeSnapshotRestartSendUpdates)
 }
 

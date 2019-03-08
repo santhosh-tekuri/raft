@@ -142,3 +142,23 @@ func (r *Raft) takeSnapshot(t takeSnapshot) {
 		return
 	}
 }
+
+func (r *Raft) onSnapshotTaken(t snapTaken) {
+	r.snapTakenCh = nil // clear in progress flag
+
+	if t.err != nil {
+		t.req.reply(t.err)
+		return
+	}
+
+	// compact log
+	// todo: we can check repl status and accordingly decide how much to delete
+	metaIndexExists := t.meta.Index > r.snapIndex && t.meta.Index <= r.lastLogIndex
+	if metaIndexExists {
+		if err := r.storage.deleteLTE(t.meta); err != nil {
+			// send to trace
+			assert(false, err.Error())
+		}
+	}
+	t.req.reply(t.meta)
+}
