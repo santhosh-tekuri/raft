@@ -389,3 +389,26 @@ func (e NotLeaderError) Error() string {
 	}
 	return "raft: this node is not the leader" + contact
 }
+
+// OpError is the error type usually returned when an error
+// is detected at storage/fsm layer. This error hinders
+// in raft cluster and thus needs user attention.
+type OpError struct {
+	// Op is the operation which caused the error, such as
+	// "Log.Get" or "Snapshots.Open".
+	Op string
+
+	// Err is the error that occurred during the operation.
+	Err error
+}
+
+func (e OpError) Error() string {
+	return fmt.Sprintf("raft: %s: %v", e.Op, e.Err)
+}
+
+func opError(err error, format string, v ...interface{}) OpError {
+	return OpError{
+		Op:  fmt.Sprintf(format, v...),
+		Err: err,
+	}
+}

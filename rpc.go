@@ -298,7 +298,10 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq) (resp *installSnapResp,
 
 		// reset fsm from this snapshot
 		if err = r.restoreFSMFromSnapshot(); err != nil {
-			return
+			if r.trace.Error != nil {
+				r.trace.Error(err)
+			}
+			assert(false, "unexpected error: %v", err) // todo
 		}
 		// load snapshot config as cluster configuration
 		r.changeConfig(meta.Config)

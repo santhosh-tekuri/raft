@@ -55,14 +55,13 @@ func (r *Raft) fsmLoop() {
 			meta, sr, err := r.snapshots.Open()
 			if err != nil {
 				debug(r, "snapshots.Open failed", err)
-				// send to trace
-				t.reply(err)
+				t.reply(opError(err, "Snapshots.Open"))
 				continue
 			}
 			if err = r.fsm.RestoreFrom(sr); err != nil {
 				debug(r, "fsm.restore failed", err)
-				// send to trace
-				t.reply(err)
+				// todo: detect where err occurred in restoreFrom/sr.read
+				t.reply(opError(err, "FSM.RestoreFrom"))
 			} else {
 				updateIndex, updateTerm = meta.Index, meta.Term
 				debug(r, "restored snapshot", meta.Index)
@@ -128,20 +127,19 @@ func (r *Raft) takeSnapshot(t takeSnapshot) {
 	sink, err := r.snapshots.New(resp.index, resp.term, t.config)
 	if err != nil {
 		debug(r, "snapshots.New failed", err)
-		// send to trace
+		err = opError(err, "Snapshots.New")
 		return
 	}
 	err = resp.state.WriteTo(sink)
 	meta, doneErr := sink.Done(err)
 	if err != nil {
 		debug(r, "FSMState.WriteTo failed", resp.index, err)
-		// send to trace
+		err = opError(err, "FSMState.WriteTo")
 		return
 	}
-	if doneErr != nil {
+	if err == nil && doneErr != nil {
 		debug(r, "FSMState.Done failed", resp.index, err)
-		// send to trace
-		err = doneErr
+		err = opError(err, "FSMState.Done")
 		return
 	}
 }
@@ -150,6 +148,9 @@ func (r *Raft) onSnapshotTaken(t snapTaken) {
 	r.snapTakenCh = nil // clear in progress flag
 
 	if t.err != nil {
+		if err, ok := t.err.(OpError); ok && r.trace.Error != nil {
+			r.trace.Error(err)
+		}
 		t.req.reply(t.err)
 		return
 	}
@@ -159,8 +160,9 @@ func (r *Raft) onSnapshotTaken(t snapTaken) {
 	metaIndexExists := t.meta.Index > r.snapIndex && t.meta.Index <= r.lastLogIndex
 	if metaIndexExists {
 		if err := r.storage.deleteLTE(t.meta); err != nil {
-			// send to trace
-			assert(false, err.Error())
+			if r.trace.Error != nil {
+				r.trace.Error(err) // todo: should we reply err to user ?
+			}
 		}
 	}
 	t.req.reply(t.meta)

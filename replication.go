@@ -61,7 +61,10 @@ func (repl *replication) runLoop(req *appendEntriesReq) {
 		if err == errStop {
 			return
 		} else if err != nil {
-			assert(false, "unexpected error: %v", err)
+			if repl.trace.Error != nil {
+				repl.trace.Error(err)
+			}
+			assert(false, "unexpected error: %v", err) // todo
 			continue
 		}
 
@@ -196,7 +199,9 @@ func (repl *replication) retryRPC(req request, resp message) error {
 	var failures uint64
 	for {
 		err := repl.doRPC(req, resp)
-		if err != nil {
+		if _, ok := err.(OpError); ok {
+			return err
+		} else if err != nil {
 			if repl.noContact.IsZero() {
 				repl.noContact = time.Now()
 				debug(repl, "noContact", err)
@@ -274,7 +279,7 @@ type installLatestSnapReq struct {
 func (req *installLatestSnapReq) encode(w io.Writer) error {
 	meta, snapshot, err := req.snapshots.Open()
 	if err != nil {
-		panic(err)
+		return opError(err, "Snapshots.Open")
 	}
 	req.lastIndex = meta.Index
 	req.lastTerm = meta.Term

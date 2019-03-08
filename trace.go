@@ -5,8 +5,8 @@ import (
 )
 
 type Trace struct {
+	Error           func(err error)
 	Starting        func(info Info)
-	LookupIDFailed  func(id ID, err error, fallbackAddr string)
 	StateChanged    func(info Info)
 	ElectionStarted func(info Info)
 	ElectionAborted func(info Info, reason string)
@@ -21,11 +21,11 @@ type Trace struct {
 }
 
 func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
+	trace.Error = func(err error) {
+		warn(err)
+	}
 	trace.Starting = func(rinfo Info) {
 		info("raft: starting with Config", rinfo.Configs().Latest)
-	}
-	trace.LookupIDFailed = func(id ID, err error, fallbackAddr string) {
-		warn("raft.lookupID: using fallback addr", fallbackAddr, "for", id, ":", err)
 	}
 	trace.StateChanged = func(rinfo Info) {
 		if rinfo.State() == Leader {

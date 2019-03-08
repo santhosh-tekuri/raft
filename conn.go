@@ -83,14 +83,14 @@ func (r *resolver) lookupID(id ID) (string, error) {
 		if err == nil {
 			return addr, nil
 		}
+		if r.trace.Error != nil {
+			r.trace.Error(opError(err, "Resolver.LookupID(%q)", id))
+		}
 	}
 
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	addr = r.addrs[id]
-	if err != nil && r.trace.LookupIDFailed != nil {
-		r.trace.LookupIDFailed(id, err, addr)
-	}
 	return addr, nil
 }
 

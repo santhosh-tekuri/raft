@@ -81,34 +81,40 @@ func (s *storage) init() error {
 	// init vars ---------------------
 	term, vote, err := s.vars.GetVote()
 	if err != nil {
-		return fmt.Errorf("raft: Vars.GetVote failed: %v", err)
+		return opError(err, "Vars.GetVote")
 	}
 	s.term, s.votedFor = term, ID(vote)
 
 	// init snapshots ---------------
 	meta, err := s.snapshots.Meta()
 	if err != nil {
-		return err
+		return opError(err, "Snapshots.Meta")
 	}
 	s.snapIndex, s.snapTerm = meta.Index, meta.Term
 
 	// init log ---------------------
 	count, err := s.log.Count()
 	if err != nil {
-		return err
+		return opError(err, "Log.Count")
 	}
 	s.lastLogIndex = s.snapIndex + count
 	if count == 0 {
 		s.lastLogTerm = s.snapTerm
 	} else {
-		s.lastLogTerm, _ = s.getEntryTerm(s.lastLogIndex)
+		s.lastLogTerm, err = s.getEntryTerm(s.lastLogIndex)
+		if err != nil {
+			return err
+		}
 	}
 
 	// load configs ----------------
 	need := 2
 	for i := s.lastLogIndex; i > s.snapIndex; i-- {
 		e := &entry{}
-		_ = s.getEntry(i, e)
+		err = s.getEntry(i, e)
+		if err != nil {
+			return err
+		}
 		if e.typ == entryConfig {
 			if need == 2 {
 				err = s.configs.Latest.decode(e)
@@ -137,14 +143,14 @@ func (s *storage) init() error {
 
 func (s *storage) setTerm(term uint64) {
 	if err := s.vars.SetVote(s.term, ""); err != nil {
-		panic(fmt.Sprintf("raft: Vars.SetVote failed: %v", err))
+		panic(opError(err, "Vars.SetVote(%d, %q)", s.term, ""))
 	}
 	s.term, s.votedFor = term, ""
 }
 
 func (s *storage) setVotedFor(id ID) {
 	if err := s.vars.SetVote(s.term, string(id)); err != nil {
-		panic(fmt.Sprintf("raft: Vars.SetVote failed: %v", err))
+		panic(opError(err, "Vars.SetVote(%d, %q)", s.term, string(id)))
 	}
 	s.votedFor = id
 }
@@ -167,7 +173,7 @@ func (s *storage) getEntry(index uint64, e *entry) error {
 	b, err := s.log.Get(offset)
 	s.snapMu.RUnlock()
 	if err != nil {
-		panic(fmt.Sprintf("raft: log.get(%d) failed: %v", index, err))
+		panic(opError(err, "Log.Get(%d)", offset))
 	}
 	if err = e.decode(bytes.NewReader(b)); err != nil {
 		panic(fmt.Sprintf("raft: entry.decode(%d) failed: %v", index, err))
@@ -182,7 +188,7 @@ func (s *storage) appendEntry(e *entry) {
 		panic(fmt.Sprintf("raft: entry.encode(%d) failed: %v", e.index, err))
 	}
 	if err := s.log.Append(w.Bytes()); err != nil {
-		panic(fmt.Sprintf("raft: log.append(%d): %v", e.index, err))
+		panic(opError(err, "Log.Append"))
 	}
 	if e.index != s.lastLogIndex+1 {
 		assert(false, fmt.Sprintf("log.append: mismatch %d, %d", e.index, s.lastLogIndex))
@@ -197,7 +203,7 @@ func (s *storage) deleteLTE(meta SnapshotMeta) error {
 	debug("deleteLTE meta.index:", meta.Index, "snapIndex:", s.snapIndex, "lastLogIndex:", s.lastLogIndex)
 	n := meta.Index - s.snapIndex
 	if err := s.log.DeleteFirst(n); err != nil {
-		return fmt.Errorf("raft: log.deleteFirst(%d) failed: %v", n, err)
+		return opError(err, "Log.DeleteFirst(%d)", n)
 	}
 	s.snapIndex, s.snapTerm = meta.Index, meta.Term
 	return nil
@@ -208,7 +214,7 @@ func (s *storage) deleteLTE(meta SnapshotMeta) error {
 func (s *storage) deleteGTE(index, prevTerm uint64) {
 	n := s.lastLogIndex - index + 1
 	if err := s.log.DeleteLast(n); err != nil {
-		panic(fmt.Sprintf("raft: log.deleteLast(%d) failed: %v", n, err))
+		panic(opError(err, "Log.DeleteLast(%d)", n))
 	}
 	s.lastLogIndex, s.lastLogTerm = index-1, prevTerm
 }
