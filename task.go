@@ -105,6 +105,7 @@ type Member struct {
 	ID          ID        `json:"-"`
 	MatchIndex  uint64    `json:"matchIndexes"`
 	Unreachable time.Time `json:"unreachable,omitempty"`
+	Rounds      uint64    `json:"rounds,omitempty"`
 }
 
 type json struct {
@@ -162,6 +163,7 @@ func (info liveInfo) Members() map[ID]Member {
 		members[id] = Member{
 			MatchIndex:  m.status.matchIndex,
 			Unreachable: m.status.noContact,
+			Rounds:      m.status.rounds,
 		}
 	}
 	return members

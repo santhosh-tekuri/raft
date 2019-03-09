@@ -64,7 +64,7 @@ func New(id ID, opt Options, fsm FSM, storage Storage) (*Raft, error) {
 	r := &Raft{
 		id:               id,
 		rtime:            newRandTime(),
-		server:           newServer(2 * opt.HeartbeatTimeout),
+		server:           newServer(time.Second),
 		fsm:              fsm,
 		fsmTaskCh:        make(chan Task, 128), // todo configurable capacity
 		snapThreshold:    opt.SnapshotThreshold,

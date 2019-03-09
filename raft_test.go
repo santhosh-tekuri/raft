@@ -309,10 +309,7 @@ func (c *cluster) inmemStorage(r *Raft) *inmemStorage {
 func launchCluster(t *testing.T, n int) (c *cluster, ldr *Raft, followers []*Raft) {
 	t.Helper()
 	c = newCluster(t)
-	c.launch(n, true)
-	ldr = c.waitForHealthy()
-	c.ensureLeader(ldr.ID())
-	followers = c.followers()
+	ldr, followers = c.ensureLaunch(n)
 	return
 }
 
@@ -414,6 +411,15 @@ func (c *cluster) launch(n int, bootstrap bool) map[ID]*Raft {
 		go func() { _ = r.Serve(l) }()
 	}
 	return launched
+}
+
+func (c *cluster) ensureLaunch(n int) (ldr *Raft, followers []*Raft) {
+	c.Helper()
+	c.launch(n, true)
+	ldr = c.waitForHealthy()
+	c.ensureLeader(ldr.ID())
+	followers = c.followers()
+	return
 }
 
 func (c *cluster) shutdown(rr ...*Raft) {
@@ -735,6 +741,14 @@ func waitTask(r *Raft, t Task, timeout time.Duration) (interface{}, error) {
 func waitBootstrap(r *Raft, nodes map[ID]Node, timeout time.Duration) error {
 	_, err := waitTask(r, Bootstrap(nodes), timeout)
 	return err
+}
+
+func addNonVoter(ldr *Raft, id ID, addr string, promote bool) Task {
+	newConf := ldr.Info().Configs().Latest
+	newConf.Nodes[id] = Node{ID: id, Addr: addr, Promote: promote}
+	t := ChangeConfig(newConf)
+	ldr.Tasks() <- t
+	return t
 }
 
 func waitAddNonVoter(ldr *Raft, id ID, addr string, promote bool) error {

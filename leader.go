@@ -191,12 +191,23 @@ func (l *ldrShip) checkReplUpdates(update interface{}) {
 			l.leader = ""
 			return
 		case roundCompleted:
-			debug(l, "roundCompleted", update.status.id, update.round, update.duration, update.lastIndex)
-			if l.trace.RoundCompleted != nil {
-				l.trace.RoundCompleted(l.liveInfo(), update.status.id, update.round, update.duration, update.lastIndex)
+			round := update.round
+			if round.id > update.status.rounds {
+				debug(l, "roundCompleted", round)
+				update.status.rounds++
+				if l.trace.RoundCompleted != nil {
+					l.trace.RoundCompleted(l.liveInfo(), update.status.id, round.id, round.duration(), round.lastIndex)
+				}
+			} else {
+				debug(l, update.status.id, "is reminding promotion:", round)
 			}
-			if update.duration > l.promoteThreshold || !l.configs.IsCommitted() {
-				debug(l, "best of luck for next round", l.promoteThreshold, l.configs.IsCommitted())
+			if !l.configs.IsCommitted() {
+				debug(l, "config not committed")
+				break
+			}
+			hasNewEntries := l.lastLogIndex > update.status.matchIndex
+			if hasNewEntries && round.duration() > l.promoteThreshold {
+				debug(l, "best of luck for next round")
 				break // best of luck for next round !!!
 			}
 			n, ok := l.configs.Latest.Nodes[update.status.id]
@@ -211,7 +222,7 @@ func (l *ldrShip) checkReplUpdates(update interface{}) {
 			n.Voter, n.Promote = true, false
 			config.Nodes[n.ID] = n
 			if l.trace.Promoting != nil {
-				l.trace.Promoting(l.liveInfo(), n.ID, update.round)
+				l.trace.Promoting(l.liveInfo(), n.ID, round.id)
 			}
 			l.doChangeConfig(nil, config)
 		}

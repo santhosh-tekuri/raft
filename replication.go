@@ -2,6 +2,7 @@ package raft
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"time"
 )
@@ -23,10 +24,8 @@ type member struct {
 	nextIndex     uint64
 	sendEntries   bool
 
-	node       Node
-	round      uint64
-	roundStart time.Time
-	roundEnd   uint64
+	node  Node
+	round *round // nil if no promotion reqd
 
 	// from this time node is unreachable
 	// zero value means node is reachable
@@ -54,8 +53,9 @@ func (m *member) replicate(req *appendEntriesReq) {
 	m.ldrLastIndex = req.prevLogIndex
 	m.matchIndex, m.nextIndex = uint64(0), m.ldrLastIndex+1
 	if m.node.promote() {
-		m.round, m.roundStart, m.roundEnd = 1, time.Now(), m.ldrLastIndex
-		debug(m, "starting round:", m.round, "roundEnd:", m.roundEnd)
+		m.round = new(round)
+		m.round.begin(m.ldrLastIndex)
+		debug(m, "started round:", m.round)
 	}
 
 	for {
@@ -102,19 +102,28 @@ func (m *member) replicate(req *appendEntriesReq) {
 func (m *member) onLeaderUpdate(update leaderUpdate, req *appendEntriesReq) {
 	debug(m, "{last:", update.lastIndex, "commit:", update.commitIndex, "config:", update.config, "} <-fromLeaderCh")
 	m.ldrLastIndex, req.ldrCommitIndex = update.lastIndex, update.commitIndex
-
-	// if promote is changed to true, start first round
 	if update.config != nil {
 		if n, ok := update.config.Nodes[m.status.id]; ok {
-			if n.promote() && !m.node.promote() {
-				// start first round
-				m.round, m.roundStart, m.roundEnd = 1, time.Now(), m.ldrLastIndex
-				debug(m, "starting round:", m.round, "roundEnd:", m.roundEnd)
-				if m.matchIndex >= m.roundEnd {
-					m.roundCompleted()
-				}
-			}
 			m.node = n
+			if !m.node.promote() {
+				m.round = nil
+			} else if m.round == nil {
+				// start first round
+				m.round = new(round)
+				m.round.begin(m.ldrLastIndex)
+				debug(m, "started round:", m.round)
+			}
+		}
+	}
+
+	// if round was completed
+	if m.round != nil && m.round.finished() {
+		if m.ldrLastIndex > m.round.lastIndex {
+			m.round.begin(m.ldrLastIndex)
+			debug(m, "started round:", m.round)
+		} else {
+			debug(m, "reminding leader about promotion")
+			m.notifyRoundCompleted() // no new entries, reminding leader about promotion
 		}
 	}
 }
@@ -285,22 +294,28 @@ func (m *member) notifyLdr(update interface{}) {
 	}
 
 	// check if we just completed round
-	if _, ok := update.(matchIndex); ok && m.node.promote() {
-		if m.matchIndex >= m.roundEnd {
-			m.roundCompleted()
+	if _, ok := update.(matchIndex); ok && m.round != nil {
+		if m.matchIndex >= m.round.lastIndex {
+			m.notifyRoundCompleted()
 		}
 	}
 }
 
-func (m *member) roundCompleted() {
-	debug(m, "roundCompleted")
-	update := roundCompleted{&m.status, m.round, m.roundEnd, time.Now().Sub(m.roundStart)}
+func (m *member) notifyRoundCompleted() {
+	if !m.round.finished() {
+		m.round.finish()
+	}
+	debug(m, "notify roundCompleted:", m.round)
+	update := roundCompleted{&m.status, *m.round}
 	select {
 	case <-m.stopCh:
 	case m.toLeaderCh <- update:
 	}
-	// prepare next round
-	m.round, m.roundStart, m.roundEnd = m.round+1, time.Now(), m.ldrLastIndex
+	// if any entries still left, start next round
+	if m.ldrLastIndex > m.round.lastIndex {
+		m.round.begin(m.ldrLastIndex)
+		debug(m, "started round:", m.round)
+	}
 }
 
 func (m *member) getSnapLog() (snapIndex, snapTerm uint64) {
@@ -312,6 +327,29 @@ func (m *member) getSnapLog() (snapIndex, snapTerm uint64) {
 
 func (m *member) String() string {
 	return m.str
+}
+
+// ------------------------------------------------
+
+type round struct {
+	id        uint64
+	start     time.Time
+	end       time.Time
+	lastIndex uint64
+}
+
+func (r *round) begin(lastIndex uint64) {
+	r.id, r.start, r.lastIndex = r.id+1, time.Now(), lastIndex
+}
+func (r *round) duration() time.Duration { return r.end.Sub(r.start) }
+func (r *round) finish()                 { r.end = time.Now() }
+func (r *round) finished() bool          { return !r.end.IsZero() }
+
+func (r round) String() string {
+	if r.finished() {
+		return fmt.Sprintf("%d %s lastIndex: %d", r.id, r.duration(), r.lastIndex)
+	}
+	return fmt.Sprintf("%d lastIndex: %d", r.id, r.lastIndex)
 }
 
 // ------------------------------------------------
@@ -355,10 +393,8 @@ type newTerm struct {
 }
 
 type roundCompleted struct {
-	status    *memberStatus
-	round     uint64
-	lastIndex uint64
-	duration  time.Duration
+	status *memberStatus
+	round  round
 }
 
 type memberStatus struct {
@@ -371,6 +407,8 @@ type memberStatus struct {
 	// from what time the replication unable to reach this node
 	// zero value means it is reachable
 	noContact time.Time
+
+	rounds uint64 // #rounds completed
 }
 
 // did we have success full contact after time t
