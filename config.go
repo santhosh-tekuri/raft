@@ -31,6 +31,13 @@ type Node struct {
 	Promote bool `json:"promote,omitempty"`
 }
 
+func (n Node) promote() bool {
+	if n.Voter {
+		return false
+	}
+	return n.Promote
+}
+
 func (n Node) validate() error {
 	if n.ID == "" {
 		return errors.New("empty node id")
@@ -112,7 +119,7 @@ func (c Config) encode() *entry {
 		if err := writeBool(w, node.Voter); err != nil {
 			panic(err)
 		}
-		if err := writeBool(w, node.Promote); err != nil {
+		if err := writeBool(w, node.promote()); err != nil {
 			panic(err)
 		}
 	}
@@ -183,7 +190,7 @@ func (c Config) String() string {
 	for _, n := range c.Nodes {
 		if n.Voter {
 			voters = append(voters, fmt.Sprintf("%v[%s]", n.ID, n.Addr))
-		} else if n.Promote {
+		} else if n.promote() {
 			nonvoters = append(nonvoters, fmt.Sprintf("%v[%s,promote]", n.ID, n.Addr))
 		} else {
 			nonvoters = append(nonvoters, fmt.Sprintf("%v[%s]", n.ID, n.Addr))
@@ -304,7 +311,7 @@ func (l *ldrShip) changeConfig(t changeConfig) {
 
 	l.Raft.changeConfig(config)
 
-	// stop repl of removed nodes
+	// remove members
 	for id, m := range l.members {
 		if _, ok := config.Nodes[id]; !ok {
 			close(m.stopCh)
@@ -312,9 +319,21 @@ func (l *ldrShip) changeConfig(t changeConfig) {
 		}
 	}
 
-	// start repl for new nodes
+	// add new members
+	// update existing members
+	update := leaderUpdate{
+		lastIndex:   l.lastLogIndex,
+		commitIndex: l.commitIndex,
+		config:      &config,
+	}
 	for id, node := range config.Nodes {
-		if _, ok := l.members[id]; !ok {
+		if m, ok := l.members[id]; ok {
+			select {
+			case m.fromLeaderCh <- update:
+			case <-m.fromLeaderCh:
+				m.fromLeaderCh <- update
+			}
+		} else {
 			l.addMember(node)
 		}
 	}

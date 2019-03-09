@@ -23,6 +23,11 @@ type member struct {
 	nextIndex     uint64
 	sendEntries   bool
 
+	node       Node
+	round      uint64
+	roundStart time.Time
+	roundEnd   uint64
+
 	// from this time node is unreachable
 	// zero value means node is reachable
 	noContact time.Time
@@ -47,6 +52,10 @@ func (m *member) replicate(req *appendEntriesReq) {
 
 	m.ldrLastIndex = req.prevLogIndex
 	m.matchIndex, m.nextIndex = uint64(0), m.ldrLastIndex+1
+	if m.node.promote() {
+		m.round, m.roundStart, m.roundEnd = 0, time.Now(), m.ldrLastIndex
+		debug(m, "starting round:", m.round, "roundEnd:", m.roundEnd)
+	}
 
 	debug(m, "m.start")
 	for {
@@ -88,6 +97,26 @@ func (m *member) replicate(req *appendEntriesReq) {
 				debug(m, "{last:", m.ldrLastIndex, "commit:", req.ldrCommitIndex, "} <-fromLeaderCh")
 			default:
 			}
+		}
+	}
+}
+
+func (m *member) onLeaderUpdate(update leaderUpdate, req *appendEntriesReq) {
+	m.ldrLastIndex, req.ldrCommitIndex = update.lastIndex, update.commitIndex
+	debug(m, "{last:", m.ldrLastIndex, "commit:", req.ldrCommitIndex, "} <-fromLeaderCh")
+
+	// if promote is changed to true, start first round
+	if update.config != nil {
+		if n, ok := update.config.Nodes[m.status.id]; ok {
+			if n.promote() && !m.node.promote() {
+				// start first round
+				m.round, m.roundStart, m.roundEnd = 0, time.Now(), m.ldrLastIndex
+				debug(m, "starting round:", m.round, "roundEnd:", m.roundEnd)
+				if m.matchIndex >= m.roundEnd {
+					m.roundCompleted()
+				}
+			}
+			m.node = n
 		}
 	}
 }
@@ -256,6 +285,23 @@ func (m *member) notifyLdr(update interface{}) {
 	case <-m.stopCh:
 	case m.toLeaderCh <- update:
 	}
+
+	// check if we just completed round
+	if _, ok := update.(matchIndex); ok && m.node.promote() {
+		if m.matchIndex >= m.roundEnd {
+			m.roundCompleted()
+		}
+	}
+}
+
+func (m *member) roundCompleted() {
+	update := roundCompleted{&m.status, m.round, m.roundEnd, time.Now().Sub(m.roundStart)}
+	select {
+	case <-m.stopCh:
+	case m.toLeaderCh <- update:
+	}
+	// prepare next round
+	m.round, m.roundStart, m.roundEnd = m.round+1, time.Now(), m.ldrLastIndex
 }
 
 func (m *member) getSnapLog() (snapIndex, snapTerm uint64) {
@@ -290,7 +336,9 @@ func (req *installLatestSnapReq) encode(w io.Writer) error {
 }
 
 type leaderUpdate struct {
-	lastIndex, commitIndex uint64
+	lastIndex   uint64
+	commitIndex uint64
+	config      *Config // nil if config not changed
 }
 
 type matchIndex struct {
@@ -305,6 +353,13 @@ type noContact struct {
 
 type newTerm struct {
 	val uint64
+}
+
+type roundCompleted struct {
+	status    *memberStatus
+	round     uint64
+	lastIndex uint64
+	duration  time.Duration
 }
 
 type memberStatus struct {

@@ -107,6 +107,7 @@ func (l *ldrShip) storeEntry(ne NewEntry) {
 
 func (l *ldrShip) addMember(node Node) {
 	m := &member{
+		node:          node,
 		rtime:         newRandTime(),
 		status:        memberStatus{id: node.ID},
 		ldrStartIndex: l.startIndex,
@@ -183,6 +184,26 @@ func (l *ldrShip) checkReplUpdates(update interface{}) {
 			l.setTerm(update.val)
 			l.leader = ""
 			return
+		case roundCompleted:
+			if l.trace.RoundCompleted != nil {
+				l.trace.RoundCompleted(l.liveInfo(), update.status.id, update.round, update.duration, update.lastIndex)
+			}
+			if update.duration > l.promoteThreshold || !l.configs.IsCommitted() {
+				break // best of luck for next round !!!
+			}
+			n, ok := l.configs.Latest.Nodes[update.status.id]
+			if !ok || !n.promote() {
+				break
+			}
+
+			// promoting member
+			config := l.configs.Latest.clone()
+			err := config.Promote(n.ID)
+			assert(err != nil, "BUG: %v", err)
+			if l.trace.Promoting != nil {
+				l.trace.Promoting(l.liveInfo(), n.ID)
+			}
+			l.changeConfig(changeConfig{newConf: config})
 		}
 
 		// get any waiting update

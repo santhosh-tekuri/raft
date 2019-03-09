@@ -33,9 +33,10 @@ type Raft struct {
 	lastApplied uint64
 
 	// options
-	hbTimeout       time.Duration
-	ldrLeaseTimeout time.Duration
-	trace           Trace
+	hbTimeout        time.Duration
+	ldrLeaseTimeout  time.Duration
+	promoteThreshold time.Duration
+	trace            Trace
 
 	// dialing members
 	resolver  *resolver
@@ -58,22 +59,23 @@ func New(id ID, opt Options, fsm FSM, storage Storage) (*Raft, error) {
 	}
 
 	r := &Raft{
-		id:              id,
-		rtime:           newRandTime(),
-		server:          newServer(2 * opt.HeartbeatTimeout),
-		fsm:             fsm,
-		fsmTaskCh:       make(chan Task, 128), // todo configurable capacity
-		snapThreshold:   opt.SnapshotThreshold,
-		storage:         store,
-		state:           Follower,
-		hbTimeout:       opt.HeartbeatTimeout,
-		ldrLeaseTimeout: opt.LeaderLeaseTimeout,
-		trace:           opt.Trace,
-		dialFn:          net.DialTimeout,
-		connPools:       make(map[ID]*connPool),
-		taskCh:          make(chan Task),
-		newEntryCh:      make(chan NewEntry),
-		shutdownCh:      make(chan struct{}),
+		id:               id,
+		rtime:            newRandTime(),
+		server:           newServer(2 * opt.HeartbeatTimeout),
+		fsm:              fsm,
+		fsmTaskCh:        make(chan Task, 128), // todo configurable capacity
+		snapThreshold:    opt.SnapshotThreshold,
+		storage:          store,
+		state:            Follower,
+		hbTimeout:        opt.HeartbeatTimeout,
+		ldrLeaseTimeout:  opt.LeaderLeaseTimeout,
+		promoteThreshold: opt.PromoteThreshold,
+		trace:            opt.Trace,
+		dialFn:           net.DialTimeout,
+		connPools:        make(map[ID]*connPool),
+		taskCh:           make(chan Task),
+		newEntryCh:       make(chan NewEntry),
+		shutdownCh:       make(chan struct{}),
 	}
 
 	r.resolver = &resolver{
@@ -301,6 +303,7 @@ type stateShip interface {
 type Options struct {
 	HeartbeatTimeout   time.Duration
 	LeaderLeaseTimeout time.Duration
+	PromoteThreshold   time.Duration
 	SnapshotThreshold  uint64
 	Trace              Trace
 	Resolver           Resolver
@@ -315,9 +318,11 @@ func DefaultOptions() Options {
 			fmt.Println(append(append([]interface{}(nil), prefix), v...))
 		}
 	}
+	hbTimeout := 1000 * time.Millisecond
 	return Options{
-		HeartbeatTimeout:   1000 * time.Millisecond,
-		LeaderLeaseTimeout: 1000 * time.Millisecond,
+		HeartbeatTimeout:   hbTimeout,
+		LeaderLeaseTimeout: hbTimeout,
+		PromoteThreshold:   hbTimeout,
 		Trace:              DefaultTrace(logger("[INFO]"), logger("[WARN]")),
 	}
 }
