@@ -333,6 +333,7 @@ func newCluster(t *testing.T) *cluster {
 	c.opt = Options{
 		HeartbeatTimeout:   heartbeatTimeout,
 		LeaderLeaseTimeout: heartbeatTimeout,
+		PromoteThreshold:   heartbeatTimeout,
 		Trace:              c.events.trace(),
 	}
 	return c
@@ -798,6 +799,8 @@ const (
 	configCommitted
 	configReverted
 	unreachable
+	roundFinished
+	promoting
 	sending
 	received
 
@@ -808,12 +811,15 @@ type event struct {
 	src ID
 	typ eventType
 
-	fsmLen  uint64
-	state   State
-	configs Configs
-	target  ID
-	since   time.Time
-	msgType string
+	fsmLen         uint64
+	state          State
+	configs        Configs
+	target         ID
+	since          time.Time
+	msgType        string
+	round          uint64
+	roundDuration  time.Duration
+	roundLastIndex uint64
 }
 
 func (e event) matches(typ eventType, rr ...*Raft) bool {
@@ -844,13 +850,17 @@ type observer struct {
 	id     int
 }
 
-func (ob observer) waitFor(condition func() bool, timeout time.Duration) bool {
-	var timeoutCh <-chan time.Time
-	if timeout <= 0 {
-		timeoutCh = make(chan time.Time)
+func (ob observer) waitForEvent(timeout time.Duration) (event, error) {
+	select {
+	case e := <-ob.ch:
+		return e, nil
+	case <-timeAfter(timeout):
+		return event{}, errors.New("waitForEvent: timeout")
 	}
-	timeoutCh = time.After(timeout)
+}
 
+func (ob observer) waitFor(condition func() bool, timeout time.Duration) bool {
+	timeoutCh := timeAfter(timeout)
 	if condition() {
 		return true
 	}
@@ -916,6 +926,10 @@ func (ee *events) onFMSChanged(id ID, len uint64) {
 }
 
 func (ee *events) trace() (trace Trace) {
+	trace.Error = func(err error) {
+		assert(false, "unexpected error: %v", err)
+	}
+
 	trace.StateChanged = func(info Info) {
 		ee.sendEvent(event{
 			src:   info.ID(),
@@ -966,6 +980,26 @@ func (ee *events) trace() (trace Trace) {
 			typ:    unreachable,
 			target: id,
 			since:  since,
+		})
+	}
+
+	trace.RoundCompleted = func(info Info, id ID, round uint64, d time.Duration, lastIndex uint64) {
+		ee.sendEvent(event{
+			src:            info.ID(),
+			typ:            roundFinished,
+			target:         id,
+			round:          round,
+			roundDuration:  d,
+			roundLastIndex: lastIndex,
+		})
+	}
+
+	trace.Promoting = func(info Info, id ID, rounds uint64) {
+		ee.sendEvent(event{
+			src:    info.ID(),
+			typ:    promoting,
+			target: id,
+			round:  rounds,
 		})
 	}
 

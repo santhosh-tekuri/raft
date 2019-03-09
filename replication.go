@@ -50,14 +50,14 @@ func (m *member) replicate(req *appendEntriesReq) {
 		}
 	}()
 
+	debug(m, "m.start")
 	m.ldrLastIndex = req.prevLogIndex
 	m.matchIndex, m.nextIndex = uint64(0), m.ldrLastIndex+1
 	if m.node.promote() {
-		m.round, m.roundStart, m.roundEnd = 0, time.Now(), m.ldrLastIndex
+		m.round, m.roundStart, m.roundEnd = 1, time.Now(), m.ldrLastIndex
 		debug(m, "starting round:", m.round, "roundEnd:", m.roundEnd)
 	}
 
-	debug(m, "m.start")
 	for {
 		debug(m, "matchIndex", m.matchIndex, "nextIndex", m.nextIndex)
 		assert(m.matchIndex < m.nextIndex, "%s assert %d<%d", m, m.matchIndex, m.nextIndex)
@@ -83,8 +83,7 @@ func (m *member) replicate(req *appendEntriesReq) {
 			case <-m.stopCh:
 				return
 			case update := <-m.fromLeaderCh:
-				m.ldrLastIndex, req.ldrCommitIndex = update.lastIndex, update.commitIndex
-				debug(m, "{last:", m.ldrLastIndex, "commit:", req.ldrCommitIndex, "} <-fromLeaderCh")
+				m.onLeaderUpdate(update, req)
 			case <-m.rtime.after(m.hbTimeout / 10):
 			}
 		} else {
@@ -93,8 +92,7 @@ func (m *member) replicate(req *appendEntriesReq) {
 			case <-m.stopCh:
 				return
 			case update := <-m.fromLeaderCh:
-				m.ldrLastIndex, req.ldrCommitIndex = update.lastIndex, update.commitIndex
-				debug(m, "{last:", m.ldrLastIndex, "commit:", req.ldrCommitIndex, "} <-fromLeaderCh")
+				m.onLeaderUpdate(update, req)
 			default:
 			}
 		}
@@ -102,15 +100,15 @@ func (m *member) replicate(req *appendEntriesReq) {
 }
 
 func (m *member) onLeaderUpdate(update leaderUpdate, req *appendEntriesReq) {
+	debug(m, "{last:", update.lastIndex, "commit:", update.commitIndex, "config:", update.config, "} <-fromLeaderCh")
 	m.ldrLastIndex, req.ldrCommitIndex = update.lastIndex, update.commitIndex
-	debug(m, "{last:", m.ldrLastIndex, "commit:", req.ldrCommitIndex, "} <-fromLeaderCh")
 
 	// if promote is changed to true, start first round
 	if update.config != nil {
 		if n, ok := update.config.Nodes[m.status.id]; ok {
 			if n.promote() && !m.node.promote() {
 				// start first round
-				m.round, m.roundStart, m.roundEnd = 0, time.Now(), m.ldrLastIndex
+				m.round, m.roundStart, m.roundEnd = 1, time.Now(), m.ldrLastIndex
 				debug(m, "starting round:", m.round, "roundEnd:", m.roundEnd)
 				if m.matchIndex >= m.roundEnd {
 					m.roundCompleted()
@@ -295,6 +293,7 @@ func (m *member) notifyLdr(update interface{}) {
 }
 
 func (m *member) roundCompleted() {
+	debug(m, "roundCompleted")
 	update := roundCompleted{&m.status, m.round, m.roundEnd, time.Now().Sub(m.roundStart)}
 	select {
 	case <-m.stopCh:

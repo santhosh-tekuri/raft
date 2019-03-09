@@ -189,11 +189,11 @@ func (c Config) String() string {
 	var voters, nonvoters []string
 	for _, n := range c.Nodes {
 		if n.Voter {
-			voters = append(voters, fmt.Sprintf("%v[%s]", n.ID, n.Addr))
+			voters = append(voters, fmt.Sprintf("%v(%s)", n.ID, n.Addr))
 		} else if n.promote() {
-			nonvoters = append(nonvoters, fmt.Sprintf("%v[%s,promote]", n.ID, n.Addr))
+			nonvoters = append(nonvoters, fmt.Sprintf("%v(%s,promote)", n.ID, n.Addr))
 		} else {
-			nonvoters = append(nonvoters, fmt.Sprintf("%v[%s]", n.ID, n.Addr))
+			nonvoters = append(nonvoters, fmt.Sprintf("%v(%s)", n.ID, n.Addr))
 		}
 	}
 	return fmt.Sprintf("index: %d, voters: %v, nonvoters: %v", c.Index, voters, nonvoters)
@@ -264,8 +264,7 @@ func (l *ldrShip) changeConfig(t changeConfig) {
 		t.reply(ErrConfigChanged)
 		return
 	}
-	config := t.newConf.clone()
-	if err := config.validate(); err != nil {
+	if err := t.newConf.validate(); err != nil {
 		t.reply(fmt.Errorf("raft.changeConfig: %v", err))
 		return
 	}
@@ -280,7 +279,7 @@ func (l *ldrShip) changeConfig(t changeConfig) {
 		return m
 	}
 
-	curVoters, newVoters := voters(l.configs.Latest), voters(config)
+	curVoters, newVoters := voters(l.configs.Latest), voters(t.newConf)
 
 	// remove common voters
 	for curVoter := range curVoters {
@@ -298,18 +297,15 @@ func (l *ldrShip) changeConfig(t changeConfig) {
 		t.reply(errors.New("raft.changeConfig: only one voter can lose its voting right"))
 		return
 	}
+	l.doChangeConfig(t.task, t.newConf)
+}
 
-	debug(l, "changeConfig", config)
-
-	// store config
-	ne := NewEntry{
+func (l *ldrShip) doChangeConfig(t *task, config Config) {
+	// store config, and update our latest config
+	l.storeEntry(NewEntry{
 		entry: config.encode(),
-		task:  t.task,
-	}
-	l.storeEntry(ne)
-	config.Index, config.Term = ne.index, ne.term
-
-	l.Raft.changeConfig(config)
+		task:  t,
+	})
 
 	// remove members
 	for id, m := range l.members {
@@ -320,20 +316,8 @@ func (l *ldrShip) changeConfig(t changeConfig) {
 	}
 
 	// add new members
-	// update existing members
-	update := leaderUpdate{
-		lastIndex:   l.lastLogIndex,
-		commitIndex: l.commitIndex,
-		config:      &config,
-	}
 	for id, node := range config.Nodes {
-		if m, ok := l.members[id]; ok {
-			select {
-			case m.fromLeaderCh <- update:
-			case <-m.fromLeaderCh:
-				m.fromLeaderCh <- update
-			}
-		} else {
+		if _, ok := l.members[id]; !ok {
 			l.addMember(node)
 		}
 	}

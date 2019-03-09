@@ -297,7 +297,7 @@ type changeConfig struct {
 func ChangeConfig(newConf Config) Task {
 	return changeConfig{
 		task:    newTask(),
-		newConf: newConf,
+		newConf: newConf.clone(),
 	}
 }
 

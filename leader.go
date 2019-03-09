@@ -101,7 +101,13 @@ func (l *ldrShip) storeEntry(ne NewEntry) {
 	if ne.typ == entryQuery || ne.typ == entryBarrier {
 		l.applyCommitted()
 	} else {
-		l.notifyMembers()
+		if ne.typ == entryConfig {
+			config := Config{}
+			err := config.decode(ne.entry)
+			assert(err == nil, "BUG: %v", err)
+			l.Raft.changeConfig(config)
+		}
+		l.notifyMembers(ne.typ == entryConfig)
 	}
 }
 
@@ -185,25 +191,29 @@ func (l *ldrShip) checkReplUpdates(update interface{}) {
 			l.leader = ""
 			return
 		case roundCompleted:
+			debug(l, "roundCompleted", update.status.id, update.round, update.duration, update.lastIndex)
 			if l.trace.RoundCompleted != nil {
 				l.trace.RoundCompleted(l.liveInfo(), update.status.id, update.round, update.duration, update.lastIndex)
 			}
 			if update.duration > l.promoteThreshold || !l.configs.IsCommitted() {
+				debug(l, "best of luck for next round", l.promoteThreshold, l.configs.IsCommitted())
 				break // best of luck for next round !!!
 			}
 			n, ok := l.configs.Latest.Nodes[update.status.id]
 			if !ok || !n.promote() {
+				debug(l, "this node should not be promoted")
 				break
 			}
 
 			// promoting member
+			debug(l, "promoting", n.ID)
 			config := l.configs.Latest.clone()
-			err := config.Promote(n.ID)
-			assert(err != nil, "BUG: %v", err)
+			n.Voter, n.Promote = true, false
+			config.Nodes[n.ID] = n
 			if l.trace.Promoting != nil {
-				l.trace.Promoting(l.liveInfo(), n.ID)
+				l.trace.Promoting(l.liveInfo(), n.ID, update.round)
 			}
-			l.changeConfig(changeConfig{newConf: config})
+			l.doChangeConfig(nil, config)
 		}
 
 		// get any waiting update
@@ -302,7 +312,7 @@ func (l *ldrShip) onMajorityCommit() {
 	if majorityMatchIndex > l.commitIndex && majorityMatchIndex >= l.startIndex {
 		l.setCommitIndex(majorityMatchIndex)
 		l.applyCommitted()
-		l.notifyMembers() // we updated commit index
+		l.notifyMembers(false) // we updated commit index
 	}
 }
 
@@ -351,10 +361,13 @@ func (l *ldrShip) applyCommitted() {
 	}
 }
 
-func (l *ldrShip) notifyMembers() {
+func (l *ldrShip) notifyMembers(includeConfig bool) {
 	update := leaderUpdate{
 		lastIndex:   l.lastLogIndex,
 		commitIndex: l.commitIndex,
+	}
+	if includeConfig {
+		update.config = &l.configs.Latest
 	}
 	for _, m := range l.members {
 		select {

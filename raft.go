@@ -53,6 +53,9 @@ type Raft struct {
 }
 
 func New(id ID, opt Options, fsm FSM, storage Storage) (*Raft, error) {
+	if err := opt.validate(); err != nil {
+		return nil, err
+	}
 	store := newStorage(storage)
 	if err := store.init(); err != nil {
 		return nil, err
@@ -307,6 +310,19 @@ type Options struct {
 	SnapshotThreshold  uint64
 	Trace              Trace
 	Resolver           Resolver
+}
+
+func (o Options) validate() error {
+	if o.HeartbeatTimeout == 0 {
+		return errors.New("raft.options: HeartbeatTimeout is zero")
+	}
+	if o.LeaderLeaseTimeout == 0 {
+		return errors.New("raft.options: LeaderLeaseTimeout is zero")
+	}
+	if o.PromoteThreshold == 0 {
+		return errors.New("raft.options: PromoteThreshold is zero")
+	}
+	return nil
 }
 
 func DefaultOptions() Options {
