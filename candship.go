@@ -10,17 +10,9 @@ type candShip struct {
 	votesNeeded int
 }
 
-func (c *candShip) init() {
-	c.startElection()
-}
-
-func (c *candShip) onTimeout() {
-	c.startElection()
-}
-
-func (c *candShip) release() {
-	c.voteCh = nil
-}
+func (c *candShip) init()      { c.startElection() }
+func (c *candShip) onTimeout() { c.startElection() }
+func (c *candShip) release()   { c.voteCh = nil }
 
 func (c *candShip) startElection() {
 	d := c.rtime.duration(c.hbTimeout)
@@ -61,23 +53,9 @@ func (c *candShip) startElection() {
 			continue
 		}
 		connPool := c.getConnPool(n.ID)
-		go func(ch chan voteResult) {
-			result := voteResult{
-				voteResp: &voteResp{
-					term:    req.term,
-					granted: false,
-				},
-				from: connPool.id,
-			}
-			defer func() {
-				ch <- result
-			}()
+		go func(ch chan<- voteResult) {
 			resp, err := c.requestVote(connPool, req, deadline)
-			if err != nil {
-				result.err = err
-				return
-			}
-			result.voteResp = resp
+			ch <- voteResult{voteResp: resp, from: connPool.id, err: err}
 		}(c.voteCh)
 	}
 }
@@ -106,13 +84,14 @@ func (c *candShip) requestVote(pool *connPool, req *voteReq, deadline time.Time)
 
 func (c *candShip) onVoteResult(vote voteResult) {
 	// todo: if quorum unreachable raise alert
-	if vote.from != c.id {
-		debug(c, "<< voteResp", vote.from, vote.granted, vote.term, vote.err)
-	}
-
 	if vote.err != nil {
+		debug(c, "<< voteResp", vote.from, vote.err)
 		return
 	}
+	if vote.from != c.id {
+		debug(c, "<< voteResp", vote.from, vote.granted, vote.term)
+	}
+
 	// if response contains term T > currentTerm:
 	// set currentTerm = T, convert to follower
 	if vote.term > c.term {

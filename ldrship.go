@@ -53,9 +53,7 @@ func (l *ldrShip) init() {
 	})
 }
 
-func (l *ldrShip) onTimeout() {
-	l.checkLeaderLease()
-}
+func (l *ldrShip) onTimeout() { l.checkLeaderLease() }
 
 func (l *ldrShip) release() {
 	for id, f := range l.flrs {
