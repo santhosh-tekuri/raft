@@ -2,7 +2,6 @@ package raft
 
 type flrShip struct {
 	*Raft
-	timer           *safeTimer
 	electionAborted bool
 }
 

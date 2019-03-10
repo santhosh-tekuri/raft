@@ -15,10 +15,6 @@ type ldrShip struct {
 
 	voter bool
 
-	// if quorum of nodes are not reachable for this duration
-	// leader steps down to follower
-	timer *safeTimer
-
 	// leader term starts from this index.
 	// this index refers to noop entry
 	startIndex uint64
@@ -56,6 +52,10 @@ func (l *ldrShip) init() {
 			typ: entryNop,
 		},
 	})
+}
+
+func (l *ldrShip) onTimeout() {
+	l.checkLeaderLease()
 }
 
 func (l *ldrShip) release() {

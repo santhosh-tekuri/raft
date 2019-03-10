@@ -9,6 +9,7 @@ import (
 
 type Raft struct {
 	rtime  randTime
+	timer  *safeTimer
 	id     ID
 	server *server
 
@@ -58,6 +59,7 @@ func New(id ID, opt Options, fsm FSM, storage Storage) (*Raft, error) {
 	r := &Raft{
 		id:               id,
 		rtime:            newRandTime(),
+		timer:            newSafeTimer(),
 		server:           newServer(),
 		fsm:              fsm,
 		fsmTaskCh:        make(chan Task, 128), // todo configurable capacity
@@ -123,11 +125,10 @@ func (r *Raft) Serve(l net.Listener) error {
 
 func (r *Raft) stateLoop() {
 	var (
-		f = &flrShip{Raft: r, timer: newSafeTimer()}
-		c = &candShip{Raft: r, timer: newSafeTimer()}
+		f = &flrShip{Raft: r}
+		c = &candShip{Raft: r}
 		l = &ldrShip{
 			Raft:       r,
-			timer:      newSafeTimer(),
 			newEntries: list.New(),
 			flrs:       make(map[ID]*flr),
 		}
@@ -157,6 +158,10 @@ func (r *Raft) stateLoop() {
 					f.resetTimer()
 				}
 
+			case <-r.timer.C:
+				r.timer.receive = false
+				ships[r.state].onTimeout()
+
 			case ne := <-r.newEntryCh:
 				if r.state == Leader {
 					l.storeEntry(ne)
@@ -173,31 +178,15 @@ func (r *Raft) stateLoop() {
 			case t := <-r.snapTakenCh:
 				r.onSnapshotTaken(t)
 
-			// follower --------------
-			case <-f.timer.C:
-				assert(r.state == Follower, "%s BUG: %v", r.id, r.state)
-				f.timer.receive = false
-				f.onTimeout()
-
 			// candidate --------------
 			case vote := <-c.voteCh:
 				assert(r.state == Candidate, "%s BUG: %v", r.id, r.state)
 				c.onVoteResult(vote)
 
-			case <-c.timer.C:
-				assert(r.state == Candidate, "%s BUG: %v %v", r.id, r.state, rstate)
-				c.timer.receive = false
-				c.startElection()
-
 			// leader --------------
 			case update := <-l.fromReplsCh:
 				assert(r.state == Leader, "%s BUG: %v", r.id, r.state)
 				l.checkReplUpdates(update)
-
-			case <-l.timer.C:
-				assert(r.state == Leader, "%s BUG: %v", r.id, r.state)
-				l.timer.receive = false
-				l.checkLeaderLease()
 			}
 		}
 		if r.trace.StateChanged != nil {
@@ -305,6 +294,5 @@ func (s State) String() string {
 type stateShip interface {
 	init()
 	release()
+	onTimeout()
 }
-
-// options ----------------------------------

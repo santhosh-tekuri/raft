@@ -6,12 +6,15 @@ import (
 
 type candShip struct {
 	*Raft
-	timer       *safeTimer
 	voteCh      chan voteResult
 	votesNeeded int
 }
 
 func (c *candShip) init() {
+	c.startElection()
+}
+
+func (c *candShip) onTimeout() {
 	c.startElection()
 }
 
