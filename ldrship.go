@@ -39,7 +39,7 @@ func (l *ldrShip) init() {
 	assert(l.leader == l.id, "%s ldr.leader: got %s, want %s", l, l.leader, l.id)
 
 	l.voter = true
-	l.leaseTimer.Stop() // we start it on detecting failures
+	stopTimer(l.leaseTimer) // we start it on detecting failures
 	l.startIndex = l.lastLogIndex + 1
 	l.fromReplsCh = make(chan interface{}, len(l.configs.Latest.Nodes))
 
@@ -59,18 +59,11 @@ func (l *ldrShip) init() {
 }
 
 func (l *ldrShip) release() {
-	if !l.leaseTimer.Stop() {
-		select {
-		case <-l.leaseTimer.C:
-		default:
-		}
-	}
-
+	stopTimer(l.leaseTimer)
 	for id, f := range l.flrs {
 		close(f.stopCh)
 		delete(l.flrs, id)
 	}
-
 	if l.leader == l.id {
 		l.leader = ""
 	}
@@ -140,10 +133,11 @@ func (l *ldrShip) addFlr(node Node) {
 		prevLogTerm:    l.lastLogTerm,
 	}
 
-	l.wg.Add(1)
 	// don't retry on failure. so that we can respond to apply/inspect
 	debug(f, ">> firstHeartbeat")
 	_ = f.doRPC(req, &appendEntriesResp{})
+
+	l.wg.Add(1)
 	go func() {
 		defer l.wg.Done()
 		f.replicate(req)
@@ -257,13 +251,7 @@ func (l *ldrShip) checkLeaderLease() {
 		return
 	}
 
-	if !l.leaseTimer.Stop() {
-		select {
-		case <-l.leaseTimer.C:
-		default:
-		}
-	}
-
+	stopTimer(l.leaseTimer)
 	if !firstFailure.IsZero() {
 		d := l.ldrLeaseTimeout - now.Sub(firstFailure)
 		if d < minCheckInterval {
@@ -380,3 +368,12 @@ type decrUint64Slice []uint64
 func (s decrUint64Slice) Len() int           { return len(s) }
 func (s decrUint64Slice) Less(i, j int) bool { return s[i] > s[j] }
 func (s decrUint64Slice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+
+func stopTimer(t *time.Timer) {
+	if !t.Stop() {
+		select {
+		case <-t.C:
+		default:
+		}
+	}
+}
