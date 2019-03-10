@@ -2,12 +2,8 @@ package raft
 
 import (
 	"container/list"
-	crand "crypto/rand"
 	"errors"
 	"fmt"
-	"math"
-	"math/big"
-	"math/rand"
 	"net"
 	"sync"
 	"time"
@@ -341,32 +337,6 @@ func DefaultOptions() Options {
 		PromoteThreshold:   hbTimeout,
 		Trace:              DefaultTrace(logger("[INFO]"), logger("[WARN]")),
 	}
-}
-
-// randTime -----------------------------------------------------------------
-
-type randTime struct {
-	r *rand.Rand
-}
-
-func newRandTime() randTime {
-	var seed int64
-	r, err := crand.Int(crand.Reader, big.NewInt(math.MaxInt64))
-	if err != nil {
-		fmt.Printf("failed to read random bytes: %v\n", err)
-		seed = time.Now().UnixNano()
-	} else {
-		seed = r.Int64()
-	}
-	return randTime{rand.New(rand.NewSource(seed))}
-}
-
-func (rt randTime) duration(min time.Duration) time.Duration {
-	return min + time.Duration(rt.r.Int63())%min
-}
-
-func (rt randTime) after(min time.Duration) <-chan time.Time {
-	return time.After(rt.duration(min))
 }
 
 // errors ----------------------------------

@@ -360,20 +360,3 @@ func (l *ldrShip) notifyFlr(includeConfig bool) {
 		l.onMajorityCommit()
 	}
 }
-
-// -------------------------------------------------------
-
-type decrUint64Slice []uint64
-
-func (s decrUint64Slice) Len() int           { return len(s) }
-func (s decrUint64Slice) Less(i, j int) bool { return s[i] > s[j] }
-func (s decrUint64Slice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
-
-func stopTimer(t *time.Timer) {
-	if !t.Stop() {
-		select {
-		case <-t.C:
-		default:
-		}
-	}
-}
