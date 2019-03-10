@@ -1,26 +1,24 @@
 package raft
 
-import "time"
-
 type flrShip struct {
 	*Raft
-	timeoutCh       <-chan time.Time
+	timer           *safeTimer
 	electionAborted bool
 }
 
 func (f *flrShip) init() {
-	f.timeoutCh = f.rtime.after(f.hbTimeout)
+	f.timer.reset(f.rtime.duration(f.hbTimeout))
 	f.electionAborted = false
 }
 
 func (f *flrShip) release() {
-	f.timeoutCh = nil
+	f.timer.stop()
 }
 
 func (f *flrShip) resetTimer() {
 	if yes, _ := f.canStartElection(); yes {
 		f.electionAborted = false
-		f.timeoutCh = f.rtime.after(f.hbTimeout)
+		f.timer.reset(f.rtime.duration(f.hbTimeout))
 	}
 }
 

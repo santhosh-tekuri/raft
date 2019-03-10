@@ -123,11 +123,11 @@ func (r *Raft) Serve(l net.Listener) error {
 
 func (r *Raft) stateLoop() {
 	var (
-		f = &flrShip{Raft: r}
-		c = &candShip{Raft: r}
+		f = &flrShip{Raft: r, timer: newSafeTimer()}
+		c = &candShip{Raft: r, timer: newSafeTimer()}
 		l = &ldrShip{
 			Raft:       r,
-			leaseTimer: time.NewTimer(time.Hour),
+			timer:      newSafeTimer(),
 			newEntries: list.New(),
 			flrs:       make(map[ID]*flr),
 		}
@@ -174,21 +174,29 @@ func (r *Raft) stateLoop() {
 				r.onSnapshotTaken(t)
 
 			// follower --------------
-			case <-f.timeoutCh:
+			case <-f.timer.C:
+				assert(r.state == Follower, "%s BUG: %v", r.id, r.state)
+				f.timer.receive = false
 				f.onTimeout()
 
 			// candidate --------------
 			case vote := <-c.voteCh:
+				assert(r.state == Candidate, "%s BUG: %v", r.id, r.state)
 				c.onVoteResult(vote)
 
-			case <-c.timeoutCh:
+			case <-c.timer.C:
+				assert(r.state == Candidate, "%s BUG: %v %v", r.id, r.state, rstate)
+				c.timer.receive = false
 				c.startElection()
 
 			// leader --------------
 			case update := <-l.fromReplsCh:
+				assert(r.state == Leader, "%s BUG: %v", r.id, r.state)
 				l.checkReplUpdates(update)
 
-			case <-l.leaseTimer.C:
+			case <-l.timer.C:
+				assert(r.state == Leader, "%s BUG: %v", r.id, r.state)
+				l.timer.receive = false
 				l.checkLeaderLease()
 			}
 		}

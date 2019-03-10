@@ -1,10 +1,12 @@
 package raft
 
-import "time"
+import (
+	"time"
+)
 
 type candShip struct {
 	*Raft
-	timeoutCh   <-chan time.Time
+	timer       *safeTimer
 	voteCh      chan voteResult
 	votesNeeded int
 }
@@ -14,13 +16,13 @@ func (c *candShip) init() {
 }
 
 func (c *candShip) release() {
-	c.timeoutCh = nil
+	c.timer.stop()
 	c.voteCh = nil
 }
 
 func (c *candShip) startElection() {
 	d := c.rtime.duration(c.hbTimeout)
-	c.timeoutCh = time.After(d)
+	c.timer.reset(d)
 	deadline := time.Now().Add(d)
 	c.votesNeeded = c.configs.Latest.quorum()
 	c.voteCh = make(chan voteResult, len(c.configs.Latest.Nodes))

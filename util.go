@@ -23,13 +23,38 @@ func max(a, b uint64) uint64 {
 	return b
 }
 
-func stopTimer(t *time.Timer) {
+// ------------------------------------------------------
+
+type safeTimer struct {
+	*time.Timer
+
+	// tells we need to receive from channel
+	// NOTE: after receiving from channel, this
+	// must be set to false
+	receive bool
+}
+
+func newSafeTimer() *safeTimer {
+	t := time.NewTimer(0)
 	if !t.Stop() {
-		select {
-		case <-t.C:
-		default:
+		<-t.C
+	}
+	return &safeTimer{t, false}
+}
+
+func (t *safeTimer) stop() {
+	if !t.Timer.Stop() {
+		if t.receive {
+			<-t.C
 		}
 	}
+	t.receive = false
+}
+
+func (t *safeTimer) reset(d time.Duration) {
+	t.stop()
+	t.Timer.Reset(d)
+	t.receive = true
 }
 
 // backOff ------------------------------------------------
