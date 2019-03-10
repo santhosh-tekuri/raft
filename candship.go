@@ -19,7 +19,6 @@ func (c *candShip) onTimeout() {
 }
 
 func (c *candShip) release() {
-	c.timer.stop()
 	c.voteCh = nil
 }
 

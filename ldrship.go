@@ -34,7 +34,6 @@ type ldrShip struct {
 func (l *ldrShip) init() {
 	assert(l.leader == l.id, "%s ldr.leader: got %s, want %s", l, l.leader, l.id)
 
-	l.timer.stop() // we start it on detecting failures
 	l.voter = true
 	l.startIndex = l.lastLogIndex + 1
 	l.fromReplsCh = make(chan interface{}, len(l.configs.Latest.Nodes))
@@ -59,7 +58,6 @@ func (l *ldrShip) onTimeout() {
 }
 
 func (l *ldrShip) release() {
-	l.timer.stop()
 	for id, f := range l.flrs {
 		close(f.stopCh)
 		delete(l.flrs, id)

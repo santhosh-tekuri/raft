@@ -10,9 +10,7 @@ func (f *flrShip) init() {
 	f.electionAborted = false
 }
 
-func (f *flrShip) release() {
-	f.timer.stop()
-}
+func (f *flrShip) release() {}
 
 func (f *flrShip) resetTimer() {
 	if yes, _ := f.canStartElection(); yes {

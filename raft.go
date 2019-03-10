@@ -8,9 +8,9 @@ import (
 )
 
 type Raft struct {
+	id     ID
 	rtime  randTime
 	timer  *safeTimer
-	id     ID
 	server *server
 
 	fsm           FSM
@@ -192,6 +192,7 @@ func (r *Raft) stateLoop() {
 		if r.trace.StateChanged != nil {
 			r.trace.StateChanged(r.liveInfo())
 		}
+		r.timer.stop()
 		ships[rstate].release()
 	}
 }
