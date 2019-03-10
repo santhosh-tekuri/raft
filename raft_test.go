@@ -223,17 +223,17 @@ func TestRaft_Bootstrap(t *testing.T) {
 	}
 
 	// bootstrap one of the nodes
+	ldr := c.rr["M1"]
 	nodes := make(map[ID]Node, 3)
 	for _, r := range c.rr {
 		nodes[r.ID()] = Node{ID: r.ID(), Addr: id2Addr(r.ID()), Voter: true}
 	}
-	if err := waitBootstrap(c.rr["M1"], nodes, c.longTimeout); err != nil {
+	if err := waitBootstrap(ldr, nodes, c.longTimeout); err != nil {
 		t.Fatal(err)
 	}
 
 	// the bootstrapped node should be the leader
-	c.waitForHealthy()
-	ldr := c.rr["M1"]
+	c.waitForLeader(ldr)
 	c.ensureLeader(ldr.ID())
 
 	// should be able to apply
@@ -253,11 +253,7 @@ func TestRaft_Bootstrap(t *testing.T) {
 
 	// disconnect leader, and ensure that new leader is chosen
 	c.disconnect(ldr)
-	c.waitForStability(c.exclude(ldr)...)
-	newLdr := c.leader()
-	if newLdr == ldr {
-		t.Fatalf("newLeader: got %s, want !=%s", newLdr.ID(), ldr.ID())
-	}
+	c.waitForLeader(c.exclude(ldr)...)
 }
 
 func TestRaft_LeaderLeaseExpire(t *testing.T) {
