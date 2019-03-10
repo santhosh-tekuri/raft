@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"os"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -316,9 +317,23 @@ func launchCluster(t *testing.T, n int) (c *cluster, ldr *Raft, followers []*Raf
 func newCluster(t *testing.T) *cluster {
 	Debug(t.Name(), "--------------------------")
 	heartbeatTimeout := 50 * time.Millisecond
+	testTimeout := time.AfterFunc(time.Minute, func() {
+		t.Error("test timed out; failing...")
+		buf := make([]byte, 1024)
+		for {
+			n := runtime.Stack(buf, true)
+			if n < len(buf) {
+				buf = buf[:n]
+				fmt.Println(string(buf))
+				return
+			}
+			buf = make([]byte, 2*len(buf))
+		}
+	})
 	c := &cluster{
 		T:                t,
 		checkLeak:        leaktest.Check(t),
+		testTimeout:      testTimeout,
 		network:          fnet.New(),
 		rr:               make(map[string]*Raft),
 		storage:          make(map[string]Storage),
@@ -339,6 +354,7 @@ func newCluster(t *testing.T) *cluster {
 type cluster struct {
 	*testing.T
 	checkLeak        func()
+	testTimeout      *time.Timer
 	rr               map[string]*Raft
 	storage          map[string]Storage
 	network          *fnet.Network
@@ -436,6 +452,7 @@ func (c *cluster) shutdown(rr ...*Raft) {
 		Debug(r.ID(), "<< shutdown()")
 	}
 	if checkLeak && c.checkLeak != nil {
+		c.testTimeout.Stop()
 		c.checkLeak()
 		c.checkLeak = nil
 	}
