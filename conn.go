@@ -55,10 +55,6 @@ func (n *netConn) close() error {
 
 // --------------------------------------------------------------------
 
-type Resolver interface {
-	LookupID(id ID) (addr string, err error)
-}
-
 type resolver struct {
 	delegate Resolver // user given resolver
 	trace    *Trace   // used to trace lookup failures

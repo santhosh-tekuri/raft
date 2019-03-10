@@ -1,8 +1,53 @@
 package raft
 
 import (
+	"errors"
+	"fmt"
+	"sync"
 	"time"
 )
+
+type Options struct {
+	HeartbeatTimeout   time.Duration
+	LeaderLeaseTimeout time.Duration
+	PromoteThreshold   time.Duration
+	SnapshotThreshold  uint64
+	Trace              Trace
+	Resolver           Resolver
+}
+
+func (o Options) validate() error {
+	if o.HeartbeatTimeout == 0 {
+		return errors.New("raft.options: HeartbeatTimeout is zero")
+	}
+	if o.LeaderLeaseTimeout == 0 {
+		return errors.New("raft.options: LeaderLeaseTimeout is zero")
+	}
+	if o.PromoteThreshold == 0 {
+		return errors.New("raft.options: PromoteThreshold is zero")
+	}
+	return nil
+}
+
+func DefaultOptions() Options {
+	var mu sync.Mutex
+	logger := func(prefix string) func(v ...interface{}) {
+		return func(v ...interface{}) {
+			mu.Lock()
+			defer mu.Unlock()
+			fmt.Println(append(append([]interface{}(nil), prefix), v...))
+		}
+	}
+	hbTimeout := 1000 * time.Millisecond
+	return Options{
+		HeartbeatTimeout:   hbTimeout,
+		LeaderLeaseTimeout: hbTimeout,
+		PromoteThreshold:   hbTimeout,
+		Trace:              DefaultTrace(logger("[INFO]"), logger("[WARN]")),
+	}
+}
+
+// trace ----------------------------------------------------------
 
 type Trace struct {
 	Error           func(err error)
@@ -66,6 +111,8 @@ func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
 	return
 }
 
-func (r *Raft) liveInfo() Info {
-	return liveInfo{r: r}
+// ----------------------------------------------
+
+type Resolver interface {
+	LookupID(id ID) (addr string, err error)
 }
