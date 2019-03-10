@@ -342,8 +342,6 @@ func (r *Raft) executeTask(t Task) {
 	}
 }
 
-var errInvalidTask = errors.New("raft: invalid task")
-
 func (l *ldrShip) executeTask(t Task) {
 	switch t := t.(type) {
 	case NewEntry:

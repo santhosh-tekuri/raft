@@ -128,8 +128,6 @@ func (f *flr) onLeaderUpdate(update leaderUpdate, req *appendEntriesReq) {
 	}
 }
 
-var errStop = errors.New("got stop signal")
-
 func (f *flr) sendAppEntriesReq(req *appendEntriesReq) error {
 	req.prevLogIndex = f.nextIndex - 1
 

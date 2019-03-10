@@ -2,7 +2,6 @@ package raft
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -46,8 +45,6 @@ type Storage struct {
 	Log       Log
 	Snapshots Snapshots
 }
-
-var errNoEntryFound = errors.New("raft: no entry found")
 
 // todo: can we avoid panics on storage error
 type storage struct {
