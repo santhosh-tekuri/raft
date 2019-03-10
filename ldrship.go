@@ -94,14 +94,15 @@ func (l *ldrShip) release() {
 
 func (l *ldrShip) storeEntry(ne NewEntry) {
 	ne.entry.index, ne.entry.term = l.lastLogIndex+1, l.term
-
-	// append entry to local log
-	debug(l, "log.append", ne.typ, ne.index)
-	if ne.typ != entryQuery && ne.typ != entryBarrier {
-		l.storage.appendEntry(ne.entry)
-	}
 	l.newEntries.PushBack(ne)
 
+	if ne.typ == entryQuery || ne.typ == entryBarrier { // non-log entry
+		l.applyCommitted()
+		return
+	}
+
+	debug(l, "log.append", ne.typ, ne.index)
+	l.storage.appendEntry(ne.entry)
 	if ne.typ == entryConfig {
 		config := Config{}
 		err := config.decode(ne.entry)
@@ -109,13 +110,7 @@ func (l *ldrShip) storeEntry(ne NewEntry) {
 		l.voter = config.isVoter(l.id)
 		l.Raft.changeConfig(config)
 	}
-
-	// we updated lastLogIndex, so notify replicators
-	if ne.typ == entryQuery || ne.typ == entryBarrier {
-		l.applyCommitted()
-	} else {
-		l.notifyFlr(ne.typ == entryConfig)
-	}
+	l.notifyFlr(ne.typ == entryConfig)
 }
 
 func (l *ldrShip) addFlr(node Node) {
