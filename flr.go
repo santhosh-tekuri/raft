@@ -7,11 +7,11 @@ import (
 	"time"
 )
 
-type member struct {
+type flr struct {
 	rtime randTime
 
 	// this is owned by ldr goroutine
-	status memberStatus
+	status flrStatus
 
 	connPool  *connPool
 	storage   *storage
@@ -31,10 +31,10 @@ type member struct {
 	// zero value means node is reachable
 	noContact time.Time
 
-	// leader notifies member with update
+	// leader notifies flr with update
 	fromLeaderCh chan leaderUpdate
 
-	// member notifies leader about its progress
+	// flr notifies leader about its progress
 	toLeaderCh chan<- interface{}
 	stopCh     chan struct{}
 
@@ -42,111 +42,111 @@ type member struct {
 	str   string // used for debug() calls
 }
 
-func (m *member) replicate(req *appendEntriesReq) {
+func (f *flr) replicate(req *appendEntriesReq) {
 	defer func() {
-		if m.conn != nil {
-			m.connPool.returnConn(m.conn)
+		if f.conn != nil {
+			f.connPool.returnConn(f.conn)
 		}
 	}()
 
-	debug(m, "m.start")
-	m.ldrLastIndex = req.prevLogIndex
-	m.matchIndex, m.nextIndex = uint64(0), m.ldrLastIndex+1
-	if m.node.promote() {
-		m.round = new(round)
-		m.round.begin(m.ldrLastIndex)
-		debug(m, "started round:", m.round)
+	debug(f, "f.start")
+	f.ldrLastIndex = req.prevLogIndex
+	f.matchIndex, f.nextIndex = uint64(0), f.ldrLastIndex+1
+	if f.node.promote() {
+		f.round = new(round)
+		f.round.begin(f.ldrLastIndex)
+		debug(f, "started round:", f.round)
 	}
 
 	for {
-		debug(m, "matchIndex", m.matchIndex, "nextIndex", m.nextIndex)
-		assert(m.matchIndex < m.nextIndex, "%s assert %d<%d", m, m.matchIndex, m.nextIndex)
+		debug(f, "matchIndex", f.matchIndex, "nextIndex", f.nextIndex)
+		assert(f.matchIndex < f.nextIndex, "%s assert %d<%d", f, f.matchIndex, f.nextIndex)
 
-		err := m.sendAppEntriesReq(req)
+		err := f.sendAppEntriesReq(req)
 		if err == errNoEntryFound {
-			err = m.sendInstallSnapReq(req)
+			err = f.sendInstallSnapReq(req)
 		}
 
 		if err == errStop {
 			return
 		} else if err != nil {
-			if m.trace.Error != nil {
-				m.trace.Error(err)
+			if f.trace.Error != nil {
+				f.trace.Error(err)
 			}
 			assert(false, "unexpected error: %v", err) // todo
 			continue
 		}
 
-		if m.sendEntries && m.matchIndex == m.ldrLastIndex {
+		if f.sendEntries && f.matchIndex == f.ldrLastIndex {
 			// nothing to send. start heartbeat timer
 			select {
-			case <-m.stopCh:
+			case <-f.stopCh:
 				return
-			case update := <-m.fromLeaderCh:
-				m.onLeaderUpdate(update, req)
-			case <-m.rtime.after(m.hbTimeout / 10):
+			case update := <-f.fromLeaderCh:
+				f.onLeaderUpdate(update, req)
+			case <-f.rtime.after(f.hbTimeout / 10):
 			}
 		} else {
 			// check signal if any, without blocking
 			select {
-			case <-m.stopCh:
+			case <-f.stopCh:
 				return
-			case update := <-m.fromLeaderCh:
-				m.onLeaderUpdate(update, req)
+			case update := <-f.fromLeaderCh:
+				f.onLeaderUpdate(update, req)
 			default:
 			}
 		}
 	}
 }
 
-func (m *member) onLeaderUpdate(update leaderUpdate, req *appendEntriesReq) {
-	debug(m, "{last:", update.lastIndex, "commit:", update.commitIndex, "config:", update.config, "} <-fromLeaderCh")
-	m.ldrLastIndex, req.ldrCommitIndex = update.lastIndex, update.commitIndex
+func (f *flr) onLeaderUpdate(update leaderUpdate, req *appendEntriesReq) {
+	debug(f, "{last:", update.lastIndex, "commit:", update.commitIndex, "config:", update.config, "} <-fromLeaderCh")
+	f.ldrLastIndex, req.ldrCommitIndex = update.lastIndex, update.commitIndex
 	if update.config != nil {
-		if n, ok := update.config.Nodes[m.status.id]; ok {
-			m.node = n
-			if !m.node.promote() {
-				m.round = nil
-			} else if m.round == nil {
+		if n, ok := update.config.Nodes[f.status.id]; ok {
+			f.node = n
+			if !f.node.promote() {
+				f.round = nil
+			} else if f.round == nil {
 				// start first round
-				m.round = new(round)
-				m.round.begin(m.ldrLastIndex)
-				debug(m, "started round:", m.round)
+				f.round = new(round)
+				f.round.begin(f.ldrLastIndex)
+				debug(f, "started round:", f.round)
 			}
 		}
 	}
 
 	// if round was completed
-	if m.round != nil && m.round.finished() {
-		if m.ldrLastIndex > m.round.lastIndex {
-			m.round.begin(m.ldrLastIndex)
-			debug(m, "started round:", m.round)
+	if f.round != nil && f.round.finished() {
+		if f.ldrLastIndex > f.round.lastIndex {
+			f.round.begin(f.ldrLastIndex)
+			debug(f, "started round:", f.round)
 		} else {
-			debug(m, "reminding leader about promotion")
-			m.notifyRoundCompleted() // no new entries, reminding leader about promotion
+			debug(f, "reminding leader about promotion")
+			f.notifyRoundCompleted() // no new entries, reminding leader about promotion
 		}
 	}
 }
 
 var errStop = errors.New("got stop signal")
 
-func (m *member) sendAppEntriesReq(req *appendEntriesReq) error {
-	req.prevLogIndex = m.nextIndex - 1
+func (f *flr) sendAppEntriesReq(req *appendEntriesReq) error {
+	req.prevLogIndex = f.nextIndex - 1
 
 	// fill req.prevLogTerm
 	if req.prevLogIndex == 0 {
 		req.prevLogTerm = 0
 	} else {
-		snapIndex, snapTerm := m.getSnapLog()
+		snapIndex, snapTerm := f.getSnapLog()
 		if req.prevLogIndex < snapTerm {
 			return errNoEntryFound
 		}
 		if req.prevLogIndex == snapIndex {
 			req.prevLogTerm = snapTerm
-		} else if req.prevLogIndex >= m.ldrStartIndex { // being smart!!!
+		} else if req.prevLogIndex >= f.ldrStartIndex { // being smart!!!
 			req.prevLogTerm = req.term
 		} else {
-			prevTerm, err := m.storage.getEntryTerm(req.prevLogIndex)
+			prevTerm, err := f.storage.getEntryTerm(req.prevLogIndex)
 			if err != nil {
 				return err
 			}
@@ -155,97 +155,97 @@ func (m *member) sendAppEntriesReq(req *appendEntriesReq) error {
 	}
 
 	var n uint64
-	if m.sendEntries {
-		assert(m.matchIndex == req.prevLogIndex, "%s assert %d==%d", m, m.matchIndex, req.prevLogIndex)
-		n = min(m.ldrLastIndex-m.matchIndex, maxAppendEntries)
+	if f.sendEntries {
+		assert(f.matchIndex == req.prevLogIndex, "%s assert %d==%d", f, f.matchIndex, req.prevLogIndex)
+		n = min(f.ldrLastIndex-f.matchIndex, maxAppendEntries)
 	}
 	if n > 0 {
 		req.entries = make([]*entry, n)
 		for i := range req.entries {
 			req.entries[i] = &entry{}
-			err := m.storage.getEntry(m.nextIndex+uint64(i), req.entries[i])
+			err := f.storage.getEntry(f.nextIndex+uint64(i), req.entries[i])
 			if err != nil {
 				return err
 			}
 		}
-		debug(m, "sending", req)
+		debug(f, "sending", req)
 	} else {
 		req.entries = nil
-		if m.sendEntries {
-			debug(m, "sending heartbeat")
+		if f.sendEntries {
+			debug(f, "sending heartbeat")
 		}
 	}
 
 	resp := &appendEntriesResp{}
-	if err := m.retryRPC(req, resp); err != nil {
+	if err := f.retryRPC(req, resp); err != nil {
 		return err
 	}
 
-	m.sendEntries = resp.success
+	f.sendEntries = resp.success
 	if resp.success {
-		old := m.matchIndex
-		m.matchIndex, _ = lastEntry(req)
-		m.nextIndex = m.matchIndex + 1
-		if m.matchIndex != old {
-			debug(m, "matchIndex:", m.matchIndex)
-			m.notifyLdr(matchIndex{&m.status, m.matchIndex})
+		old := f.matchIndex
+		f.matchIndex, _ = lastEntry(req)
+		f.nextIndex = f.matchIndex + 1
+		if f.matchIndex != old {
+			debug(f, "matchIndex:", f.matchIndex)
+			f.notifyLdr(matchIndex{&f.status, f.matchIndex})
 		}
 	} else {
-		if resp.lastLogIndex < m.matchIndex {
+		if resp.lastLogIndex < f.matchIndex {
 			// this happens if someone restarted follower storage with empty storage
 			// todo: can we treat replicate entire snap+log to such follower ??
 			return errors.New("faulty follower: denies matchIndex")
 		}
-		m.nextIndex = min(m.nextIndex-1, resp.lastLogIndex+1)
-		debug(m, "nextIndex:", m.nextIndex)
+		f.nextIndex = min(f.nextIndex-1, resp.lastLogIndex+1)
+		debug(f, "nextIndex:", f.nextIndex)
 	}
 	return nil
 }
 
-func (m *member) sendInstallSnapReq(appReq *appendEntriesReq) error {
+func (f *flr) sendInstallSnapReq(appReq *appendEntriesReq) error {
 	req := &installLatestSnapReq{
 		installSnapReq: installSnapReq{
 			term:   appReq.term,
 			leader: appReq.leader,
 		},
-		snapshots: m.storage.snapshots,
+		snapshots: f.storage.snapshots,
 	}
 
 	resp := &installSnapResp{}
-	if err := m.retryRPC(req, resp); err != nil {
+	if err := f.retryRPC(req, resp); err != nil {
 		return err
 	}
 
 	// we have to still send one appEntries, to update his commit index
 	// so we should not update sendEntries=true, beacuse if we have
 	// no entries beyond snapshot, we sleep for hbTimeout
-	//m.sendEntries = resp.success // NOTE: dont do this
+	//f.sendEntries = resp.success // NOTE: dont do this
 	if resp.success {
-		m.matchIndex = req.lastIndex
-		m.nextIndex = m.matchIndex + 1
-		debug(m, "matchIndex:", m.matchIndex)
-		m.notifyLdr(matchIndex{&m.status, m.matchIndex})
+		f.matchIndex = req.lastIndex
+		f.nextIndex = f.matchIndex + 1
+		debug(f, "matchIndex:", f.matchIndex)
+		f.notifyLdr(matchIndex{&f.status, f.matchIndex})
 		return nil
 	} else {
 		return errors.New("installSnap.success is false")
 	}
 }
 
-func (m *member) retryRPC(req request, resp message) error {
+func (f *flr) retryRPC(req request, resp message) error {
 	var failures uint64
 	for {
-		err := m.doRPC(req, resp)
+		err := f.doRPC(req, resp)
 		if _, ok := err.(OpError); ok {
 			return err
 		} else if err != nil {
-			if m.noContact.IsZero() {
-				m.noContact = time.Now()
-				debug(m, "noContact", err)
-				m.notifyLdr(noContact{&m.status, m.noContact})
+			if f.noContact.IsZero() {
+				f.noContact = time.Now()
+				debug(f, "noContact", err)
+				f.notifyLdr(noContact{&f.status, f.noContact})
 			}
 			failures++
 			select {
-			case <-m.stopCh:
+			case <-f.stopCh:
 				return errStop
 			case <-time.After(backOff(failures)):
 				continue
@@ -253,80 +253,80 @@ func (m *member) retryRPC(req request, resp message) error {
 		}
 		break
 	}
-	if !m.noContact.IsZero() {
-		m.noContact = time.Time{} // zeroing
-		debug(m, "yesContact")
-		m.notifyLdr(noContact{&m.status, m.noContact})
+	if !f.noContact.IsZero() {
+		f.noContact = time.Time{} // zeroing
+		debug(f, "yesContact")
+		f.notifyLdr(noContact{&f.status, f.noContact})
 	}
 	if resp.getTerm() > req.getTerm() {
-		m.notifyLdr(newTerm{resp.getTerm()})
+		f.notifyLdr(newTerm{resp.getTerm()})
 		return errStop
 	}
 	return nil
 }
 
-func (m *member) doRPC(req request, resp message) error {
-	if m.conn == nil {
-		conn, err := m.connPool.getConn()
+func (f *flr) doRPC(req request, resp message) error {
+	if f.conn == nil {
+		conn, err := f.connPool.getConn()
 		if err != nil {
 			return err
 		}
-		m.conn = conn
+		f.conn = conn
 	}
-	if m.trace.sending != nil {
-		m.trace.sending(req.from(), m.connPool.id, req)
+	if f.trace.sending != nil {
+		f.trace.sending(req.from(), f.connPool.id, req)
 	}
-	err := m.conn.doRPC(req, resp)
+	err := f.conn.doRPC(req, resp)
 	if err != nil {
-		_ = m.conn.close()
-		m.conn = nil
+		_ = f.conn.close()
+		f.conn = nil
 	}
-	if m.trace.sending != nil && err == nil {
-		m.trace.received(req.from(), m.connPool.id, resp)
+	if f.trace.sending != nil && err == nil {
+		f.trace.received(req.from(), f.connPool.id, resp)
 	}
 	return err
 }
 
-func (m *member) notifyLdr(update interface{}) {
+func (f *flr) notifyLdr(update interface{}) {
 	select {
-	case <-m.stopCh:
-	case m.toLeaderCh <- update:
+	case <-f.stopCh:
+	case f.toLeaderCh <- update:
 	}
 
 	// check if we just completed round
-	if _, ok := update.(matchIndex); ok && m.round != nil {
-		if m.matchIndex >= m.round.lastIndex {
-			m.notifyRoundCompleted()
+	if _, ok := update.(matchIndex); ok && f.round != nil {
+		if f.matchIndex >= f.round.lastIndex {
+			f.notifyRoundCompleted()
 		}
 	}
 }
 
-func (m *member) notifyRoundCompleted() {
-	if !m.round.finished() {
-		m.round.finish()
+func (f *flr) notifyRoundCompleted() {
+	if !f.round.finished() {
+		f.round.finish()
 	}
-	debug(m, "notify roundCompleted:", m.round)
-	update := roundCompleted{&m.status, *m.round}
+	debug(f, "notify roundCompleted:", f.round)
+	update := roundCompleted{&f.status, *f.round}
 	select {
-	case <-m.stopCh:
-	case m.toLeaderCh <- update:
+	case <-f.stopCh:
+	case f.toLeaderCh <- update:
 	}
 	// if any entries still left, start next round
-	if m.ldrLastIndex > m.round.lastIndex {
-		m.round.begin(m.ldrLastIndex)
-		debug(m, "started round:", m.round)
+	if f.ldrLastIndex > f.round.lastIndex {
+		f.round.begin(f.ldrLastIndex)
+		debug(f, "started round:", f.round)
 	}
 }
 
-func (m *member) getSnapLog() (snapIndex, snapTerm uint64) {
+func (f *flr) getSnapLog() (snapIndex, snapTerm uint64) {
 	// snapshoting might be in progress
-	m.storage.snapMu.RLock()
-	defer m.storage.snapMu.RUnlock()
-	return m.storage.snapIndex, m.storage.snapTerm
+	f.storage.snapMu.RLock()
+	defer f.storage.snapMu.RUnlock()
+	return f.storage.snapIndex, f.storage.snapTerm
 }
 
-func (m *member) String() string {
-	return m.str
+func (f *flr) String() string {
+	return f.str
 }
 
 // ------------------------------------------------
@@ -379,12 +379,12 @@ type leaderUpdate struct {
 }
 
 type matchIndex struct {
-	status *memberStatus
+	status *flrStatus
 	val    uint64
 }
 
 type noContact struct {
-	status *memberStatus
+	status *flrStatus
 	time   time.Time
 }
 
@@ -393,11 +393,11 @@ type newTerm struct {
 }
 
 type roundCompleted struct {
-	status *memberStatus
+	status *flrStatus
 	round  round
 }
 
-type memberStatus struct {
+type flrStatus struct {
 	id ID
 
 	// owned exclusively by leader goroutine
@@ -412,7 +412,7 @@ type memberStatus struct {
 }
 
 // did we have success full contact after time t
-func (rs *memberStatus) contactedAfter(t time.Time) bool {
+func (rs *flrStatus) contactedAfter(t time.Time) bool {
 	return rs.noContact.IsZero() || rs.noContact.After(t)
 }
 

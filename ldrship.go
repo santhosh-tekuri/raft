@@ -26,8 +26,8 @@ type ldrShip struct {
 	newEntries *list.List
 
 	// holds running replications, key is addr
-	members map[ID]*member
-	wg      sync.WaitGroup
+	flrs map[ID]*flr
+	wg   sync.WaitGroup
 
 	// to receive updates from replicators
 	fromReplsCh chan interface{}
@@ -49,7 +49,7 @@ func (l *ldrShip) init() {
 
 	// start replication routine for each follower
 	for _, node := range l.configs.Latest.Nodes {
-		l.addMember(node)
+		l.addFlr(node)
 	}
 }
 
@@ -61,9 +61,9 @@ func (l *ldrShip) release() {
 		}
 	}
 
-	for id, m := range l.members {
-		close(m.stopCh)
-		delete(l.members, id)
+	for id, f := range l.flrs {
+		close(f.stopCh)
+		delete(l.flrs, id)
 	}
 
 	if l.leader == l.id {
@@ -107,15 +107,15 @@ func (l *ldrShip) storeEntry(ne NewEntry) {
 			assert(err == nil, "BUG: %v", err)
 			l.Raft.changeConfig(config)
 		}
-		l.notifyMembers(ne.typ == entryConfig)
+		l.notifyFlr(ne.typ == entryConfig)
 	}
 }
 
-func (l *ldrShip) addMember(node Node) {
-	m := &member{
+func (l *ldrShip) addFlr(node Node) {
+	f := &flr{
 		node:          node,
 		rtime:         newRandTime(),
-		status:        memberStatus{id: node.ID},
+		status:        flrStatus{id: node.ID},
 		ldrStartIndex: l.startIndex,
 		connPool:      l.getConnPool(node.ID),
 		hbTimeout:     l.hbTimeout,
@@ -126,7 +126,7 @@ func (l *ldrShip) addMember(node Node) {
 		trace:         &l.trace,
 		str:           fmt.Sprintf("%v %s", l, string(node.ID)),
 	}
-	l.members[node.ID] = m
+	l.flrs[node.ID] = f
 
 	// send initial empty AppendEntries RPCs (heartbeat) to each follower
 	req := &appendEntriesReq{
@@ -147,24 +147,24 @@ func (l *ldrShip) addMember(node Node) {
 			// todo: is this really needed? we can optimize it
 			//       by avoiding this extra goroutine
 			defer l.wg.Done()
-			m.notifyLdr(matchIndex{&m.status, req.prevLogIndex})
+			f.notifyLdr(matchIndex{&f.status, req.prevLogIndex})
 			for {
 				select {
-				case <-m.stopCh:
+				case <-f.stopCh:
 					return
-				case update := <-m.fromLeaderCh:
-					m.notifyLdr(matchIndex{&m.status, update.lastIndex})
+				case update := <-f.fromLeaderCh:
+					f.notifyLdr(matchIndex{&f.status, update.lastIndex})
 				}
 			}
 		}()
 	} else {
 		// don't retry on failure. so that we can respond to apply/inspect
-		debug(m, ">> firstHeartbeat")
-		_ = m.doRPC(req, &appendEntriesResp{})
+		debug(f, ">> firstHeartbeat")
+		_ = f.doRPC(req, &appendEntriesResp{})
 		go func() {
 			defer l.wg.Done()
-			m.replicate(req)
-			debug(m, "m.replicateEnd")
+			f.replicate(req)
+			debug(f, "f.replicateEnd")
 		}()
 	}
 }
@@ -216,7 +216,7 @@ func (l *ldrShip) checkReplUpdates(update interface{}) {
 				break
 			}
 
-			// promoting member
+			// promoting flr
 			debug(l, "promoting", n.ID)
 			config := l.configs.Latest.clone()
 			n.Voter, n.Promote = true, false
@@ -251,7 +251,7 @@ func (l *ldrShip) checkLeaderLease() {
 	for _, node := range l.configs.Latest.Nodes {
 		if node.Voter {
 			voters++
-			m := l.members[node.ID]
+			m := l.flrs[node.ID]
 			noContact := m.status.noContact
 			if noContact.IsZero() {
 				reachable++
@@ -294,7 +294,7 @@ func (l *ldrShip) majorityMatchIndex() uint64 {
 	if numVoters == 1 {
 		for _, node := range l.configs.Latest.Nodes {
 			if node.Voter {
-				return l.members[node.ID].status.matchIndex
+				return l.flrs[node.ID].status.matchIndex
 			}
 		}
 	}
@@ -303,7 +303,7 @@ func (l *ldrShip) majorityMatchIndex() uint64 {
 	i := 0
 	for _, node := range l.configs.Latest.Nodes {
 		if node.Voter {
-			matched[i] = l.members[node.ID].status.matchIndex
+			matched[i] = l.flrs[node.ID].status.matchIndex
 			i++
 		}
 	}
@@ -323,7 +323,7 @@ func (l *ldrShip) onMajorityCommit() {
 	if majorityMatchIndex > l.commitIndex && majorityMatchIndex >= l.startIndex {
 		l.setCommitIndex(majorityMatchIndex)
 		l.applyCommitted()
-		l.notifyMembers(false) // we updated commit index
+		l.notifyFlr(false) // we updated commit index
 	}
 }
 
@@ -372,7 +372,7 @@ func (l *ldrShip) applyCommitted() {
 	}
 }
 
-func (l *ldrShip) notifyMembers(includeConfig bool) {
+func (l *ldrShip) notifyFlr(includeConfig bool) {
 	update := leaderUpdate{
 		lastIndex:   l.lastLogIndex,
 		commitIndex: l.commitIndex,
@@ -380,11 +380,11 @@ func (l *ldrShip) notifyMembers(includeConfig bool) {
 	if includeConfig {
 		update.config = &l.configs.Latest
 	}
-	for _, m := range l.members {
+	for _, f := range l.flrs {
 		select {
-		case m.fromLeaderCh <- update:
-		case <-m.fromLeaderCh:
-			m.fromLeaderCh <- update
+		case f.fromLeaderCh <- update:
+		case <-f.fromLeaderCh:
+			f.fromLeaderCh <- update
 		}
 	}
 }

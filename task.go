@@ -101,7 +101,7 @@ func Bootstrap(nodes map[ID]Node) Task {
 
 // ------------------------------------------------------------------------
 
-type Member struct {
+type FlrStatus struct {
 	ID          ID        `json:"-"`
 	MatchIndex  uint64    `json:"matchIndexes"`
 	Unreachable time.Time `json:"unreachable,omitempty"`
@@ -109,17 +109,17 @@ type Member struct {
 }
 
 type json struct {
-	ID           ID            `json:"id"`
-	Addr         string        `json:"addr"`
-	Term         uint64        `json:"term"`
-	State        State         `json:"state"`
-	Leader       ID            `json:"leader,omitempty"`
-	LastLogIndex uint64        `json:"lastLogIndex"`
-	LastLogTerm  uint64        `json:"lastLogTerm"`
-	Committed    uint64        `json:"committed"`
-	LastApplied  uint64        `json:"lastApplied"`
-	Configs      Configs       `json:"configs"`
-	Members      map[ID]Member `json:"members,omitempty"`
+	ID           ID               `json:"id"`
+	Addr         string           `json:"addr"`
+	Term         uint64           `json:"term"`
+	State        State            `json:"state"`
+	Leader       ID               `json:"leader,omitempty"`
+	LastLogIndex uint64           `json:"lastLogIndex"`
+	LastLogTerm  uint64           `json:"lastLogTerm"`
+	Committed    uint64           `json:"committed"`
+	LastApplied  uint64           `json:"lastApplied"`
+	Configs      Configs          `json:"configs"`
+	Followers    map[ID]FlrStatus `json:"followers,omitempty"`
 }
 
 type Info interface {
@@ -133,7 +133,7 @@ type Info interface {
 	Committed() uint64
 	LastApplied() uint64
 	Configs() Configs
-	Members() map[ID]Member
+	Followers() map[ID]FlrStatus
 	Trace() *Trace
 	JSON() interface{}
 }
@@ -154,19 +154,19 @@ func (info liveInfo) LastApplied() uint64  { return info.r.lastApplied }
 func (info liveInfo) Configs() Configs     { return info.r.configs.clone() }
 func (info liveInfo) Trace() *Trace        { return &info.r.trace }
 
-func (info liveInfo) Members() map[ID]Member {
+func (info liveInfo) Followers() map[ID]FlrStatus {
 	if info.r.state != Leader {
 		return nil
 	}
-	members := make(map[ID]Member)
-	for id, m := range info.r.ldr.members {
-		members[id] = Member{
-			MatchIndex:  m.status.matchIndex,
-			Unreachable: m.status.noContact,
-			Rounds:      m.status.rounds,
+	flrs := make(map[ID]FlrStatus)
+	for id, f := range info.r.ldr.flrs {
+		flrs[id] = FlrStatus{
+			MatchIndex:  f.status.matchIndex,
+			Unreachable: f.status.noContact,
+			Rounds:      f.status.rounds,
 		}
 	}
-	return members
+	return flrs
 }
 
 func (info liveInfo) JSON() interface{} {
@@ -181,7 +181,7 @@ func (info liveInfo) JSON() interface{} {
 		Committed:    info.Committed(),
 		LastApplied:  info.LastApplied(),
 		Configs:      info.Configs(),
-		Members:      info.Members(),
+		Followers:    info.Followers(),
 	}
 }
 
@@ -189,19 +189,19 @@ type cachedInfo struct {
 	json json
 }
 
-func (info cachedInfo) ID() ID                 { return info.json.ID }
-func (info cachedInfo) Addr() string           { return info.json.Addr }
-func (info cachedInfo) Term() uint64           { return info.json.Term }
-func (info cachedInfo) State() State           { return info.json.State }
-func (info cachedInfo) Leader() ID             { return info.json.Leader }
-func (info cachedInfo) LastLogIndex() uint64   { return info.json.LastLogIndex }
-func (info cachedInfo) LastLogTerm() uint64    { return info.json.LastLogTerm }
-func (info cachedInfo) Committed() uint64      { return info.json.Committed }
-func (info cachedInfo) LastApplied() uint64    { return info.json.LastApplied }
-func (info cachedInfo) Configs() Configs       { return info.json.Configs }
-func (info cachedInfo) Members() map[ID]Member { return info.json.Members }
-func (info cachedInfo) Trace() *Trace          { return nil }
-func (info cachedInfo) JSON() interface{}      { return info.json }
+func (info cachedInfo) ID() ID                      { return info.json.ID }
+func (info cachedInfo) Addr() string                { return info.json.Addr }
+func (info cachedInfo) Term() uint64                { return info.json.Term }
+func (info cachedInfo) State() State                { return info.json.State }
+func (info cachedInfo) Leader() ID                  { return info.json.Leader }
+func (info cachedInfo) LastLogIndex() uint64        { return info.json.LastLogIndex }
+func (info cachedInfo) LastLogTerm() uint64         { return info.json.LastLogTerm }
+func (info cachedInfo) Committed() uint64           { return info.json.Committed }
+func (info cachedInfo) LastApplied() uint64         { return info.json.LastApplied }
+func (info cachedInfo) Configs() Configs            { return info.json.Configs }
+func (info cachedInfo) Followers() map[ID]FlrStatus { return info.json.Followers }
+func (info cachedInfo) Trace() *Trace               { return nil }
+func (info cachedInfo) JSON() interface{}           { return info.json }
 
 type inspect struct {
 	*task

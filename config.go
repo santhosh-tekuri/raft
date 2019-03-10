@@ -307,18 +307,18 @@ func (l *ldrShip) doChangeConfig(t *task, config Config) {
 		task:  t,
 	})
 
-	// remove members
-	for id, m := range l.members {
+	// remove flrs
+	for id, f := range l.flrs {
 		if _, ok := config.Nodes[id]; !ok {
-			close(m.stopCh)
-			delete(l.members, id)
+			close(f.stopCh)
+			delete(l.flrs, id)
 		}
 	}
 
-	// add new members
+	// add new flrs
 	for id, node := range config.Nodes {
-		if _, ok := l.members[id]; !ok {
-			l.addMember(node)
+		if _, ok := l.flrs[id]; !ok {
+			l.addFlr(node)
 		}
 	}
 }
