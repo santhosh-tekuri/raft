@@ -134,11 +134,7 @@ func TestRaft_LeaderFail(t *testing.T) {
 	c.waitForState(ldr, c.longTimeout, Follower, Candidate)
 
 	// wait for new leader
-	c.waitForStability(c.exclude(ldr)...)
-	newLdr := c.leader()
-	if newLdr == ldr {
-		t.Fatalf("newLeader: got %s, want !=%s", newLdr.ID(), ldr.ID())
-	}
+	newLdr := c.waitForLeader(c.exclude(ldr)...)
 
 	// ensure leader term is greater
 	if newLdrTerm := newLdr.Info().Term(); newLdrTerm <= ldrTerm {
