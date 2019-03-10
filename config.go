@@ -249,6 +249,8 @@ func (r *Raft) bootstrap(t bootstrap) {
 	}
 	r.changeConfig(config)
 	t.reply(nil)
+	debug(r, "follower -> candidate")
+	r.state = Candidate
 }
 
 func (l *ldrShip) changeConfig(t changeConfig) {
