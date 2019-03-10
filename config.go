@@ -317,6 +317,9 @@ func (l *ldrShip) doChangeConfig(t *task, config Config) {
 
 	// add new flrs
 	for id, node := range config.Nodes {
+		if id == l.id {
+			continue
+		}
 		if _, ok := l.flrs[id]; !ok {
 			l.addFlr(node)
 		}

@@ -13,6 +13,8 @@ const minCheckInterval = 10 * time.Millisecond
 type ldrShip struct {
 	*Raft
 
+	voter bool
+
 	// if quorum of nodes are not reachable for this duration
 	// leader steps down to follower
 	leaseTimer *time.Timer
@@ -36,9 +38,17 @@ type ldrShip struct {
 func (l *ldrShip) init() {
 	assert(l.leader == l.id, "%s ldr.leader: got %s, want %s", l, l.leader, l.id)
 
+	l.voter = true
 	l.leaseTimer.Stop() // we start it on detecting failures
 	l.startIndex = l.lastLogIndex + 1
 	l.fromReplsCh = make(chan interface{}, len(l.configs.Latest.Nodes))
+
+	// start replication routine for each follower
+	for id, node := range l.configs.Latest.Nodes {
+		if id != l.id {
+			l.addFlr(node)
+		}
+	}
 
 	// add a blank no-op entry into log at the start of its term
 	l.storeEntry(NewEntry{
@@ -46,11 +56,6 @@ func (l *ldrShip) init() {
 			typ: entryNop,
 		},
 	})
-
-	// start replication routine for each follower
-	for _, node := range l.configs.Latest.Nodes {
-		l.addFlr(node)
-	}
 }
 
 func (l *ldrShip) release() {
@@ -97,21 +102,24 @@ func (l *ldrShip) storeEntry(ne NewEntry) {
 	}
 	l.newEntries.PushBack(ne)
 
+	if ne.typ == entryConfig {
+		config := Config{}
+		err := config.decode(ne.entry)
+		assert(err == nil, "BUG: %v", err)
+		l.voter = config.isVoter(l.id)
+		l.Raft.changeConfig(config)
+	}
+
 	// we updated lastLogIndex, so notify replicators
 	if ne.typ == entryQuery || ne.typ == entryBarrier {
 		l.applyCommitted()
 	} else {
-		if ne.typ == entryConfig {
-			config := Config{}
-			err := config.decode(ne.entry)
-			assert(err == nil, "BUG: %v", err)
-			l.Raft.changeConfig(config)
-		}
 		l.notifyFlr(ne.typ == entryConfig)
 	}
 }
 
 func (l *ldrShip) addFlr(node Node) {
+	assert(node.ID != l.id, "adding leader as follower")
 	f := &flr{
 		node:          node,
 		rtime:         newRandTime(),
@@ -138,35 +146,14 @@ func (l *ldrShip) addFlr(node Node) {
 	}
 
 	l.wg.Add(1)
-	if node.ID == l.id {
-		go func() {
-			// self replication: when leaderUpdate comes
-			// just notify that it is replicated
-			// we are doing this, so that the it is easier
-			// to handle the case of single node cluster
-			// todo: is this really needed? we can optimize it
-			//       by avoiding this extra goroutine
-			defer l.wg.Done()
-			f.notifyLdr(matchIndex{&f.status, req.prevLogIndex})
-			for {
-				select {
-				case <-f.stopCh:
-					return
-				case update := <-f.fromLeaderCh:
-					f.notifyLdr(matchIndex{&f.status, update.lastIndex})
-				}
-			}
-		}()
-	} else {
-		// don't retry on failure. so that we can respond to apply/inspect
-		debug(f, ">> firstHeartbeat")
-		_ = f.doRPC(req, &appendEntriesResp{})
-		go func() {
-			defer l.wg.Done()
-			f.replicate(req)
-			debug(f, "f.replicateEnd")
-		}()
-	}
+	// don't retry on failure. so that we can respond to apply/inspect
+	debug(f, ">> firstHeartbeat")
+	_ = f.doRPC(req, &appendEntriesResp{})
+	go func() {
+		defer l.wg.Done()
+		f.replicate(req)
+		debug(f, "f.replicateEnd")
+	}()
 }
 
 func (l *ldrShip) checkReplUpdates(update interface{}) {
@@ -248,17 +235,20 @@ func (l *ldrShip) checkReplUpdates(update interface{}) {
 func (l *ldrShip) checkLeaderLease() {
 	voters, reachable := 0, 0
 	now, firstFailure := time.Now(), time.Time{}
-	for _, node := range l.configs.Latest.Nodes {
+	for id, node := range l.configs.Latest.Nodes {
 		if node.Voter {
 			voters++
-			m := l.flrs[node.ID]
-			noContact := m.status.noContact
-			if noContact.IsZero() {
+			if id == l.id {
 				reachable++
-			} else if now.Sub(noContact) <= l.ldrLeaseTimeout {
-				reachable++
-				if firstFailure.IsZero() || noContact.Before(firstFailure) {
-					firstFailure = noContact
+			} else {
+				noContact := l.flrs[node.ID].status.noContact
+				if noContact.IsZero() {
+					reachable++
+				} else if now.Sub(noContact) <= l.ldrLeaseTimeout {
+					reachable++
+					if firstFailure.IsZero() || noContact.Before(firstFailure) {
+						firstFailure = noContact
+					}
 				}
 			}
 		}
@@ -291,19 +281,15 @@ func (l *ldrShip) checkLeaderLease() {
 // computes N such that, a majority of matchIndex[i] ≥ N
 func (l *ldrShip) majorityMatchIndex() uint64 {
 	numVoters := l.configs.Latest.numVoters()
-	if numVoters == 1 {
-		for _, node := range l.configs.Latest.Nodes {
-			if node.Voter {
-				return l.flrs[node.ID].status.matchIndex
-			}
-		}
-	}
-
 	matched := make(decrUint64Slice, numVoters)
 	i := 0
 	for _, node := range l.configs.Latest.Nodes {
 		if node.Voter {
-			matched[i] = l.flrs[node.ID].status.matchIndex
+			if node.ID == l.id {
+				matched[i] = l.lastLogIndex
+			} else {
+				matched[i] = l.flrs[node.ID].status.matchIndex
+			}
 			i++
 		}
 	}
@@ -386,6 +372,9 @@ func (l *ldrShip) notifyFlr(includeConfig bool) {
 		case <-f.fromLeaderCh:
 			f.fromLeaderCh <- update
 		}
+	}
+	if l.voter {
+		l.onMajorityCommit()
 	}
 }
 
