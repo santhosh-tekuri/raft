@@ -58,7 +58,7 @@ func New(id ID, opt Options, fsm FSM, storage Storage) (*Raft, error) {
 	r := &Raft{
 		id:               id,
 		rtime:            newRandTime(),
-		server:           newServer(time.Second),
+		server:           newServer(),
 		fsm:              fsm,
 		fsmTaskCh:        make(chan Task, 128), // todo configurable capacity
 		snapThreshold:    opt.SnapshotThreshold,

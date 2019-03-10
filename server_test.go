@@ -39,7 +39,7 @@ func TestServer(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s := newServer(3 * time.Second)
+			s := newServer()
 			l, err := earth.Listen("tcp", addr)
 			if err != nil {
 				t.Fatalf("server.listen failed: %v", err)

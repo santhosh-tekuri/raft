@@ -5,7 +5,6 @@ import (
 	"io"
 	"net"
 	"sync"
-	"time"
 )
 
 type rpc struct {
@@ -17,108 +16,82 @@ type rpc struct {
 }
 
 type server struct {
+	mu       sync.RWMutex
 	listener net.Listener
-	rpcCh    chan *rpc
+	conns    map[net.Conn]struct{}
 
-	// interval to check for shutdown signal
-	idleTimeout time.Duration
-
-	// to handle safe shutdown
-	shutdownMu sync.RWMutex
-	shutdownCh chan struct{}
+	rpcCh      chan *rpc
 	wg         sync.WaitGroup
+	shutdownCh chan struct{}
 }
 
-func newServer(idleTimeout time.Duration) *server {
+func newServer() *server {
 	return &server{
-		rpcCh:       make(chan *rpc),
-		shutdownCh:  make(chan struct{}),
-		idleTimeout: idleTimeout,
+		rpcCh:      make(chan *rpc),
+		shutdownCh: make(chan struct{}),
+		conns:      make(map[net.Conn]struct{}),
 	}
 }
 
 // todo: note that we dont support multiple listeners
 func (s *server) serve(l net.Listener) {
-	defer s.wg.Done()
+	defer func() {
+		s.mu.RLock()
+		for conn := range s.conns {
+			_ = conn.Close()
+		}
+		s.mu.RUnlock()
+		s.wg.Done()
+	}()
 
-	s.shutdownMu.Lock()
-	select {
-	case <-s.shutdownCh:
+	s.mu.Lock()
+	if s.isClosed() {
 		_ = l.Close()
-	default:
 	}
 	s.wg.Add(1) // The first increment must be synchronized with Wait
 	s.listener = l
-	s.shutdownMu.Unlock()
+	s.mu.Unlock()
 
-	for {
+	for !s.isClosed() {
 		conn, err := s.listener.Accept()
 		if err != nil {
-			select {
-			case <-s.shutdownCh:
-				return
-			default:
-				continue
-			}
+			continue
 		}
+		s.mu.Lock()
+		s.conns[conn] = struct{}{}
+		s.mu.Unlock()
 		s.wg.Add(1)
 		go s.handleClient(conn)
 	}
 }
 
 func (s *server) handleClient(conn net.Conn) {
-	defer conn.Close()
-	defer s.wg.Done()
-	r := bufio.NewReader(conn)
-	w := bufio.NewWriter(conn)
-	for {
-		select {
-		case <-s.shutdownCh:
+	defer func() {
+		s.mu.Lock()
+		delete(s.conns, conn)
+		s.mu.Unlock()
+		_ = conn.Close()
+		s.wg.Done()
+	}()
+	r, w := bufio.NewReader(conn), bufio.NewWriter(conn)
+	for !s.isClosed() {
+		if err := s.handleRPC(conn, r, w); err != nil {
 			return
-		default:
-			if err := s.handleRPC(conn, r, w); err != nil {
-				return
-			}
 		}
 	}
 }
 
 // if shutdown signal received, returns ErrServerClosed immediately
 func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) error {
-	var typ rpcType
-	// close client if idle, on shutdown signal
-	for {
-		// todo: use setting past deadline technique for this
-		if err := conn.SetReadDeadline(time.Now().Add(s.idleTimeout)); err != nil {
-			return err
-		}
-		b, err := r.ReadByte()
-		if err != nil {
-			if err, ok := err.(net.Error); ok && err.Timeout() {
-				select {
-				case <-s.shutdownCh:
-					return ErrServerClosed
-				default:
-					continue
-				}
-			}
-			return err
-		}
-		typ = rpcType(b)
-		if err := conn.SetReadDeadline(time.Time{}); err != nil { // clears deadline
-			return err
-		}
-		break
+	b, err := r.ReadByte()
+	if err != nil {
+		return err
 	}
-
-	rpc := &rpc{req: typ.createReq(), done: make(chan struct{}), reader: r}
+	rpc := &rpc{req: rpcType(b).createReq(), done: make(chan struct{}), reader: r}
 
 	// decode request
 	// todo: set read deadline
 	if err := rpc.req.decode(r); err != nil {
-		if err == io.EOF {
-			err = io.ErrUnexpectedEOF
-		}
 		return err
 	}
 
@@ -141,21 +114,27 @@ func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) erro
 		return rpc.readErr
 	}
 	// todo: set write deadline
-	if err := rpc.resp.encode(w); err != nil {
+	if err = rpc.resp.encode(w); err != nil {
 		return err
 	}
 	return w.Flush()
 }
 
+func (s *server) isClosed() bool {
+	select {
+	case <-s.shutdownCh:
+		return true
+	default:
+		return false
+	}
+}
 func (s *server) shutdown() {
 	close(s.shutdownCh)
-
-	s.shutdownMu.RLock()
+	s.mu.RLock()
 	if s.listener != nil {
 		_ = s.listener.Close()
 	}
-	s.shutdownMu.RUnlock()
-
+	s.mu.RUnlock()
 	s.wg.Wait()
 	close(s.rpcCh)
 }
