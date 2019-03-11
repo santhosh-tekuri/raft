@@ -58,14 +58,13 @@ func (c *candShip) startElection() {
 }
 
 func (c *candShip) requestVote(pool *connPool, req *voteReq, deadline time.Time) (*voteResp, error) {
-	debug(c.id, ">> requestVote", pool.id)
 	conn, err := pool.getConn()
 	if err != nil {
 		return nil, err
 	}
 	resp := new(voteResp)
 	if c.trace.sending != nil {
-		c.trace.sending(c.id, pool.id, req)
+		c.trace.sending(c.id, pool.id, Candidate, req)
 	}
 	_ = conn.conn.SetDeadline(deadline)
 	if err = conn.doRPC(req, resp); err != nil {
@@ -74,7 +73,7 @@ func (c *candShip) requestVote(pool *connPool, req *voteReq, deadline time.Time)
 	}
 	pool.returnConn(conn)
 	if c.trace.received != nil {
-		c.trace.received(c.id, pool.id, resp)
+		c.trace.received(c.id, pool.id, Candidate, req.term, resp)
 	}
 	return resp, nil
 }
@@ -84,9 +83,6 @@ func (c *candShip) onVoteResult(vote voteResult) {
 	if vote.err != nil {
 		debug(c, "<< voteResp", vote.from, vote.err)
 		return
-	}
-	if vote.from != c.id {
-		debug(c, "<< voteResp", vote.from, vote.result, vote.term)
 	}
 
 	// if response contains term T > currentTerm:

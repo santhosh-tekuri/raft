@@ -18,19 +18,16 @@ func (r *Raft) replyRPC(rpc *rpc) bool {
 		err        error
 	)
 	if r.trace.received != nil {
-		r.trace.received(r.id, rpc.req.from(), rpc.req)
+		r.trace.received(r.id, rpc.req.from(), r.state, r.term, rpc.req)
 	}
 	switch req := rpc.req.(type) {
 	case *voteReq:
-		debug(r, "received", req)
 		result = r.onVoteRequest(req)
-		debug(r, "sending voteResp", result)
 		rpc.resp, resetTimer = &voteResp{r.term, result}, result == success
 	case *appendEntriesReq:
 		result, err = r.onAppendEntriesRequest(req)
 		rpc.resp = &appendEntriesResp{r.term, result, r.lastLogIndex}
 	case *installSnapReq:
-		debug(r, "received", req)
 		result, err = r.onInstallSnapRequest(req)
 		if result == readErr {
 			rpc.readErr = err
@@ -38,7 +35,6 @@ func (r *Raft) replyRPC(rpc *rpc) bool {
 		if rpc.readErr == nil && req.size > 0 {
 			_, rpc.readErr = io.CopyN(ioutil.Discard, req.snapshot, req.size)
 		}
-		debug(r, "sending installSnapResp", result)
 		rpc.resp = &installSnapResp{r.term, result}
 	default:
 		assert(false, "unexpected request: %T", req)
@@ -47,7 +43,7 @@ func (r *Raft) replyRPC(rpc *rpc) bool {
 		r.trace.Error(err)
 	}
 	if r.trace.sending != nil {
-		r.trace.sending(r.id, rpc.req.from(), rpc.resp)
+		r.trace.sending(r.id, rpc.req.from(), r.state, rpc.resp)
 	}
 	close(rpc.done)
 	return resetTimer
@@ -91,8 +87,6 @@ func (r *Raft) onVoteRequest(req *voteReq) rpcResult {
 func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) (rpcResult, error) {
 	// reply false if older term
 	if req.term < r.term {
-		debug(r, "received", req)
-		debug(r, "rejectAppendEntries", "stale term")
 		return staleTerm, nil
 	}
 
@@ -108,9 +102,6 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) (rpcResult, error) 
 	// reply false if log at req.prevLogIndex does not match
 	if req.prevLogIndex > r.snapIndex {
 		if req.prevLogIndex > r.lastLogIndex {
-			// no entry found
-			debug(r, "received", req)
-			debug(r, "rejectAppendEntries", req.prevLogIndex, "entryNotFound, i have", r.lastLogIndex)
 			return prevEntryNotFound, nil
 		}
 
@@ -121,25 +112,24 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) (rpcResult, error) 
 		} else {
 			var err error
 			prevEntry = &entry{}
-			err = r.storage.getEntry(req.prevLogIndex, prevEntry)
-			assert(err != errNoEntryFound, "unexpected error: %v", err)
-			if err != nil {
+			if err = r.storage.getEntry(req.prevLogIndex, prevEntry); err != nil {
+				assert(err != errNoEntryFound, "unexpected error: %v", err)
 				return unexpectedErr, err
 			}
 			prevLogTerm = prevEntry.term
 			// we never get ErrnotFound here, because we are the goroutine who is compacting
 		}
 		if req.prevLogTerm != prevLogTerm {
-			// term did not match
-			debug(r, "received", req)
-			debug(r, "rejectAppendEntries", "term mismatch", req.prevLogTerm, prevLogTerm)
 			return prevTermMismatch, nil
 		}
 
 		// valid req: can we commit req.prevLogIndex ?
 		if r.canCommit(req, req.prevLogIndex, req.prevLogTerm) {
 			r.setCommitIndex(req.prevLogIndex)
-			r.applyCommitted(prevEntry)
+			if err := r.applyCommitted(prevEntry); err != nil {
+				assert(err != errNoEntryFound, "unexpected error: %v", err)
+				return unexpectedErr, err
+			}
 		}
 	}
 
@@ -183,22 +173,21 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) (rpcResult, error) 
 			r.changeConfig(newConfig)
 		}
 
+		_ = index
 		if r.canCommit(req, ne.index, ne.term) {
 			r.setCommitIndex(ne.index)
-			r.applyCommitted(ne)
+			if err := r.applyCommitted(ne); err != nil {
+				assert(err != errNoEntryFound, "unexpected error: %v", err)
+				return unexpectedErr, err
+			}
 		}
-	}
-
-	// if no entries
-	if index == req.prevLogIndex {
-		debug(r, "received heartbeat")
 	}
 	return success, nil
 }
 
 // if commitIndex > lastApplied: increment lastApplied, apply
 // log[lastApplied] to state machine
-func (r *Raft) applyCommitted(ne *entry) {
+func (r *Raft) applyCommitted(ne *entry) error {
 	for r.lastApplied < r.commitIndex {
 		// get lastApplied+1 entry
 		var e *entry
@@ -206,13 +195,16 @@ func (r *Raft) applyCommitted(ne *entry) {
 			e = ne
 		} else {
 			e = &entry{}
-			r.storage.getEntry(r.lastApplied+1, e)
+			if err := r.storage.getEntry(r.lastApplied+1, e); err != nil {
+				return err
+			}
 		}
 
 		r.applyEntry(NewEntry{entry: e})
 		r.lastApplied++
 		debug(r, "lastApplied", r.lastApplied)
 	}
+	return nil
 }
 
 func (r *Raft) canCommit(req *appendEntriesReq, index, term uint64) bool {

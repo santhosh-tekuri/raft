@@ -81,9 +81,9 @@ func (r *Raft) String() string {
 }
 
 func (i *liveInfo) String() string {
-	return fmt.Sprintf("%s %d %s |", i.id, i.Term(), string(i.state))
+	return fmt.Sprintf("%s %d %s |", i.ID(), i.Term(), string(i.State()))
 }
 
 func (i *cachedInfo) String() string {
-	return fmt.Sprintf("%s %d %s |", i.id, i.Term(), string(i.state))
+	return fmt.Sprintf("%s %d %s |", i.ID(), i.Term(), string(i.State()))
 }

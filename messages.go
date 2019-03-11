@@ -40,6 +40,29 @@ const (
 	unexpectedErr
 )
 
+func (r rpcResult) String() string {
+	switch r {
+	case success:
+		return "success"
+	case staleTerm:
+		return "staleTerm"
+	case alreadyVoted:
+		return "alreadyVoted"
+	case logNotUptodate:
+		return "logNotUptodate"
+	case prevEntryNotFound:
+		return "prevEntryNotFound"
+	case prevTermMismatch:
+		return "prevTermMismatch"
+	case readErr:
+		return "readErr"
+	case unexpectedErr:
+		return "unexpectedErr"
+	default:
+		return fmt.Sprintf("unknown(%d)", r)
+	}
+}
+
 type message interface {
 	getTerm() uint64
 	decode(r io.Reader) error
@@ -136,7 +159,7 @@ func (req *voteReq) getTerm() uint64  { return req.term }
 func (req *voteReq) rpcType() rpcType { return rpcVote }
 func (req *voteReq) from() ID         { return req.candidate }
 func (req *voteReq) String() string {
-	format := "voteReq{term:%d, candidate:%s, last:(%d,%d)}"
+	format := "voteReq{T%d %s last:(%d,%d)}"
 	return fmt.Sprintf(format, req.term, req.candidate, req.lastLogIndex, req.lastLogTerm)
 }
 
@@ -184,6 +207,9 @@ type voteResp struct {
 }
 
 func (resp *voteResp) getTerm() uint64 { return resp.term }
+func (resp *voteResp) String() string {
+	return fmt.Sprintf("voteResp{T%d %s}", resp.term, resp.result)
+}
 
 func (resp *voteResp) decode(r io.Reader) error {
 	var err error
@@ -224,8 +250,8 @@ func (req *appendEntriesReq) getTerm() uint64  { return req.term }
 func (req *appendEntriesReq) rpcType() rpcType { return rpcAppendEntries }
 func (req *appendEntriesReq) from() ID         { return req.leader }
 func (req *appendEntriesReq) String() string {
-	format := "appendEntriesReq{term:%d, prev:(%d,%d), #entries:%d}"
-	return fmt.Sprintf(format, req.term, req.prevLogIndex, req.prevLogTerm, len(req.entries))
+	format := "appendEntriesReq{T%d %s prev:(%d,%d), #entries:%d}"
+	return fmt.Sprintf(format, req.term, req.leader, req.prevLogIndex, req.prevLogTerm, len(req.entries))
 }
 
 func (req *appendEntriesReq) decode(r io.Reader) error {
@@ -303,6 +329,10 @@ type appendEntriesResp struct {
 }
 
 func (resp *appendEntriesResp) getTerm() uint64 { return resp.term }
+func (resp *appendEntriesResp) String() string {
+	format := "appendEntriesResp{T%d %s last:%d}"
+	return fmt.Sprintf(format, resp.term, resp.result, resp.lastLogIndex)
+}
 
 func (resp *appendEntriesResp) decode(r io.Reader) error {
 	var err error

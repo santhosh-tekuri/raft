@@ -63,8 +63,8 @@ type Trace struct {
 	Unreachable     func(info Info, id ID, since time.Time) // todo: can we give err also
 	ShuttingDown    func(info Info)
 
-	sending  func(self, to ID, msg message)
-	received func(self, from ID, msg message)
+	sending  func(self, to ID, state State, msg message)
+	received func(self, from ID, state State, term uint64, msg message)
 }
 
 func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {

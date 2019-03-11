@@ -276,15 +276,15 @@ func (f *flr) doRPC(req request, resp message) error {
 		f.conn = conn
 	}
 	if f.trace.sending != nil {
-		f.trace.sending(req.from(), f.connPool.id, req)
+		f.trace.sending(req.from(), f.connPool.id, Leader, req)
 	}
 	err := f.conn.doRPC(req, resp)
 	if err != nil {
 		_ = f.conn.close()
 		f.conn = nil
 	}
-	if f.trace.sending != nil && err == nil {
-		f.trace.received(req.from(), f.connPool.id, resp)
+	if f.trace.received != nil && err == nil {
+		f.trace.received(req.from(), f.connPool.id, Leader, req.getTerm(), resp)
 	}
 	return err
 }
