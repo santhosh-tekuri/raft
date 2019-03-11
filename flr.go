@@ -58,6 +58,7 @@ func (f *flr) replicate(req *appendEntriesReq) {
 		debug(f, "started round:", f.round)
 	}
 
+	timer := newSafeTimer()
 	for {
 		debug(f, "matchIndex", f.matchIndex, "nextIndex", f.nextIndex)
 		assert(f.matchIndex < f.nextIndex, "%s assert %d<%d", f, f.matchIndex, f.nextIndex)
@@ -78,14 +79,17 @@ func (f *flr) replicate(req *appendEntriesReq) {
 		}
 
 		if f.sendEntries && f.matchIndex == f.ldrLastIndex {
+			timer.reset(f.hbTimeout / 10)
 			// nothing to send. start heartbeat timer
 			select {
 			case <-f.stopCh:
 				return
 			case update := <-f.fromLeaderCh:
 				f.onLeaderUpdate(update, req)
-			case <-f.rtime.after(f.hbTimeout / 10):
+			case <-timer.C:
+				timer.receive = false
 			}
+			timer.stop()
 		} else {
 			// check signal if any, without blocking
 			select {

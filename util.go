@@ -26,7 +26,8 @@ func max(a, b uint64) uint64 {
 // ------------------------------------------------------
 
 type safeTimer struct {
-	*time.Timer
+	timer *time.Timer
+	C     <-chan time.Time
 
 	// tells we need to receive from channel
 	// NOTE: after receiving from channel, this
@@ -39,11 +40,11 @@ func newSafeTimer() *safeTimer {
 	if !t.Stop() {
 		<-t.C
 	}
-	return &safeTimer{t, false}
+	return &safeTimer{t, t.C, false}
 }
 
 func (t *safeTimer) stop() {
-	if !t.Timer.Stop() {
+	if !t.timer.Stop() {
 		if t.receive {
 			<-t.C
 		}
@@ -53,7 +54,7 @@ func (t *safeTimer) stop() {
 
 func (t *safeTimer) reset(d time.Duration) {
 	t.stop()
-	t.Timer.Reset(d)
+	t.timer.Reset(d)
 	t.receive = true
 }
 
