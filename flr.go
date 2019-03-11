@@ -50,7 +50,6 @@ func (f *flr) replicate(req *appendEntriesReq) {
 	}()
 
 	debug(f, "f.start")
-	f.matchIndex, f.nextIndex = uint64(0), f.ldrLastIndex+1
 	if f.node.promote() {
 		f.round = new(round)
 		f.round.begin(f.ldrLastIndex)
@@ -59,7 +58,6 @@ func (f *flr) replicate(req *appendEntriesReq) {
 
 	timer := newSafeTimer()
 	for {
-		debug(f, "matchIndex", f.matchIndex, "nextIndex", f.nextIndex)
 		assert(f.matchIndex < f.nextIndex, "%s assert %d<%d", f, f.matchIndex, f.nextIndex)
 
 		err := f.sendAppEntriesReq(req)
@@ -169,17 +167,21 @@ func (f *flr) sendAppEntriesReq(req *appendEntriesReq) error {
 				return err
 			}
 		}
-		debug(f, "sending", req)
 	} else {
 		req.entries = nil
-		if f.sendEntries {
-			debug(f, "sending heartbeat")
-		}
 	}
 
+	if req.entries != nil || !f.sendEntries {
+		debug(f, ">>", req)
+	} else {
+		debug(f, ">> heartbeat")
+	}
 	resp := &appendEntriesResp{}
 	if err := f.retryRPC(req, resp); err != nil {
 		return err
+	}
+	if req.entries != nil || !f.sendEntries {
+		debug(f, "<<", resp)
 	}
 
 	f.sendEntries = resp.result == success
@@ -325,10 +327,6 @@ func (f *flr) getSnapLog() (snapIndex, snapTerm uint64) {
 	f.storage.snapMu.RLock()
 	defer f.storage.snapMu.RUnlock()
 	return f.storage.snapIndex, f.storage.snapTerm
-}
-
-func (f *flr) String() string {
-	return f.str
 }
 
 // ------------------------------------------------

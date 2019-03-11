@@ -250,8 +250,8 @@ func (req *appendEntriesReq) getTerm() uint64  { return req.term }
 func (req *appendEntriesReq) rpcType() rpcType { return rpcAppendEntries }
 func (req *appendEntriesReq) from() ID         { return req.leader }
 func (req *appendEntriesReq) String() string {
-	format := "appendEntriesReq{T%d %s prev:(%d,%d), #entries:%d}"
-	return fmt.Sprintf(format, req.term, req.leader, req.prevLogIndex, req.prevLogTerm, len(req.entries))
+	format := "appendEntriesReq{T%d %s prev:(%d,%d), #entries:%d, commit:%d}"
+	return fmt.Sprintf(format, req.term, req.leader, req.prevLogIndex, req.prevLogTerm, len(req.entries), req.ldrCommitIndex)
 }
 
 func (req *appendEntriesReq) decode(r io.Reader) error {

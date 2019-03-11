@@ -80,6 +80,10 @@ func (r *Raft) String() string {
 	return fmt.Sprintf("%s %d %s |", r.id, r.term, string(r.state))
 }
 
+func (f *flr) String() string {
+	return fmt.Sprintf("%s %d %d %d |", f.str, f.matchIndex, f.nextIndex, f.ldrLastIndex)
+}
+
 func (i *liveInfo) String() string {
 	return fmt.Sprintf("%s %d %s |", i.ID(), i.Term(), string(i.State()))
 }

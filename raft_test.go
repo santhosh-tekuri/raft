@@ -794,7 +794,7 @@ func (ee *events) trace() (trace Trace) {
 	}
 
 	trace.sending = func(from, to ID, state State, msg message) {
-		if _, ok := msg.(request); ok {
+		if _, ok := msg.(request); ok && state != Leader {
 			str := fmt.Sprintf("%s %d %s |", from, msg.getTerm(), string(state))
 			Debug(str, to, ">>>", msg)
 		}
@@ -807,11 +807,13 @@ func (ee *events) trace() (trace Trace) {
 	}
 
 	trace.received = func(by, from ID, state State, term uint64, msg message) {
-		str := fmt.Sprintf("%s %d %s |", by, term, string(state))
-		if _, ok := msg.(request); ok {
-			Debug(str, "<<<", msg)
-		} else {
-			Debug(str, from, "<<<", msg)
+		if state != Leader {
+			str := fmt.Sprintf("%s %d %s |", by, term, string(state))
+			if _, ok := msg.(request); ok {
+				Debug(str, "<<<", msg)
+			} else {
+				Debug(str, from, "<<<", msg)
+			}
 		}
 		ee.sendEvent(event{
 			src:     by,
