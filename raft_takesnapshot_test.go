@@ -4,14 +4,14 @@ import (
 	"testing"
 )
 
-func TestRaft_takeSnapshot(t *testing.T) {
-	t.Run("emptyFSM", takeSnapshotEmptyFSM)
-	t.Run("thresholdNotReached", takeSnapshotThresholdNotReached)
+func test_takeSnapshot(t *testing.T) {
+	t.Run("emptyFSM", test_takeSnapshot_emptyFSM)
+	t.Run("thresholdNotReached", test_takeSnapshot_thresholdNotReached)
 	//todo: test ErrSnapshotInProgress
-	t.Run("restartSendUpdates", takeSnapshotRestartSendUpdates)
+	t.Run("restartSendUpdates", test_takeSnapshot_restartSendUpdates)
 }
 
-func takeSnapshotEmptyFSM(t *testing.T) {
+func test_takeSnapshot_emptyFSM(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 1)
 	defer c.shutdown()
 
@@ -19,7 +19,7 @@ func takeSnapshotEmptyFSM(t *testing.T) {
 	c.takeSnapshot(ldr, 0, ErrNoUpdates)
 }
 
-func takeSnapshotThresholdNotReached(t *testing.T) {
+func test_takeSnapshot_thresholdNotReached(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 1)
 	defer c.shutdown()
 
@@ -31,7 +31,7 @@ func takeSnapshotThresholdNotReached(t *testing.T) {
 	c.takeSnapshot(ldr, 2000, ErrSnapshotThreshold)
 }
 
-func takeSnapshotRestartSendUpdates(t *testing.T) {
+func test_takeSnapshot_restartSendUpdates(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 1)
 	defer c.shutdown()
 

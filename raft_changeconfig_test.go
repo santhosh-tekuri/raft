@@ -6,7 +6,12 @@ import (
 	"time"
 )
 
-func TestRaft_AddNonVoter_validations(t *testing.T) {
+func test_changeConfig(t *testing.T) {
+	t.Run("validations", test_changeConfig_validations)
+	t.Run("committedByAll", test_changeConfig_committedByAll)
+}
+
+func test_changeConfig_validations(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -45,7 +50,7 @@ func TestRaft_AddNonVoter_validations(t *testing.T) {
 	}
 }
 
-func TestRaft_AddNonVoter_committedByAll(t *testing.T) {
+func test_changeConfig_committedByAll(t *testing.T) {
 	// launch 3 node cluster M1, M2, M3
 	c, ldr, followers := launchCluster(t, 3)
 	defer c.shutdown()
@@ -142,7 +147,14 @@ func TestRaft_AddNonVoter_committedByAll(t *testing.T) {
 	}
 }
 
-func TestRaft_AddNonVoter_catchesUp_followsLeader(t *testing.T) {
+// ------------------------------------------------------------------
+
+func test_nonvoter(t *testing.T) {
+	t.Run("catchesUp_followsLeader", test_nonvoter_catchesUp_followsLeader)
+	t.Run("reconnects_catchesUp", test_nonvoter_reconnects_catchesUp)
+	t.Run("leaderChanged_followsNewLeader", test_nonvoter_leaderChanged_followsNewLeader)
+}
+func test_nonvoter_catchesUp_followsLeader(t *testing.T) {
 	// launch 3 node cluster M1, M2, M3
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
@@ -165,7 +177,7 @@ func TestRaft_AddNonVoter_catchesUp_followsLeader(t *testing.T) {
 	c.waitFSMLen(20)
 }
 
-func TestRaft_AddNonVoter_nonVoterReconnects_catchesUp(t *testing.T) {
+func test_nonvoter_reconnects_catchesUp(t *testing.T) {
 	// launch 3 node cluster M1, M2, M3
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
@@ -215,7 +227,7 @@ func TestRaft_AddNonVoter_nonVoterReconnects_catchesUp(t *testing.T) {
 	}
 }
 
-func TestRaft_AddNonVoter_leaderChanged_followsNewLeader(t *testing.T) {
+func test_nonvoter_leaderChanged_followsNewLeader(t *testing.T) {
 	// launch 3 node cluster M1, M2, M3
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()

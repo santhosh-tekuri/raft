@@ -7,12 +7,12 @@ import (
 	"time"
 )
 
-func TestRaft_Update(t *testing.T) {
-	t.Run("nonLeader", updateNonLeader)
-	t.Run("concurrent", updateConcurrent)
+func test_update(t *testing.T) {
+	t.Run("nonLeader", test_update_nonLeader)
+	t.Run("concurrent", test_update_concurrent)
 }
 
-func updateNonLeader(t *testing.T) {
+func test_update_nonLeader(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -30,7 +30,7 @@ func updateNonLeader(t *testing.T) {
 	}
 }
 
-func updateConcurrent(t *testing.T) {
+func test_update_concurrent(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -98,7 +98,7 @@ func TODO_TestRaft_BackPressure(t *testing.T) {
 	}
 }
 
-func TestRaft_Barrier(t *testing.T) {
+func test_barrier(t *testing.T) {
 	c, ldr, followers := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -125,7 +125,7 @@ func TestRaft_Barrier(t *testing.T) {
 	}
 }
 
-func TestRaft_Query(t *testing.T) {
+func test_query(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 

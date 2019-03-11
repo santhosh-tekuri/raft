@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-func TestRaft_Promote(t *testing.T) {
+func test_promote(t *testing.T) {
 	t.Run("newNode", test_promote_newNode)
 	t.Run("existingNode", test_promote_existingNode)
 }

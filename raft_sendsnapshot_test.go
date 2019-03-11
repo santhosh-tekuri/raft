@@ -4,16 +4,16 @@ import (
 	"testing"
 )
 
-func TestReplication_sendSnapshot(t *testing.T) {
+func test_sendSnapshot(t *testing.T) {
 	t.Run("case1", func(t *testing.T) {
-		testReplicationSendSnapshot(t, false)
+		test_sendSnapshot_case(t, false)
 	})
 	t.Run("case2", func(t *testing.T) {
-		testReplicationSendSnapshot(t, true)
+		test_sendSnapshot_case(t, true)
 	})
 }
 
-func testReplicationSendSnapshot(t *testing.T, updateFSMAfterSnap bool) {
+func test_sendSnapshot_case(t *testing.T, updateFSMAfterSnap bool) {
 	// launch 3 node cluster
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
