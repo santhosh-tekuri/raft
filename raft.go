@@ -179,14 +179,14 @@ func (r *Raft) stateLoop() {
 				r.onSnapshotTaken(t)
 
 			// candidate --------------
-			case vote := <-c.voteCh:
+			case v := <-c.voteCh:
 				assert(r.state == Candidate, "%s BUG: %v", r.id, r.state)
-				c.onVoteResult(vote)
+				c.onVoteResult(v)
 
 			// leader --------------
-			case update := <-l.fromReplsCh:
+			case u := <-l.fromReplsCh:
 				assert(r.state == Leader, "%s BUG: %v", r.id, r.state)
-				l.checkReplUpdates(update)
+				l.checkReplUpdates(u)
 			}
 		}
 		if r.trace.StateChanged != nil {

@@ -78,24 +78,24 @@ func (c *candShip) requestVote(pool *connPool, req *voteReq, deadline time.Time)
 	return resp, nil
 }
 
-func (c *candShip) onVoteResult(vote voteResult) {
+func (c *candShip) onVoteResult(v voteResult) {
 	// todo: if quorum unreachable raise alert
-	if vote.err != nil {
-		debug(c, "<< voteResp", vote.from, vote.err)
+	if v.err != nil {
+		debug(c, "<< voteResp", v.from, v.err)
 		return
 	}
 
 	// if response contains term T > currentTerm:
 	// set currentTerm = T, convert to follower
-	if vote.term > c.term {
+	if v.term > c.term {
 		debug(c, "candidate -> follower")
 		c.state = Follower
-		c.setTerm(vote.term)
+		c.setTerm(v.term)
 		return
 	}
 
 	// if votes received from majority of servers: become leader
-	if vote.result == success {
+	if v.result == success {
 		c.votesNeeded--
 		if c.votesNeeded == 0 {
 			debug(c, "candidate -> leader")

@@ -144,48 +144,48 @@ func (l *ldrShip) addFlr(node Node) {
 	}()
 }
 
-func (l *ldrShip) checkReplUpdates(update interface{}) {
+func (l *ldrShip) checkReplUpdates(u interface{}) {
 	matchUpdated, noContactUpdated := false, false
 	for {
-		switch update := update.(type) {
+		switch u := u.(type) {
 		case matchIndex:
 			matchUpdated = true
-			update.status.matchIndex = update.val
+			u.status.matchIndex = u.val
 		case noContact:
 			noContactUpdated = true
-			update.status.noContact = update.time
+			u.status.noContact = u.time
 			if l.trace.Unreachable != nil {
-				l.trace.Unreachable(l.liveInfo(), update.status.id, update.time)
+				l.trace.Unreachable(l.liveInfo(), u.status.id, u.time)
 			}
 		case newTerm:
 			// if response contains term T > currentTerm:
 			// set currentTerm = T, convert to follower
 			debug(l, "leader -> follower")
 			l.state = Follower
-			l.setTerm(update.val)
+			l.setTerm(u.val)
 			l.leader = ""
 			return
 		case roundCompleted:
-			round := update.round
-			if round.id > update.status.rounds {
+			round := u.round
+			if round.id > u.status.rounds {
 				debug(l, "roundCompleted", round)
-				update.status.rounds++
+				u.status.rounds++
 				if l.trace.RoundCompleted != nil {
-					l.trace.RoundCompleted(l.liveInfo(), update.status.id, round.id, round.duration(), round.lastIndex)
+					l.trace.RoundCompleted(l.liveInfo(), u.status.id, round.id, round.duration(), round.lastIndex)
 				}
 			} else {
-				debug(l, update.status.id, "is reminding promotion:", round)
+				debug(l, u.status.id, "is reminding promotion:", round)
 			}
 			if !l.configs.IsCommitted() {
 				debug(l, "config not committed")
 				break
 			}
-			hasNewEntries := l.lastLogIndex > update.status.matchIndex
+			hasNewEntries := l.lastLogIndex > u.status.matchIndex
 			if hasNewEntries && round.duration() > l.promoteThreshold {
 				debug(l, "best of luck for next round")
 				break // best of luck for next round !!!
 			}
-			n, ok := l.configs.Latest.Nodes[update.status.id]
+			n, ok := l.configs.Latest.Nodes[u.status.id]
 			if !ok || !n.promote() {
 				debug(l, "this node should not be promoted")
 				break
@@ -206,7 +206,7 @@ func (l *ldrShip) checkReplUpdates(update interface{}) {
 		select {
 		case <-l.shutdownCh:
 			return
-		case update = <-l.fromReplsCh:
+		case u = <-l.fromReplsCh:
 			continue
 		default:
 		}

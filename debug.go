@@ -84,6 +84,10 @@ func (f *flr) String() string {
 	return fmt.Sprintf("%s %d %d %d |", f.str, f.matchIndex, f.nextIndex, f.ldrLastIndex)
 }
 
+func (u leaderUpdate) String() string {
+	return fmt.Sprintf("leaderUpdate{last:%d, commit:%d, config: %v}", u.lastIndex, u.commitIndex, u.config)
+}
+
 func (i *liveInfo) String() string {
 	return fmt.Sprintf("%s %d %s |", i.ID(), i.Term(), string(i.State()))
 }

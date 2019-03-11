@@ -100,11 +100,11 @@ func (f *flr) replicate(req *appendEntriesReq) {
 	}
 }
 
-func (f *flr) onLeaderUpdate(update leaderUpdate, req *appendEntriesReq) {
-	debug(f, "{last:", update.lastIndex, "commit:", update.commitIndex, "config:", update.config, "} <-fromLeaderCh")
-	f.ldrLastIndex, req.ldrCommitIndex = update.lastIndex, update.commitIndex
-	if update.config != nil {
-		if n, ok := update.config.Nodes[f.status.id]; ok {
+func (f *flr) onLeaderUpdate(u leaderUpdate, req *appendEntriesReq) {
+	debug(f, u)
+	f.ldrLastIndex, req.ldrCommitIndex = u.lastIndex, u.commitIndex
+	if u.config != nil {
+		if n, ok := u.config.Nodes[f.status.id]; ok {
 			f.node = n
 			if !f.node.promote() {
 				f.round = nil
@@ -291,14 +291,14 @@ func (f *flr) doRPC(req request, resp message) error {
 	return err
 }
 
-func (f *flr) notifyLdr(update interface{}) {
+func (f *flr) notifyLdr(u interface{}) {
 	select {
 	case <-f.stopCh:
-	case f.toLeaderCh <- update:
+	case f.toLeaderCh <- u:
 	}
 
 	// check if we just completed round
-	if _, ok := update.(matchIndex); ok && f.round != nil {
+	if _, ok := u.(matchIndex); ok && f.round != nil {
 		if f.matchIndex >= f.round.lastIndex {
 			f.notifyRoundCompleted()
 		}
