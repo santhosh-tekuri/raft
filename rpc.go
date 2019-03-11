@@ -12,40 +12,52 @@ import (
 // replyRPC return true if it is appendEntries request
 // or vote granted
 func (r *Raft) replyRPC(rpc *rpc) bool {
+	var (
+		resetTimer = true
+		result     rpcResult
+		err        error
+	)
 	if r.trace.received != nil {
 		r.trace.received(r.id, rpc.req.from(), rpc.req)
 	}
-	var resetTimer = true
 	switch req := rpc.req.(type) {
 	case *voteReq:
-		reply := r.onVoteRequest(req)
-		rpc.resp, resetTimer = reply, reply.granted
+		debug(r, "received", req)
+		result = r.onVoteRequest(req)
+		debug(r, "sending voteResp", result)
+		rpc.resp, resetTimer = &voteResp{r.term, result}, result == success
 	case *appendEntriesReq:
-		rpc.resp = r.onAppendEntriesRequest(req)
+		result, err = r.onAppendEntriesRequest(req)
+		rpc.resp = &appendEntriesResp{r.term, result, r.lastLogIndex}
 	case *installSnapReq:
-		rpc.resp, rpc.readErr = r.onInstallSnapRequest(req)
+		debug(r, "received", req)
+		result, err = r.onInstallSnapRequest(req)
+		if result == readErr {
+			rpc.readErr = err
+		}
+		if rpc.readErr == nil && req.size > 0 {
+			_, rpc.readErr = io.CopyN(ioutil.Discard, req.snapshot, req.size)
+		}
+		debug(r, "sending installSnapResp", result)
+		rpc.resp = &installSnapResp{r.term, result}
 	default:
-		// todo
+		assert(false, "unexpected request: %T", req)
 	}
-	close(rpc.done)
+	if result == unexpectedErr && r.trace.Error != nil {
+		r.trace.Error(err)
+	}
 	if r.trace.sending != nil {
 		r.trace.sending(r.id, rpc.req.from(), rpc.resp)
 	}
+	close(rpc.done)
 	return resetTimer
 }
 
-func (r *Raft) onVoteRequest(req *voteReq) *voteResp {
-	debug(r, "received", req)
-	resp := &voteResp{
-		term:    r.term,
-		granted: false,
+func (r *Raft) onVoteRequest(req *voteReq) rpcResult {
+	if req.term < r.term {
+		return staleTerm
 	}
-
-	switch {
-	case req.term < r.term: // reject: older term
-		debug(r, "rejectVoteTo", req.candidate, "oldTerm")
-		return resp
-	case req.term > r.term: // convert to follower
+	if req.term > r.term {
 		debug(r, "stateChange", req.term, Follower)
 		r.state = Follower
 		r.setTerm(req.term)
@@ -53,45 +65,35 @@ func (r *Raft) onVoteRequest(req *voteReq) *voteResp {
 
 	// if we have leader, we only vote for him
 	if r.leader != "" {
-		resp.granted = req.candidate == r.leader
-		return resp
+		if req.candidate == r.leader {
+			return success
+		}
+		return leaderKnown
 	}
 
-	if r.votedFor != "" { // we already voted in this election before
+	// if we already voted
+	if r.votedFor != "" {
 		if r.votedFor == req.candidate { // same candidate we votedFor
-			resp.granted = true
-			debug(r, "grantVoteTo", req.candidate)
-		} else {
-			debug(r, "rejectVoteTo", req.candidate, "alreadyVotedTo", r.votedFor)
+			return success
 		}
-		return resp
+		return alreadyVoted
 	}
 
 	// reject if candidate’s log is not at least as up-to-date as ours
 	if r.lastLogTerm > req.lastLogTerm || (r.lastLogTerm == req.lastLogTerm && r.lastLogIndex > req.lastLogIndex) {
-		debug(r, "rejectVoteTo", req.candidate, "logNotUptoDate", r.lastLogIndex, r.lastLogTerm, req.lastLogIndex, req.lastLogTerm)
-		return resp
+		return logNotUptodate
 	}
 
-	debug(r, "grantVoteTo", req.candidate)
-	resp.granted = true
 	r.setVotedFor(req.candidate)
-
-	return resp
+	return success
 }
 
-func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp {
-	resp := &appendEntriesResp{
-		term:         r.term,
-		success:      false,
-		lastLogIndex: r.lastLogIndex,
-	}
-
+func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) (rpcResult, error) {
 	// reply false if older term
 	if req.term < r.term {
 		debug(r, "received", req)
 		debug(r, "rejectAppendEntries", "stale term")
-		return resp
+		return staleTerm, nil
 	}
 
 	// if newer term, convert to follower
@@ -109,7 +111,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp 
 			// no entry found
 			debug(r, "received", req)
 			debug(r, "rejectAppendEntries", req.prevLogIndex, "entryNotFound, i have", r.lastLogIndex)
-			return resp
+			return prevEntryNotFound, nil
 		}
 
 		var prevLogTerm uint64
@@ -120,15 +122,18 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp 
 			var err error
 			prevEntry = &entry{}
 			err = r.storage.getEntry(req.prevLogIndex, prevEntry)
+			assert(err != errNoEntryFound, "unexpected error: %v", err)
+			if err != nil {
+				return unexpectedErr, err
+			}
 			prevLogTerm = prevEntry.term
 			// we never get ErrnotFound here, because we are the goroutine who is compacting
-			assert(err == nil, "unexpected error: %v", err)
 		}
 		if req.prevLogTerm != prevLogTerm {
 			// term did not match
 			debug(r, "received", req)
 			debug(r, "rejectAppendEntries", "term mismatch", req.prevLogTerm, prevLogTerm)
-			return resp
+			return prevTermMismatch, nil
 		}
 
 		// valid req: can we commit req.prevLogIndex ?
@@ -148,7 +153,11 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp 
 		}
 		if ne.index <= r.lastLogIndex {
 			me := &entry{}
-			_ = r.storage.getEntry(ne.index, me)
+			err := r.storage.getEntry(ne.index, me)
+			assert(err != errNoEntryFound, "unexpected error: %v", err)
+			if err != nil {
+				return unexpectedErr, err
+			}
 			if me.term == ne.term {
 				continue
 			}
@@ -156,7 +165,10 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp 
 			// new entry conflicts with our entry
 			// delete it and all that follow it
 			debug(r, "log.deleteGTE", ne.index)
-			r.storage.deleteGTE(ne.index, prevTerm)
+			err = r.storage.deleteGTE(ne.index, prevTerm)
+			if err != nil {
+				return unexpectedErr, err
+			}
 			if ne.index <= r.configs.Latest.Index {
 				r.revertConfig()
 			}
@@ -166,7 +178,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp 
 		if ne.typ == entryConfig {
 			var newConfig Config
 			if err := newConfig.decode(ne); err != nil {
-				panic(err)
+				return unexpectedErr, err
 			}
 			r.changeConfig(newConfig)
 		}
@@ -176,15 +188,12 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) *appendEntriesResp 
 			r.applyCommitted(ne)
 		}
 	}
-	resp.lastLogIndex = r.lastLogIndex
 
 	// if no entries
 	if index == req.prevLogIndex {
 		debug(r, "received heartbeat")
 	}
-
-	resp.success = true
-	return resp
+	return success, nil
 }
 
 // if commitIndex > lastApplied: increment lastApplied, apply
@@ -221,20 +230,10 @@ func lastEntry(req *appendEntriesReq) (index, term uint64) {
 	}
 }
 
-func (r *Raft) onInstallSnapRequest(req *installSnapReq) (resp *installSnapResp, readErr error) {
-	debug(r, "received", req)
-
-	resp = &installSnapResp{term: r.term, success: false}
-	defer func() {
-		_, err := io.Copy(ioutil.Discard, req.snapshot)
-		if err != nil {
-			readErr = err
-		}
-	}()
-
+func (r *Raft) onInstallSnapRequest(req *installSnapReq) (rpcResult, error) {
 	// reply false if older term
 	if req.term < r.term {
-		return
+		return staleTerm, nil
 	}
 
 	// if newer term, convert to follower
@@ -249,27 +248,17 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq) (resp *installSnapResp,
 	// store snapshot
 	sink, err := r.snapshots.New(req.lastIndex, req.lastTerm, req.lastConfig)
 	if err != nil {
-		debug(r, "snapshots.New failed", err)
-		// todo: send to trace
-		return
+		return unexpectedErr, err
 	}
-	n, readErr := io.Copy(sink, req.snapshot)
-	if readErr != nil {
-		debug(r, "copy snapshot->sink failed:", readErr)
-		_, _ = sink.Done(readErr)
-		return
-	}
-	if n != req.size {
-		debug(r, "installSnapReq size mismatch", n, req.size)
-		readErr = io.ErrUnexpectedEOF
-		_, _ = sink.Done(readErr)
-		return
+	n, err := io.CopyN(sink, req.snapshot, req.size)
+	req.size -= n
+	if err != nil {
+		_, _ = sink.Done(err)
+		return readErr, err
 	}
 	meta, err := sink.Done(nil)
 	if err != nil {
-		debug(r, "sing.Done failed", err)
-		// todo: send to trace
-		return
+		return unexpectedErr, err
 	}
 
 	discardLog := true
@@ -277,13 +266,13 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq) (resp *installSnapResp,
 	if metaIndexExists {
 		metaTerm, err := r.storage.getEntryTerm(meta.Index)
 		if err != nil {
-			panic(err)
+			return unexpectedErr, err
 		}
 		termsMatched := metaTerm == meta.Term
 		if termsMatched {
 			// delete <=meta.index, but retain following it
 			if err = r.storage.deleteLTE(meta); err != nil {
-				assert(false, err.Error())
+				return unexpectedErr, err
 			}
 			discardLog = false
 		}
@@ -291,23 +280,19 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq) (resp *installSnapResp,
 	if discardLog {
 		count := r.lastLogIndex - r.snapIndex
 		if err = r.storage.log.DeleteFirst(count); err != nil {
-			assert(false, err.Error())
+			return unexpectedErr, err
 		}
 		r.lastLogIndex, r.lastLogTerm = meta.Index, meta.Term
 		r.snapIndex, r.snapTerm = meta.Index, meta.Term
 
 		// reset fsm from this snapshot
 		if err = r.restoreFSMFromSnapshot(); err != nil {
-			if r.trace.Error != nil {
-				r.trace.Error(err)
-			}
-			assert(false, "unexpected error: %v", err) // todo
+			return unexpectedErr, err
 		}
 		// load snapshot config as cluster configuration
 		r.changeConfig(meta.Config)
 		r.commitConfig()
 	}
 
-	resp.success = true
-	return
+	return success, nil
 }

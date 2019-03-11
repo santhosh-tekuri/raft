@@ -208,12 +208,13 @@ func (s *storage) deleteLTE(meta SnapshotMeta) error {
 
 // called by raft.runLoop. no other calls made during this
 // never called with invalid index
-func (s *storage) deleteGTE(index, prevTerm uint64) {
+func (s *storage) deleteGTE(index, prevTerm uint64) error {
 	n := s.lastLogIndex - index + 1
 	if err := s.log.DeleteLast(n); err != nil {
-		panic(opError(err, "Log.DeleteLast(%d)", n))
+		return opError(err, "Log.DeleteLast(%d)", n)
 	}
 	s.lastLogIndex, s.lastLogTerm = index-1, prevTerm
+	return nil
 }
 
 func (s *storage) bootstrap(config Config) error {

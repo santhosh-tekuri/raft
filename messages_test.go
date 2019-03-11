@@ -24,7 +24,8 @@ func TestMessages(t *testing.T) {
 	tests := []message{
 		&entry{index: 3, term: 5, typ: 2, data: []byte("sleep")},
 		&voteReq{term: 5, candidate: "localhost:1234", lastLogIndex: 3, lastLogTerm: 5},
-		&voteResp{term: 5, granted: true},
+		&voteResp{term: 5, result: success},
+		&voteResp{term: 5, result: alreadyVoted},
 		&appendEntriesReq{
 			term: 5, leader: "localhost:5678", prevLogIndex: 3, prevLogTerm: 5,
 			entries: []*entry{
@@ -32,7 +33,7 @@ func TestMessages(t *testing.T) {
 				{index: 4, term: 5, typ: 3, data: []byte("wakeup")},
 			}, ldrCommitIndex: 7,
 		},
-		&appendEntriesResp{term: 5, success: true, lastLogIndex: 9},
+		&appendEntriesResp{term: 5, result: success, lastLogIndex: 9},
 		&installSnapReq{
 			term: 5, leader: "localhost:5678", lastIndex: 3, lastTerm: 5,
 			lastConfig: Config{
@@ -41,7 +42,8 @@ func TestMessages(t *testing.T) {
 			}, size: int64(len(snapshot)),
 			snapshot: ioutil.NopCloser(bytes.NewReader([]byte(snapshot))),
 		},
-		&installSnapResp{term: 5, success: true},
+		&installSnapResp{term: 5, result: success},
+		&installSnapResp{term: 5, result: unexpectedErr},
 	}
 	for _, test := range tests {
 		name := fmt.Sprintf("message(%T)", test)

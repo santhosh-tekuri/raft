@@ -182,8 +182,8 @@ func (f *flr) sendAppEntriesReq(req *appendEntriesReq) error {
 		return err
 	}
 
-	f.sendEntries = resp.success
-	if resp.success {
+	f.sendEntries = resp.result == success
+	if resp.result == success {
 		old := f.matchIndex
 		f.matchIndex, _ = lastEntry(req)
 		f.nextIndex = f.matchIndex + 1
@@ -212,6 +212,7 @@ func (f *flr) sendInstallSnapReq(appReq *appendEntriesReq) error {
 		snapshots: f.storage.snapshots,
 	}
 
+	debug(f, "sending installReq")
 	resp := &installSnapResp{}
 	if err := f.retryRPC(req, resp); err != nil {
 		return err
@@ -221,7 +222,7 @@ func (f *flr) sendInstallSnapReq(appReq *appendEntriesReq) error {
 	// so we should not update sendEntries=true, beacuse if we have
 	// no entries beyond snapshot, we sleep for hbTimeout
 	//f.sendEntries = resp.success // NOTE: dont do this
-	if resp.success {
+	if resp.result == success {
 		f.matchIndex = req.lastIndex
 		f.nextIndex = f.matchIndex + 1
 		debug(f, "matchIndex:", f.matchIndex)
@@ -370,6 +371,7 @@ func (req *installLatestSnapReq) encode(w io.Writer) error {
 	req.lastConfig = meta.Config
 	req.size = meta.Size
 	req.snapshot = snapshot
+	defer snapshot.Close()
 	return req.installSnapReq.encode(w)
 }
 

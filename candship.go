@@ -44,11 +44,8 @@ func (c *candShip) startElection() {
 			// vote for self
 			c.setVotedFor(c.id)
 			c.voteCh <- voteResult{
-				voteResp: &voteResp{
-					term:    c.term,
-					granted: true,
-				},
-				from: c.id,
+				voteResp: &voteResp{c.term, success},
+				from:     c.id,
 			}
 			continue
 		}
@@ -89,7 +86,7 @@ func (c *candShip) onVoteResult(vote voteResult) {
 		return
 	}
 	if vote.from != c.id {
-		debug(c, "<< voteResp", vote.from, vote.granted, vote.term)
+		debug(c, "<< voteResp", vote.from, vote.result, vote.term)
 	}
 
 	// if response contains term T > currentTerm:
@@ -102,7 +99,7 @@ func (c *candShip) onVoteResult(vote voteResult) {
 	}
 
 	// if votes received from majority of servers: become leader
-	if vote.granted {
+	if vote.result == success {
 		c.votesNeeded--
 		if c.votesNeeded == 0 {
 			debug(c, "candidate -> leader")

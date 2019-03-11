@@ -3,7 +3,6 @@ package raft
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 )
 
 type rpcType int
@@ -26,6 +25,20 @@ func (t rpcType) createReq() request {
 		panic(fmt.Errorf("unknown rpcType: %d", t))
 	}
 }
+
+type rpcResult uint8
+
+const (
+	success rpcResult = iota + 1
+	staleTerm
+	alreadyVoted
+	leaderKnown
+	logNotUptodate
+	prevEntryNotFound
+	prevTermMismatch
+	readErr
+	unexpectedErr
+)
 
 type message interface {
 	getTerm() uint64
@@ -166,8 +179,8 @@ func (req *voteReq) encode(w io.Writer) error {
 // ------------------------------------------------------
 
 type voteResp struct {
-	term    uint64 // currentTerm, for candidate to update itself
-	granted bool   // true means candidate received vote
+	term   uint64    // currentTerm, for candidate to update itself
+	result rpcResult // success means vote is granted
 }
 
 func (resp *voteResp) getTerm() uint64 { return resp.term }
@@ -178,8 +191,10 @@ func (resp *voteResp) decode(r io.Reader) error {
 	if resp.term, err = readUint64(r); err != nil {
 		return err
 	}
-	if resp.granted, err = readBool(r); err != nil {
+	if result, err := readUint8(r); err != nil {
 		return err
+	} else {
+		resp.result = rpcResult(result)
 	}
 	return nil
 }
@@ -188,7 +203,7 @@ func (resp *voteResp) encode(w io.Writer) error {
 	if err := writeUint64(w, resp.term); err != nil {
 		return err
 	}
-	if err := writeBool(w, resp.granted); err != nil {
+	if err := writeUint8(w, uint8(resp.result)); err != nil {
 		return err
 	}
 	return nil
@@ -282,7 +297,7 @@ func (req *appendEntriesReq) encode(w io.Writer) error {
 
 type appendEntriesResp struct {
 	term         uint64
-	success      bool
+	result       rpcResult
 	lastLogIndex uint64
 	// todo: what abt additional field NoRetryBackoff
 }
@@ -295,8 +310,10 @@ func (resp *appendEntriesResp) decode(r io.Reader) error {
 	if resp.term, err = readUint64(r); err != nil {
 		return err
 	}
-	if resp.success, err = readBool(r); err != nil {
+	if result, err := readUint8(r); err != nil {
 		return err
+	} else {
+		resp.result = rpcResult(result)
 	}
 	if resp.lastLogIndex, err = readUint64(r); err != nil {
 		return err
@@ -308,7 +325,7 @@ func (resp *appendEntriesResp) encode(w io.Writer) error {
 	if err := writeUint64(w, resp.term); err != nil {
 		return err
 	}
-	if err := writeBool(w, resp.success); err != nil {
+	if err := writeUint8(w, uint8(resp.result)); err != nil {
 		return err
 	}
 	if err := writeUint64(w, resp.lastLogIndex); err != nil {
@@ -326,7 +343,7 @@ type installSnapReq struct {
 	lastTerm   uint64 // term of lastIndex
 	lastConfig Config // last config in the snapshot
 	size       int64  // size of the snapshot
-	snapshot   io.ReadCloser
+	snapshot   io.Reader
 }
 
 func (req *installSnapReq) getTerm() uint64  { return req.term }
@@ -368,7 +385,7 @@ func (req *installSnapReq) decode(r io.Reader) error {
 	} else {
 		req.size = int64(size)
 	}
-	req.snapshot = ioutil.NopCloser(io.LimitReader(r, req.size))
+	req.snapshot = r
 	return nil
 }
 
@@ -394,22 +411,15 @@ func (req *installSnapReq) encode(w io.Writer) error {
 	if err := writeUint64(w, uint64(req.size)); err != nil {
 		return err
 	}
-	n, err := io.Copy(w, req.snapshot)
-	if err != nil {
-		return err
-	}
-	if n != req.size {
-		return io.ErrUnexpectedEOF
-	}
-	_ = req.snapshot.Close()
-	return nil
+	_, err := io.CopyN(w, req.snapshot, req.size)
+	return err
 }
 
 // ------------------------------------------------------
 
 type installSnapResp struct {
-	term    uint64
-	success bool
+	term   uint64
+	result rpcResult
 }
 
 func (resp *installSnapResp) getTerm() uint64 { return resp.term }
@@ -420,8 +430,10 @@ func (resp *installSnapResp) decode(r io.Reader) error {
 	if resp.term, err = readUint64(r); err != nil {
 		return err
 	}
-	if resp.success, err = readBool(r); err != nil {
+	if result, err := readUint8(r); err != nil {
 		return err
+	} else {
+		resp.result = rpcResult(result)
 	}
 	return nil
 }
@@ -430,7 +442,7 @@ func (resp *installSnapResp) encode(w io.Writer) error {
 	if err := writeUint64(w, resp.term); err != nil {
 		return err
 	}
-	if err := writeBool(w, resp.success); err != nil {
+	if err := writeUint8(w, uint8(resp.result)); err != nil {
 		return err
 	}
 	return nil
