@@ -109,6 +109,7 @@ func (l *ldrShip) addFlr(node Node) {
 		rtime:         newRandTime(),
 		status:        flrStatus{id: node.ID},
 		ldrStartIndex: l.startIndex,
+		ldrLastIndex:  l.lastLogIndex,
 		connPool:      l.getConnPool(node.ID),
 		hbTimeout:     l.hbTimeout,
 		storage:       l.storage,

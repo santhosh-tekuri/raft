@@ -50,7 +50,6 @@ func (f *flr) replicate(req *appendEntriesReq) {
 	}()
 
 	debug(f, "f.start")
-	f.ldrLastIndex = req.prevLogIndex
 	f.matchIndex, f.nextIndex = uint64(0), f.ldrLastIndex+1
 	if f.node.promote() {
 		f.round = new(round)
@@ -411,9 +410,4 @@ type flrStatus struct {
 	noContact time.Time
 
 	rounds uint64 // #rounds completed
-}
-
-// did we have success full contact after time t
-func (rs *flrStatus) contactedAfter(t time.Time) bool {
-	return rs.noContact.IsZero() || rs.noContact.After(t)
 }
