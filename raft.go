@@ -8,7 +8,7 @@ import (
 )
 
 type Raft struct {
-	id     ID
+	id     uint64
 	rtime  randTime
 	timer  *safeTimer
 	server *server
@@ -23,7 +23,7 @@ type Raft struct {
 
 	// volatile state
 	state       State
-	leader      ID
+	leader      uint64
 	commitIndex uint64
 	lastApplied uint64
 
@@ -36,7 +36,7 @@ type Raft struct {
 	// dialing flrs
 	resolver  *resolver
 	dialFn    dialFn // used for mocking in tests
-	connPools map[ID]*connPool
+	connPools map[uint64]*connPool
 
 	ldr        *ldrShip
 	taskCh     chan Task
@@ -47,7 +47,7 @@ type Raft struct {
 	shutdownCh chan struct{}
 }
 
-func New(id ID, opt Options, fsm FSM, storage Storage) (*Raft, error) {
+func New(id uint64, opt Options, fsm FSM, storage Storage) (*Raft, error) {
 	if err := opt.validate(); err != nil {
 		return nil, err
 	}
@@ -71,7 +71,7 @@ func New(id ID, opt Options, fsm FSM, storage Storage) (*Raft, error) {
 		promoteThreshold: opt.PromoteThreshold,
 		trace:            opt.Trace,
 		dialFn:           net.DialTimeout,
-		connPools:        make(map[ID]*connPool),
+		connPools:        make(map[uint64]*connPool),
 		taskCh:           make(chan Task),
 		newEntryCh:       make(chan NewEntry),
 		shutdownCh:       make(chan struct{}),
@@ -79,7 +79,7 @@ func New(id ID, opt Options, fsm FSM, storage Storage) (*Raft, error) {
 
 	r.resolver = &resolver{
 		delegate: opt.Resolver,
-		addrs:    make(map[ID]string),
+		addrs:    make(map[uint64]string),
 		trace:    &r.trace,
 	}
 	r.resolver.update(store.configs.Latest)
@@ -130,7 +130,7 @@ func (r *Raft) stateLoop() {
 		l = &ldrShip{
 			Raft:       r,
 			newEntries: list.New(),
-			flrs:       make(map[ID]*flr),
+			flrs:       make(map[uint64]*flr),
 		}
 	)
 	r.ldr = l
@@ -241,7 +241,7 @@ func (r *Raft) isClosed() bool {
 
 // misc --------------------------------------------------------
 
-func (r *Raft) ID() ID {
+func (r *Raft) ID() uint64 {
 	return r.id
 }
 
@@ -257,7 +257,7 @@ func (r *Raft) addr() string {
 }
 
 func (r *Raft) leaderAddr() string {
-	if r.leader == "" {
+	if r.leader == 0 {
 		return ""
 	}
 	if ldr, ok := r.configs.Latest.Nodes[r.leader]; ok {

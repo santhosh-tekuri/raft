@@ -2,6 +2,9 @@ package raft
 
 // todo:
 //
+// * add encode/decode to Node
+// * add writeUint64s
+// * export round
 // * add OpError, use for storage/fsm/repl failures
 // * rpc.resp: add error field. opError/rejectError/others(network etc)
 // * trace: add onOpError

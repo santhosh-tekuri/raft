@@ -33,10 +33,10 @@ var (
 // complete a request or node lost its leadership before
 // completing the request.
 type NotLeaderError struct {
-	// Leader is address of leader.
+	// LeaderAddr is address of leader.
 	//
 	// It is empty string, if this node does not know current leader.
-	Leader string
+	LeaderAddr string
 
 	// Lost is true, if the node lost its leadership before
 	// completing the request.
@@ -45,8 +45,8 @@ type NotLeaderError struct {
 
 func (e NotLeaderError) Error() string {
 	var contact string
-	if e.Leader != "" {
-		contact = ", contact " + e.Leader
+	if e.LeaderAddr != "" {
+		contact = ", contact " + e.LeaderAddr
 	}
 	if e.Lost {
 		return "raft: Lost leadership" + contact

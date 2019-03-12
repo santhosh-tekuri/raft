@@ -58,8 +58,12 @@ func TestMain(m *testing.M) {
 
 // ---------------------------------------------
 
-func id2Addr(id ID) string {
-	return string(id) + ":8888"
+func id2Host(id uint64) string {
+	return fmt.Sprintf("M%d", id)
+}
+
+func id2Addr(id uint64) string {
+	return id2Host(id) + ":8888"
 }
 
 func (c *cluster) inmemStorage(r *Raft) *inmemStorage {
@@ -94,8 +98,8 @@ func newCluster(t *testing.T) *cluster {
 		checkLeak:        leaktest.Check(t),
 		testTimeout:      testTimeout,
 		network:          fnet.New(),
-		rr:               make(map[string]*Raft),
-		storage:          make(map[string]Storage),
+		rr:               make(map[uint64]*Raft),
+		storage:          make(map[uint64]Storage),
 		heartbeatTimeout: heartbeatTimeout,
 		longTimeout:      5 * time.Second,
 		commitTimeout:    5 * time.Millisecond,
@@ -114,8 +118,8 @@ type cluster struct {
 	*testing.T
 	checkLeak        func()
 	testTimeout      *time.Timer
-	rr               map[string]*Raft
-	storage          map[string]Storage
+	rr               map[uint64]*Raft
+	storage          map[uint64]Storage
 	network          *fnet.Network
 	heartbeatTimeout time.Duration
 	longTimeout      time.Duration
@@ -149,15 +153,15 @@ loop:
 	return members
 }
 
-func (c *cluster) launch(n int, bootstrap bool) map[ID]*Raft {
+func (c *cluster) launch(n int, bootstrap bool) map[uint64]*Raft {
 	c.Helper()
-	nodes := make(map[ID]Node, n)
+	nodes := make(map[uint64]Node, n)
 	for i := 1; i <= n; i++ {
-		id := ID("M" + strconv.Itoa(i+len(c.rr)))
+		id := uint64(i + len(c.rr))
 		nodes[id] = Node{ID: id, Addr: id2Addr(id), Voter: true}
 	}
 
-	launched := make(map[ID]*Raft)
+	launched := make(map[uint64]*Raft)
 	for _, node := range nodes {
 		s := new(inmemStorage)
 		storage := Storage{Vars: s, Log: s, Snapshots: s}
@@ -172,11 +176,11 @@ func (c *cluster) launch(n int, bootstrap bool) map[ID]*Raft {
 			c.Fatal(err)
 		}
 		launched[r.ID()] = r
-		c.rr[string(node.ID)] = r
-		c.storage[string(node.ID)] = storage
+		c.rr[node.ID] = r
+		c.storage[node.ID] = storage
 
 		// switch to fake transport
-		host := c.network.Host(string(r.ID()))
+		host := c.network.Host(id2Host(r.ID()))
 		r.dialFn = host.DialTimeout
 
 		l, err := host.Listen("tcp", node.Addr)
@@ -223,20 +227,20 @@ func (c *cluster) restart(r *Raft) *Raft {
 	Debug(r.ID(), "<< shutdown()")
 
 	newFSM := &fsmMock{id: r.ID(), changed: c.events.onFMSChanged}
-	storage := c.storage[string(r.ID())]
+	storage := c.storage[r.ID()]
 	newr, err := New(r.ID(), c.opt, newFSM, storage)
 	if err != nil {
 		c.Fatal(err)
 	}
 
-	host := c.network.Host(string(r.ID()))
+	host := c.network.Host(id2Host(r.ID()))
 	newr.dialFn = host.DialTimeout
 
 	l, err := host.Listen("tcp", id2Addr(r.ID()))
 	if err != nil {
 		c.Fatal(err)
 	}
-	c.rr[string(r.ID())] = newr
+	c.rr[r.ID()] = newr
 	Debug("<<----------------------------------restarting", r.ID())
 	go newr.Serve(l)
 	return newr
@@ -304,7 +308,7 @@ func (c *cluster) waitForHealthy() *Raft {
 	return ldr
 }
 
-func (c *cluster) ensureLeader(leader ID) {
+func (c *cluster) ensureLeader(leader uint64) {
 	c.Helper()
 	for _, r := range c.rr {
 		if got := r.Info().Leader(); got != leader {
@@ -479,7 +483,7 @@ func (c *cluster) takeSnapshot(r *Raft, threshold uint64, want error) {
 }
 
 func (c *cluster) disconnect(r *Raft) {
-	host := string(r.ID())
+	host := id2Host(r.ID())
 	Debug("-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<- disconnecting", host)
 	c.network.SetFirewall(fnet.Split([]string{host}, fnet.AllowAll))
 }
@@ -514,12 +518,12 @@ func waitTask(r *Raft, t Task, timeout time.Duration) (interface{}, error) {
 	}
 }
 
-func waitBootstrap(r *Raft, nodes map[ID]Node, timeout time.Duration) error {
+func waitBootstrap(r *Raft, nodes map[uint64]Node, timeout time.Duration) error {
 	_, err := waitTask(r, Bootstrap(nodes), timeout)
 	return err
 }
 
-func addNonVoter(ldr *Raft, id ID, addr string, promote bool) Task {
+func addNonVoter(ldr *Raft, id uint64, addr string, promote bool) Task {
 	newConf := ldr.Info().Configs().Latest
 	newConf.Nodes[id] = Node{ID: id, Addr: addr, Promote: promote}
 	t := ChangeConfig(newConf)
@@ -527,7 +531,7 @@ func addNonVoter(ldr *Raft, id ID, addr string, promote bool) Task {
 	return t
 }
 
-func waitAddNonVoter(ldr *Raft, id ID, addr string, promote bool) error {
+func waitAddNonVoter(ldr *Raft, id uint64, addr string, promote bool) error {
 	newConf := ldr.Info().Configs().Latest
 	newConf.Nodes[id] = Node{ID: id, Addr: addr, Promote: promote}
 	t := ChangeConfig(newConf)
@@ -598,13 +602,13 @@ const (
 )
 
 type event struct {
-	src ID
+	src uint64
 	typ eventType
 
 	fsmLen         uint64
 	state          State
 	configs        Configs
-	target         ID
+	target         uint64
 	since          time.Time
 	msgType        string
 	round          uint64
@@ -707,7 +711,7 @@ func (ee *events) sendEvent(e event) {
 	}
 }
 
-func (ee *events) onFMSChanged(id ID, len uint64) {
+func (ee *events) onFMSChanged(id uint64, len uint64) {
 	ee.sendEvent(event{
 		src:    id,
 		typ:    fsmChanged,
@@ -764,7 +768,7 @@ func (ee *events) trace() (trace Trace) {
 		})
 	}
 
-	trace.Unreachable = func(info Info, id ID, since time.Time) {
+	trace.Unreachable = func(info Info, id uint64, since time.Time) {
 		ee.sendEvent(event{
 			src:    info.ID(),
 			typ:    unreachable,
@@ -773,7 +777,7 @@ func (ee *events) trace() (trace Trace) {
 		})
 	}
 
-	trace.RoundCompleted = func(info Info, id ID, round uint64, d time.Duration, lastIndex uint64) {
+	trace.RoundCompleted = func(info Info, id, round, lastIndex uint64, d time.Duration) {
 		ee.sendEvent(event{
 			src:            info.ID(),
 			typ:            roundFinished,
@@ -784,7 +788,7 @@ func (ee *events) trace() (trace Trace) {
 		})
 	}
 
-	trace.Promoting = func(info Info, id ID, rounds uint64) {
+	trace.Promoting = func(info Info, id, rounds uint64) {
 		ee.sendEvent(event{
 			src:    info.ID(),
 			typ:    promoting,
@@ -793,9 +797,9 @@ func (ee *events) trace() (trace Trace) {
 		})
 	}
 
-	trace.sending = func(from, to ID, state State, msg message) {
+	trace.sending = func(from, to uint64, state State, msg message) {
 		if _, ok := msg.(request); ok && state != Leader {
-			str := fmt.Sprintf("%s %d %s |", from, msg.getTerm(), string(state))
+			str := fmt.Sprintf("M%d %d %s |", from, msg.getTerm(), string(state))
 			Debug(str, to, ">>>", msg)
 		}
 		ee.sendEvent(event{
@@ -806,9 +810,9 @@ func (ee *events) trace() (trace Trace) {
 		})
 	}
 
-	trace.received = func(by, from ID, state State, term uint64, msg message) {
+	trace.received = func(by, from uint64, state State, term uint64, msg message) {
 		if state != Leader {
-			str := fmt.Sprintf("%s %d %s |", by, term, string(state))
+			str := fmt.Sprintf("M%d %d %s |", by, term, string(state))
 			if _, ok := msg.(request); ok {
 				Debug(str, "<<<", msg)
 			} else {
@@ -831,10 +835,10 @@ var errNoCommands = errors.New("no commands")
 var errNoCommandAt = errors.New("no command at index")
 
 type fsmMock struct {
-	id      ID
+	id      uint64
 	mu      sync.RWMutex
 	cmds    []string
-	changed func(id ID, len uint64)
+	changed func(id uint64, len uint64)
 }
 
 var _ FSM = (*fsmMock)(nil)
@@ -942,7 +946,7 @@ var (
 type inmemStorage struct {
 	muStable      sync.RWMutex
 	term          uint64
-	vote          string
+	vote          uint64
 	confCommitted uint64
 	confLatest    uint64
 
@@ -953,13 +957,13 @@ type inmemStorage struct {
 	snapshot *bytes.Buffer
 }
 
-func (s *inmemStorage) GetVote() (term uint64, vote string, err error) {
+func (s *inmemStorage) GetVote() (term, vote uint64, err error) {
 	s.muStable.RLock()
 	defer s.muStable.RUnlock()
 	return s.term, s.vote, nil
 }
 
-func (s *inmemStorage) SetVote(term uint64, vote string) error {
+func (s *inmemStorage) SetVote(term, vote uint64) error {
 	s.muStable.Lock()
 	defer s.muStable.Unlock()
 	s.term, s.vote = term, vote

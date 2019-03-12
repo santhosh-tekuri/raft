@@ -35,7 +35,7 @@ func test_promote_newNode_singleRound(t *testing.T) {
 	defer c.unregister(promoting)
 
 	// add 2 new nodes with promote=true
-	for _, id := range []ID{"M4", "M5"} {
+	for _, id := range []uint64{4, 5} {
 		// launch new raft
 		nr := c.launch(1, false)[id]
 
@@ -48,10 +48,10 @@ func test_promote_newNode_singleRound(t *testing.T) {
 			t.Fatalf("waitForPromoting: %v", err)
 		}
 		if e.target != id {
-			t.Fatalf("promoted: got %s, want %s", e.target, id)
+			t.Fatalf("promoted: got M%d, want M%d", e.target, id)
 		}
 		if e.round != 1 {
-			t.Fatalf("%s round: got %d, want %d", id, e.round, 1)
+			t.Fatalf("M%d round: got %d, want %d", id, e.round, 1)
 		}
 
 		// wait for config commit, with new raft as voter
@@ -64,7 +64,7 @@ func test_promote_newNode_singleRound(t *testing.T) {
 		// check that new node, knows that it is voter
 		n, ok := nr.Info().Configs().Committed.Nodes[id]
 		if !ok || !n.Voter {
-			t.Fatalf("%s must have become voter", id)
+			t.Fatalf("M%d must have become voter", id)
 		}
 	}
 
@@ -97,7 +97,7 @@ func test_promote_newNode_uptodateButConfigChangeInProgress(t *testing.T) {
 	defer c.unregister(roundCompleted)
 	promoting := c.registerFor(promoting, ldr)
 	defer c.unregister(promoting)
-	task := addNonVoter(ldr, "M3", id2Addr("M3"), true)
+	task := addNonVoter(ldr, 3, id2Addr(3), true)
 	select {
 	case <-task.Done():
 		t.Fatalf("should not be done: %v", task.Err())
@@ -105,7 +105,7 @@ func test_promote_newNode_uptodateButConfigChangeInProgress(t *testing.T) {
 	}
 
 	// launch m3
-	m3 := c.launch(1, false)["M3"]
+	m3 := c.launch(1, false)[3]
 
 	// wait until m4 ready for promotion
 	e, err := roundCompleted.waitForEvent(c.longTimeout)
@@ -113,7 +113,7 @@ func test_promote_newNode_uptodateButConfigChangeInProgress(t *testing.T) {
 		t.Fatalf("waitForRoundComplete: %v", err)
 	}
 	if e.target != m3.id {
-		t.Fatalf("roundCompleted: got %s, want %s", e.target, m3.id)
+		t.Fatalf("roundCompleted: got M%d, want M%d", e.target, m3.id)
 	}
 
 	// sleep a sec, to ensure that leader does not promote m3
@@ -139,13 +139,13 @@ func test_promote_newNode_uptodateButConfigChangeInProgress(t *testing.T) {
 		t.Fatalf("waitForPromoting: %v", err)
 	}
 	if e.src != ldr.id {
-		t.Fatalf("promoted.src: got %s, want %s", e.src, ldr.id)
+		t.Fatalf("promoted.src: got M%d, want M%d", e.src, ldr.id)
 	}
 	if e.target != m3.id {
-		t.Fatalf("promoted.target: got %s, want %s", e.target, m3.id)
+		t.Fatalf("promoted.target: got M%d, want M%d", e.target, m3.id)
 	}
 	if e.round != 1 {
-		t.Fatalf("%s round: got %d, want %d", m3.id, e.round, 1)
+		t.Fatalf("M%d round: got %d, want %d", m3.id, e.round, 1)
 	}
 
 	// wait for config commit, with m3 as voter

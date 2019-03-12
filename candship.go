@@ -107,6 +107,6 @@ func (c *candShip) onVoteResult(v voteResult) {
 
 type voteResult struct {
 	*voteResp
-	from ID
+	from uint64
 	err  error
 }

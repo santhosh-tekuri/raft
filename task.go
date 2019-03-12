@@ -92,48 +92,48 @@ func BarrierEntry() NewEntry {
 
 type bootstrap struct {
 	*task
-	nodes map[ID]Node
+	nodes map[uint64]Node
 }
 
-func Bootstrap(nodes map[ID]Node) Task {
+func Bootstrap(nodes map[uint64]Node) Task {
 	return bootstrap{task: newTask(), nodes: nodes}
 }
 
 // ------------------------------------------------------------------------
 
 type FlrStatus struct {
-	ID          ID        `json:"-"`
+	ID          uint64    `json:"-"`
 	MatchIndex  uint64    `json:"matchIndexes"`
 	Unreachable time.Time `json:"unreachable,omitempty"`
 	Rounds      uint64    `json:"rounds,omitempty"`
 }
 
 type json struct {
-	ID           ID               `json:"id"`
-	Addr         string           `json:"addr"`
-	Term         uint64           `json:"term"`
-	State        State            `json:"state"`
-	Leader       ID               `json:"leader,omitempty"`
-	LastLogIndex uint64           `json:"lastLogIndex"`
-	LastLogTerm  uint64           `json:"lastLogTerm"`
-	Committed    uint64           `json:"committed"`
-	LastApplied  uint64           `json:"lastApplied"`
-	Configs      Configs          `json:"configs"`
-	Followers    map[ID]FlrStatus `json:"followers,omitempty"`
+	ID           uint64               `json:"id"`
+	Addr         string               `json:"addr"`
+	Term         uint64               `json:"term"`
+	State        State                `json:"state"`
+	Leader       uint64               `json:"leader,omitempty"`
+	LastLogIndex uint64               `json:"lastLogIndex"`
+	LastLogTerm  uint64               `json:"lastLogTerm"`
+	Committed    uint64               `json:"committed"`
+	LastApplied  uint64               `json:"lastApplied"`
+	Configs      Configs              `json:"configs"`
+	Followers    map[uint64]FlrStatus `json:"followers,omitempty"`
 }
 
 type Info interface {
-	ID() ID
+	ID() uint64
 	Addr() string
 	Term() uint64
 	State() State
-	Leader() ID
+	Leader() uint64
 	LastLogIndex() uint64
 	LastLogTerm() uint64
 	Committed() uint64
 	LastApplied() uint64
 	Configs() Configs
-	Followers() map[ID]FlrStatus
+	Followers() map[uint64]FlrStatus
 	Trace() *Trace
 	JSON() interface{}
 }
@@ -142,11 +142,11 @@ type liveInfo struct {
 	r *Raft
 }
 
-func (info liveInfo) ID() ID               { return info.r.id }
+func (info liveInfo) ID() uint64           { return info.r.id }
 func (info liveInfo) Addr() string         { return info.r.addr() }
 func (info liveInfo) Term() uint64         { return info.r.term }
 func (info liveInfo) State() State         { return info.r.state }
-func (info liveInfo) Leader() ID           { return info.r.leader }
+func (info liveInfo) Leader() uint64       { return info.r.leader }
 func (info liveInfo) LastLogIndex() uint64 { return info.r.lastLogIndex }
 func (info liveInfo) LastLogTerm() uint64  { return info.r.lastLogTerm }
 func (info liveInfo) Committed() uint64    { return info.r.commitIndex }
@@ -154,11 +154,11 @@ func (info liveInfo) LastApplied() uint64  { return info.r.lastApplied }
 func (info liveInfo) Configs() Configs     { return info.r.configs.clone() }
 func (info liveInfo) Trace() *Trace        { return &info.r.trace }
 
-func (info liveInfo) Followers() map[ID]FlrStatus {
+func (info liveInfo) Followers() map[uint64]FlrStatus {
 	if info.r.state != Leader {
 		return nil
 	}
-	flrs := make(map[ID]FlrStatus)
+	flrs := make(map[uint64]FlrStatus)
 	for id, f := range info.r.ldr.flrs {
 		flrs[id] = FlrStatus{
 			MatchIndex:  f.status.matchIndex,
@@ -189,19 +189,19 @@ type cachedInfo struct {
 	json json
 }
 
-func (info cachedInfo) ID() ID                      { return info.json.ID }
-func (info cachedInfo) Addr() string                { return info.json.Addr }
-func (info cachedInfo) Term() uint64                { return info.json.Term }
-func (info cachedInfo) State() State                { return info.json.State }
-func (info cachedInfo) Leader() ID                  { return info.json.Leader }
-func (info cachedInfo) LastLogIndex() uint64        { return info.json.LastLogIndex }
-func (info cachedInfo) LastLogTerm() uint64         { return info.json.LastLogTerm }
-func (info cachedInfo) Committed() uint64           { return info.json.Committed }
-func (info cachedInfo) LastApplied() uint64         { return info.json.LastApplied }
-func (info cachedInfo) Configs() Configs            { return info.json.Configs }
-func (info cachedInfo) Followers() map[ID]FlrStatus { return info.json.Followers }
-func (info cachedInfo) Trace() *Trace               { return nil }
-func (info cachedInfo) JSON() interface{}           { return info.json }
+func (info cachedInfo) ID() uint64                      { return info.json.ID }
+func (info cachedInfo) Addr() string                    { return info.json.Addr }
+func (info cachedInfo) Term() uint64                    { return info.json.Term }
+func (info cachedInfo) State() State                    { return info.json.State }
+func (info cachedInfo) Leader() uint64                  { return info.json.Leader }
+func (info cachedInfo) LastLogIndex() uint64            { return info.json.LastLogIndex }
+func (info cachedInfo) LastLogTerm() uint64             { return info.json.LastLogTerm }
+func (info cachedInfo) Committed() uint64               { return info.json.Committed }
+func (info cachedInfo) LastApplied() uint64             { return info.json.LastApplied }
+func (info cachedInfo) Configs() Configs                { return info.json.Configs }
+func (info cachedInfo) Followers() map[uint64]FlrStatus { return info.json.Followers }
+func (info cachedInfo) Trace() *Trace                   { return nil }
+func (info cachedInfo) JSON() interface{}               { return info.json }
 
 type inspect struct {
 	*task
@@ -230,9 +230,9 @@ func (r *Raft) Info() Info {
 
 // ------------------------------------------------------------------------
 
-func (c *Config) AddNonVoter(id ID, addr string, promote bool) error {
+func (c *Config) AddNonVoter(id uint64, addr string, promote bool) error {
 	if _, ok := c.Nodes[id]; ok {
-		return fmt.Errorf("raft: node %s already exists", id)
+		return fmt.Errorf("raft: node %d already exists", id)
 	}
 	n := Node{ID: id, Addr: addr, Promote: promote}
 	if err := n.validate(); err != nil {
@@ -242,18 +242,18 @@ func (c *Config) AddNonVoter(id ID, addr string, promote bool) error {
 	return nil
 }
 
-func (c *Config) Remove(id ID) error {
+func (c *Config) Remove(id uint64) error {
 	if _, ok := c.Nodes[id]; !ok {
-		return fmt.Errorf("raft: node %s not found", id)
+		return fmt.Errorf("raft: node %d not found", id)
 	}
 	delete(c.Nodes, id)
 	return nil
 }
 
-func (c *Config) ChangeAddr(id ID, addr string) error {
+func (c *Config) ChangeAddr(id uint64, addr string) error {
 	n, ok := c.Nodes[id]
 	if !ok {
-		return fmt.Errorf("raft: node %s not found", id)
+		return fmt.Errorf("raft: node %d not found", id)
 	}
 	n.Addr = addr
 	if err := n.validate(); err != nil {
@@ -261,16 +261,16 @@ func (c *Config) ChangeAddr(id ID, addr string) error {
 	}
 	cn, ok := c.nodeForAddr(addr)
 	if ok && cn.ID != id {
-		return fmt.Errorf("raft: address %s is used by node %s", addr, cn.ID)
+		return fmt.Errorf("raft: address %s is used by node %d", addr, cn.ID)
 	}
 	c.Nodes[id] = n
 	return nil
 }
 
-func (c *Config) Promote(id ID) error {
+func (c *Config) Promote(id uint64) error {
 	n, ok := c.Nodes[id]
 	if !ok {
-		return fmt.Errorf("raft: node %s not found", id)
+		return fmt.Errorf("raft: node %d not found", id)
 	}
 	if n.Voter {
 		return errors.New("raft: only nonvoters can be promoted")
@@ -280,10 +280,10 @@ func (c *Config) Promote(id ID) error {
 	return nil
 }
 
-func (c *Config) Demote(id ID) error {
+func (c *Config) Demote(id uint64) error {
 	n, ok := c.Nodes[id]
 	if !ok {
-		return fmt.Errorf("raft: node %s not found", id)
+		return fmt.Errorf("raft: node %d not found", id)
 	}
 	n.Voter = false
 	n.Promote = false

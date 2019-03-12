@@ -399,7 +399,7 @@ type roundCompleted struct {
 }
 
 type flrStatus struct {
-	id ID
+	id uint64
 
 	// owned exclusively by leader goroutine
 	// used to compute majorityMatchIndex

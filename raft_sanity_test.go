@@ -51,7 +51,7 @@ func test_bootstrap(t *testing.T) {
 
 	// all nodes should must abort election and only once
 	timeout := time.After(c.longTimeout)
-	aborted := make(map[ID]bool)
+	aborted := make(map[uint64]bool)
 	for i := 0; i < 3; i++ {
 		select {
 		case e := <-electionAborted.ch:
@@ -65,8 +65,8 @@ func test_bootstrap(t *testing.T) {
 	}
 
 	// bootstrap one of the nodes
-	ldr := c.rr["M1"]
-	nodes := make(map[ID]Node, 3)
+	ldr := c.rr[1]
+	nodes := make(map[uint64]Node, 3)
 	for _, r := range c.rr {
 		nodes[r.ID()] = Node{ID: r.ID(), Addr: id2Addr(r.ID()), Voter: true}
 	}
@@ -86,10 +86,10 @@ func test_bootstrap(t *testing.T) {
 	c.ensureFSMSame([]string{"hello"})
 
 	// ensure bootstrap fails if already bootstrapped
-	if err := waitBootstrap(c.rr["M1"], nodes, c.longTimeout); err != ErrAlreadyBootstrapped {
+	if err := waitBootstrap(c.rr[1], nodes, c.longTimeout); err != ErrAlreadyBootstrapped {
 		t.Fatalf("got %v, want %v", err, ErrAlreadyBootstrapped)
 	}
-	if err := waitBootstrap(c.rr["M2"], nodes, c.longTimeout); err != ErrAlreadyBootstrapped {
+	if err := waitBootstrap(c.rr[2], nodes, c.longTimeout); err != ErrAlreadyBootstrapped {
 		t.Fatalf("got %v, want %v", err, ErrAlreadyBootstrapped)
 	}
 
@@ -190,8 +190,8 @@ func test_leaderFail(t *testing.T) {
 	_, err = waitUpdate(ldr, "reject", c.heartbeatTimeout)
 	if err, ok := err.(NotLeaderError); !ok {
 		t.Fatalf("got %v, want NotLeaderError", err)
-	} else if err.Leader != "" {
-		t.Fatalf("got %s, want ", err.Leader)
+	} else if err.LeaderAddr != "" {
+		t.Fatalf("got %s, want ", err.LeaderAddr)
 	}
 
 	// apply should work on new leader
@@ -255,5 +255,5 @@ func test_leaderLeaseExpire(t *testing.T) {
 
 	// Ensure both have cleared their leader
 	c.waitForState(followers[0], 2*c.heartbeatTimeout, Candidate)
-	c.ensureLeader(ID(""))
+	c.ensureLeader(0)
 }

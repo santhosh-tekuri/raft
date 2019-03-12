@@ -24,7 +24,7 @@ type ldrShip struct {
 	newEntries *list.List
 
 	// holds running replications, key is addr
-	flrs map[ID]*flr
+	flrs map[uint64]*flr
 	wg   sync.WaitGroup
 
 	// to receive updates from replicators
@@ -61,7 +61,7 @@ func (l *ldrShip) release() {
 		delete(l.flrs, id)
 	}
 	if l.leader == l.id {
-		l.leader = ""
+		l.leader = 0
 	}
 
 	// respond to any pending user entries
@@ -119,7 +119,7 @@ func (l *ldrShip) addFlr(node Node) {
 		toLeaderCh:    l.fromReplsCh,
 		fromLeaderCh:  make(chan leaderUpdate, 1),
 		trace:         &l.trace,
-		str:           fmt.Sprintf("%v %s", l, string(node.ID)),
+		str:           fmt.Sprintf("%v M%d", l, node.ID),
 	}
 	l.flrs[node.ID] = f
 
@@ -163,7 +163,7 @@ func (l *ldrShip) checkReplUpdates(u interface{}) {
 			debug(l, "leader -> follower")
 			l.state = Follower
 			l.setTerm(u.val)
-			l.leader = ""
+			l.leader = 0
 			return
 		case roundCompleted:
 			round := u.round
@@ -171,7 +171,7 @@ func (l *ldrShip) checkReplUpdates(u interface{}) {
 				debug(l, "roundCompleted", round)
 				u.status.rounds++
 				if l.trace.RoundCompleted != nil {
-					l.trace.RoundCompleted(l.liveInfo(), u.status.id, round.id, round.duration(), round.lastIndex)
+					l.trace.RoundCompleted(l.liveInfo(), u.status.id, round.id, round.lastIndex, round.duration())
 				}
 			} else {
 				debug(l, u.status.id, "is reminding promotion:", round)
@@ -246,7 +246,7 @@ func (l *ldrShip) checkLeaderLease() {
 	if reachable < voters/2+1 {
 		debug(l, "leader -> follower quorumUnreachable")
 		l.state = Follower
-		l.leader = ""
+		l.leader = 0
 		return
 	}
 

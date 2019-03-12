@@ -15,19 +15,19 @@ func TestMessages(t *testing.T) {
 		encode(w io.Writer) error
 	}
 
-	nodes := make(map[ID]Node)
-	nodes["M1"] = Node{ID: "M1", Addr: "localhost:7000", Voter: true}
-	nodes["M2"] = Node{ID: "M2", Addr: "localhost:8000", Voter: false}
-	nodes["M3"] = Node{ID: "M3", Addr: "localhost:9000", Promote: true}
+	nodes := make(map[uint64]Node)
+	nodes[1] = Node{ID: 1, Addr: "localhost:7000", Voter: true}
+	nodes[2] = Node{ID: 2, Addr: "localhost:8000", Voter: false}
+	nodes[3] = Node{ID: 3, Addr: "localhost:9000", Promote: true}
 
 	snapshot := "helloworld"
 	tests := []message{
 		&entry{index: 3, term: 5, typ: 2, data: []byte("sleep")},
-		&voteReq{term: 5, candidate: "localhost:1234", lastLogIndex: 3, lastLogTerm: 5},
+		&voteReq{term: 5, candidate: 2, lastLogIndex: 3, lastLogTerm: 5},
 		&voteResp{term: 5, result: success},
 		&voteResp{term: 5, result: alreadyVoted},
 		&appendEntriesReq{
-			term: 5, leader: "localhost:5678", prevLogIndex: 3, prevLogTerm: 5,
+			term: 5, leader: 2, prevLogIndex: 3, prevLogTerm: 5,
 			entries: []*entry{
 				{index: 3, term: 5, typ: 2, data: []byte("sleep")},
 				{index: 4, term: 5, typ: 3, data: []byte("wakeup")},
@@ -35,7 +35,7 @@ func TestMessages(t *testing.T) {
 		},
 		&appendEntriesResp{term: 5, result: success, lastLogIndex: 9},
 		&installSnapReq{
-			term: 5, leader: "localhost:5678", lastIndex: 3, lastTerm: 5,
+			term: 5, leader: 1, lastIndex: 3, lastTerm: 5,
 			lastConfig: Config{
 				Nodes: nodes,
 				Index: 1, Term: 2,

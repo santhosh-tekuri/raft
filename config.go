@@ -8,13 +8,10 @@ import (
 	"strconv"
 )
 
-// ID is a unique string identifying a node for all time.
-type ID string
-
 // Node represents a single node in raft configuration.
 type Node struct {
 	// ID is a unique string identifying this node for all time.
-	ID ID `json:"-"`
+	ID uint64 `json:"-"`
 
 	// Addr is its network address that other nodes can contact.
 	Addr string `json:"addr"`
@@ -39,8 +36,8 @@ func (n Node) promote() bool {
 }
 
 func (n Node) validate() error {
-	if n.ID == "" {
-		return errors.New("empty node id")
+	if n.ID == 0 {
+		return errors.New("node id is zero")
 	}
 	if n.Addr == "" {
 		return errors.New("empty address")
@@ -62,9 +59,9 @@ func (n Node) validate() error {
 // -------------------------------------------------
 
 type Config struct {
-	Nodes map[ID]Node `json:"nodes"`
-	Index uint64      `json:"index"`
-	Term  uint64      `json:"term"`
+	Nodes map[uint64]Node `json:"nodes"`
+	Index uint64          `json:"index"`
+	Term  uint64          `json:"term"`
 }
 
 func (c Config) nodeForAddr(addr string) (Node, bool) {
@@ -76,7 +73,7 @@ func (c Config) nodeForAddr(addr string) (Node, bool) {
 	return Node{}, false
 }
 
-func (c Config) isVoter(id ID) bool {
+func (c Config) isVoter(id uint64) bool {
 	node, ok := c.Nodes[id]
 	return ok && node.Voter
 }
@@ -96,7 +93,7 @@ func (c Config) quorum() int {
 }
 
 func (c Config) clone() Config {
-	nodes := make(map[ID]Node)
+	nodes := make(map[uint64]Node)
 	for id, node := range c.Nodes {
 		nodes[id] = node
 	}
@@ -110,7 +107,7 @@ func (c Config) encode() *entry {
 		panic(err)
 	}
 	for _, node := range c.Nodes {
-		if err := writeString(w, string(node.ID)); err != nil {
+		if err := writeUint64(w, node.ID); err != nil {
 			panic(err)
 		}
 		if err := writeString(w, node.Addr); err != nil {
@@ -141,9 +138,9 @@ func (c *Config) decode(e *entry) error {
 	if err != nil {
 		return err
 	}
-	c.Nodes = make(map[ID]Node)
+	c.Nodes = make(map[uint64]Node)
 	for ; size > 0; size-- {
-		id, err := readString(r)
+		id, err := readUint64(r)
 		if err != nil {
 			return err
 		}
@@ -159,7 +156,7 @@ func (c *Config) decode(e *entry) error {
 		if err != nil {
 			return err
 		}
-		c.Nodes[ID(id)] = Node{ID: ID(id), Addr: addr, Voter: voter, Promote: promote}
+		c.Nodes[id] = Node{ID: id, Addr: addr, Voter: voter, Promote: promote}
 	}
 	c.Index, c.Term = e.index, e.term
 	return nil
@@ -172,7 +169,7 @@ func (c Config) validate() error {
 			return err
 		}
 		if id != node.ID {
-			return fmt.Errorf("id mismatch for %s", node.ID)
+			return fmt.Errorf("id mismatch for node %d", node.ID)
 		}
 		if addrs[node.Addr] {
 			return fmt.Errorf("duplicate address %s", node.Addr)
@@ -234,11 +231,11 @@ func (r *Raft) bootstrap(t bootstrap) {
 	}
 	self, ok := config.Nodes[r.id]
 	if !ok {
-		t.reply(fmt.Errorf("raft.bootstrap: invalid config: self %s does not exist", r.id))
+		t.reply(fmt.Errorf("raft.bootstrap: invalid config: self %d does not exist", r.id))
 		return
 	}
 	if !self.Voter {
-		t.reply(fmt.Errorf("raft.bootstrap: invalid config: self %s must be voter", r.id))
+		t.reply(fmt.Errorf("raft.bootstrap: invalid config: self %d must be voter", r.id))
 		return
 	}
 
@@ -271,8 +268,8 @@ func (l *ldrShip) changeConfig(t changeConfig) {
 		return
 	}
 
-	voters := func(c Config) map[ID]bool {
-		m := make(map[ID]bool)
+	voters := func(c Config) map[uint64]bool {
+		m := make(map[uint64]bool)
 		for id, n := range c.Nodes {
 			if n.Voter {
 				m[id] = true
@@ -340,7 +337,7 @@ func (r *Raft) setCommitIndex(index uint64) {
 			// then what is the point of accepting fsm entries from user ????
 			debug(r, "leader -> follower notVoter")
 			r.state = Follower
-			r.leader = ""
+			r.leader = 0
 		}
 		// todo: we can provide option to shutdown
 		//       if it is no longer part of new config

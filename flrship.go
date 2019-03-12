@@ -21,7 +21,7 @@ func (f *flrShip) resetTimer() {
 
 func (f *flrShip) onTimeout() {
 	debug(f, "heartbeatTimeout leader:", f.leader)
-	f.leader = ""
+	f.leader = 0
 
 	if can, reason := f.canStartElection(); !can {
 		debug(f, "electionAborted", reason)

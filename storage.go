@@ -8,8 +8,8 @@ import (
 )
 
 type Vars interface {
-	GetVote() (term uint64, vote string, err error)
-	SetVote(term uint64, vote string) error
+	GetVote() (term, vote uint64, err error)
+	SetVote(term, vote uint64) error
 }
 
 type Log interface {
@@ -50,7 +50,7 @@ type Storage struct {
 type storage struct {
 	vars     Vars
 	term     uint64
-	votedFor ID
+	votedFor uint64
 
 	log          Log
 	lastLogIndex uint64
@@ -76,11 +76,10 @@ func (s *storage) init() error {
 	var err error
 
 	// init vars ---------------------
-	term, vote, err := s.vars.GetVote()
+	s.term, s.votedFor, err = s.vars.GetVote()
 	if err != nil {
 		return opError(err, "Vars.GetVote")
 	}
-	s.term, s.votedFor = term, ID(vote)
 
 	// init snapshots ---------------
 	meta, err := s.snapshots.Meta()
@@ -139,14 +138,14 @@ func (s *storage) init() error {
 }
 
 func (s *storage) setTerm(term uint64) {
-	if err := s.vars.SetVote(s.term, ""); err != nil {
+	if err := s.vars.SetVote(s.term, 0); err != nil {
 		panic(opError(err, "Vars.SetVote(%d, %q)", s.term, ""))
 	}
-	s.term, s.votedFor = term, ""
+	s.term, s.votedFor = term, 0
 }
 
-func (s *storage) setVotedFor(id ID) {
-	if err := s.vars.SetVote(s.term, string(id)); err != nil {
+func (s *storage) setVotedFor(id uint64) {
+	if err := s.vars.SetVote(s.term, id); err != nil {
 		panic(opError(err, "Vars.SetVote(%d, %q)", s.term, string(id)))
 	}
 	s.votedFor = id

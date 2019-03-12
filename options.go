@@ -58,13 +58,13 @@ type Trace struct {
 	ConfigChanged   func(info Info)
 	ConfigCommitted func(info Info)
 	ConfigReverted  func(info Info)
-	RoundCompleted  func(info Info, id ID, round uint64, d time.Duration, lastIndex uint64)
-	Promoting       func(info Info, id ID, rounds uint64)
-	Unreachable     func(info Info, id ID, since time.Time) // todo: can we give err also
+	RoundCompleted  func(info Info, id, round, lastIndex uint64, d time.Duration)
+	Promoting       func(info Info, id, rounds uint64)
+	Unreachable     func(info Info, id uint64, since time.Time) // todo: can we give err also
 	ShuttingDown    func(info Info)
 
-	sending  func(self, to ID, state State, msg message)
-	received func(self, from ID, state State, term uint64, msg message)
+	sending  func(self, to uint64, state State, msg message)
+	received func(self, from uint64, state State, term uint64, msg message)
 }
 
 func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
@@ -92,13 +92,13 @@ func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
 			info("raft: config committed")
 		}
 	}
-	trace.RoundCompleted = func(rinfo Info, id ID, round uint64, d time.Duration, lastIndex uint64) {
+	trace.RoundCompleted = func(rinfo Info, id, round, lastIndex uint64, d time.Duration) {
 		info("raft: nonVoter", id, "completed round", round, "in", d, ", its lastIndex:", lastIndex)
 	}
-	trace.Promoting = func(rinfo Info, id ID, rounds uint64) {
+	trace.Promoting = func(rinfo Info, id, rounds uint64) {
 		info("raft: promoting node", id, "to voter, after", rounds, "rounds")
 	}
-	trace.Unreachable = func(rinfo Info, id ID, since time.Time) {
+	trace.Unreachable = func(rinfo Info, id uint64, since time.Time) {
 		if since.IsZero() {
 			info("raft: node", id, "is reachable now")
 		} else {
@@ -114,5 +114,5 @@ func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
 // ----------------------------------------------
 
 type Resolver interface {
-	LookupID(id ID) (addr string, err error)
+	LookupID(id uint64) (addr string, err error)
 }

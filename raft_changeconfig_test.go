@@ -18,12 +18,12 @@ func test_changeConfig_validations(t *testing.T) {
 	configs := ldr.Info().Configs()
 
 	// adding node with empty id should fail
-	if err := waitAddNonVoter(ldr, "", "localhost:8888", false); err == nil {
+	if err := waitAddNonVoter(ldr, 0, "localhost:8888", false); err == nil {
 		t.Fatal(err)
 	}
 
 	// adding node with empty addr should fail
-	if err := waitAddNonVoter(ldr, "M10", "", false); err == nil {
+	if err := waitAddNonVoter(ldr, 10, "", false); err == nil {
 		t.Fatal(err)
 	}
 
@@ -37,7 +37,7 @@ func test_changeConfig_validations(t *testing.T) {
 
 	// adding node with existing addr should fail
 	for _, n := range ldr.Info().Configs().Latest.Nodes {
-		if err := waitAddNonVoter(ldr, "M12", n.Addr, false); err == nil {
+		if err := waitAddNonVoter(ldr, 12, n.Addr, false); err == nil {
 			t.Fatal(err)
 		}
 	}
@@ -56,7 +56,7 @@ func test_changeConfig_committedByAll(t *testing.T) {
 	defer c.shutdown()
 
 	// launch new raft instance M4, without bootstrap
-	m4 := c.launch(1, false)["M4"]
+	m4 := c.launch(1, false)[4]
 
 	configRelated := c.registerFor(configRelated, c.exclude(m4)...)
 	defer c.unregister(configRelated)
@@ -68,7 +68,7 @@ func test_changeConfig_committedByAll(t *testing.T) {
 	select {
 	case e := <-configRelated.ch:
 		if e.src != ldr.ID() {
-			t.Fatalf("got %s, want %s", e.src, ldr.ID())
+			t.Fatalf("got M%d, want M%d", e.src, ldr.ID())
 		}
 		if e.typ != configChanged {
 			t.Fatalf("got %d, want %d", e.typ, configChanged)
@@ -78,18 +78,18 @@ func test_changeConfig_committedByAll(t *testing.T) {
 	}
 
 	// ensure that followers raised configChange, exactly once
-	set := make(map[ID]bool)
+	set := make(map[uint64]bool)
 	for i := 0; i < 2; i++ {
 		select {
 		case e := <-configRelated.ch:
 			if e.src == ldr.ID() || e.src == m4.ID() {
-				t.Fatalf("got %s", e.src)
+				t.Fatalf("got M%d", e.src)
 			}
 			if e.typ != configChanged {
 				t.Fatalf("got %d, want %d", e.typ, configChanged)
 			}
 			if set[e.src] {
-				t.Fatalf("duplicate configChange from %s", e.src)
+				t.Fatalf("duplicate configChange from M%d", e.src)
 			}
 		default:
 			t.Fatal("expected configChange from follower")
@@ -100,7 +100,7 @@ func test_changeConfig_committedByAll(t *testing.T) {
 	select {
 	case e := <-configRelated.ch:
 		if e.src != ldr.ID() {
-			t.Fatalf("got %s, want %s", e.src, ldr.ID())
+			t.Fatalf("got M%d, want M%d", e.src, ldr.ID())
 		}
 		if e.typ != configCommitted {
 			t.Fatalf("got %d, want %d", e.typ, configCommitted)
@@ -112,18 +112,18 @@ func test_changeConfig_committedByAll(t *testing.T) {
 	// wait and ensure that followers raised configCommitted
 	c.waitCatchup(followers[0])
 	c.waitCatchup(followers[1])
-	set = make(map[ID]bool)
+	set = make(map[uint64]bool)
 	for i := 0; i < 2; i++ {
 		select {
 		case e := <-configRelated.ch:
 			if e.src == ldr.ID() || e.src == m4.ID() {
-				t.Fatalf("got %s", e.src)
+				t.Fatalf("got M%d", e.src)
 			}
 			if e.typ != configCommitted {
 				t.Fatalf("got %d, want %d", e.typ, configCommitted)
 			}
 			if set[e.src] {
-				t.Fatalf("duplicate configCommitted from %s", e.src)
+				t.Fatalf("duplicate configCommitted from M%d", e.src)
 			}
 		default:
 			t.Fatal("expected configCommit from follower")
@@ -135,14 +135,14 @@ func test_changeConfig_committedByAll(t *testing.T) {
 	for _, r := range c.rr {
 		info := r.Info()
 		if !info.Configs().IsCommitted() {
-			t.Fatalf("config is not committed by %s %s", info.ID(), info.State())
+			t.Fatalf("config is not committed by M%d %s", info.ID(), info.State())
 		}
-		m4, ok := info.Configs().Committed.Nodes[ID("M4")]
+		m4, ok := info.Configs().Committed.Nodes[4]
 		if !ok {
-			t.Fatalf("m4 is not present in %s %s", info.ID(), info.State())
+			t.Fatalf("m4 is not present in M%d %s", info.ID(), info.State())
 		}
 		if m4.Voter {
-			t.Fatalf("m4 must be nonvoter in %s %s", info.ID(), info.State())
+			t.Fatalf("m4 must be nonvoter in M%d %s", info.ID(), info.State())
 		}
 	}
 }
@@ -164,7 +164,7 @@ func test_nonvoter_catchesUp_followsLeader(t *testing.T) {
 	c.waitFSMLen(10)
 
 	// launch new raft instance M4, without bootstrap
-	m4 := c.launch(1, false)["M4"]
+	m4 := c.launch(1, false)[4]
 
 	// add M4 as nonvoter, wait for success reply
 	c.ensure(waitAddNonVoter(ldr, m4.ID(), id2Addr(m4.ID()), false))
@@ -183,7 +183,7 @@ func test_nonvoter_reconnects_catchesUp(t *testing.T) {
 	defer c.shutdown()
 
 	// launch new raft instance M4, without bootstrap
-	m4 := c.launch(1, false)["M4"]
+	m4 := c.launch(1, false)[4]
 
 	// add M4 as nonvoter, wait for success reply
 	c.ensure(waitAddNonVoter(ldr, m4.ID(), id2Addr(m4.ID()), false))
@@ -233,7 +233,7 @@ func test_nonvoter_leaderChanged_followsNewLeader(t *testing.T) {
 	defer c.shutdown()
 
 	// launch new raft instance M4, without bootstrap
-	m4 := c.launch(1, false)["M4"]
+	m4 := c.launch(1, false)[4]
 
 	// add M4 as nonvoter, wait for success reply
 	c.ensure(waitAddNonVoter(ldr, m4.ID(), id2Addr(m4.ID()), false))

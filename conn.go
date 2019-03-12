@@ -59,7 +59,7 @@ type resolver struct {
 	delegate Resolver // user given resolver
 	trace    *Trace   // used to trace lookup failures
 	mu       sync.RWMutex
-	addrs    map[ID]string
+	addrs    map[uint64]string
 }
 
 func (r *resolver) update(config Config) {
@@ -70,7 +70,7 @@ func (r *resolver) update(config Config) {
 	}
 }
 
-func (r *resolver) lookupID(id ID) (string, error) {
+func (r *resolver) lookupID(id uint64) (string, error) {
 	var addr string
 	var err error
 
@@ -93,7 +93,7 @@ func (r *resolver) lookupID(id ID) (string, error) {
 // --------------------------------------------------------------------
 
 type connPool struct {
-	id       ID
+	id       uint64
 	resolver *resolver
 	dialFn   dialFn
 	timeout  time.Duration
@@ -134,7 +134,7 @@ func (pool *connPool) returnConn(conn *netConn) {
 
 // -----------------------------------------------------
 
-func (r *Raft) getConnPool(id ID) *connPool {
+func (r *Raft) getConnPool(id uint64) *connPool {
 	pool, ok := r.connPools[id]
 	if !ok {
 		pool = &connPool{

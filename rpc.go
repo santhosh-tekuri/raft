@@ -60,7 +60,7 @@ func (r *Raft) onVoteRequest(req *voteReq) rpcResult {
 	}
 
 	// if we have leader, we only vote for him
-	if r.leader != "" {
+	if r.leader != 0 {
 		if req.candidate == r.leader {
 			return success
 		}
@@ -68,7 +68,7 @@ func (r *Raft) onVoteRequest(req *voteReq) rpcResult {
 	}
 
 	// if we already voted
-	if r.votedFor != "" {
+	if r.votedFor != 0 {
 		if r.votedFor == req.candidate { // same candidate we votedFor
 			return success
 		}

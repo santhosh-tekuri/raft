@@ -26,7 +26,7 @@ func RequestVote(from, to *Raft) (granted bool, err error) {
 	return
 }
 
-func BootstrapStorage(storage Storage, nodes map[ID]Node) error {
+func BootstrapStorage(storage Storage, nodes map[uint64]Node) error {
 	store := newStorage(storage)
 	if err := store.init(); err != nil {
 		return err
