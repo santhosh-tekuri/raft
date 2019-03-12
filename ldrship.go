@@ -159,9 +159,8 @@ func (l *ldrShip) checkReplUpdates(u interface{}) {
 			// if response contains term T > currentTerm:
 			// set currentTerm = T, convert to follower
 			debug(l, "leader -> follower")
-			l.state = Follower
+			l.state, l.leader = Follower, 0
 			l.setTerm(u.val)
-			l.leader = 0
 			return
 		case roundCompleted:
 			round := u.round

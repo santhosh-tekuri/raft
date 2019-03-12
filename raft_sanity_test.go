@@ -154,11 +154,6 @@ func test_tripleNode(t *testing.T) {
 	c.waitFSMLen(1)
 }
 
-func test_leader(t *testing.T) {
-	t.Run("stepDown", test_leader_stepDown)
-	t.Run("quorumWait", test_leader_quorumWait)
-}
-
 func test_leader_stepDown(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()

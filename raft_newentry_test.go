@@ -7,11 +7,6 @@ import (
 	"time"
 )
 
-func test_update(t *testing.T) {
-	t.Run("nonLeader", test_update_nonLeader)
-	t.Run("concurrent", test_update_concurrent)
-}
-
 func test_update_nonLeader(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()

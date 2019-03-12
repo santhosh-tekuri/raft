@@ -4,13 +4,6 @@ import (
 	"testing"
 )
 
-func test_takeSnapshot(t *testing.T) {
-	t.Run("emptyFSM", test_takeSnapshot_emptyFSM)
-	t.Run("thresholdNotReached", test_takeSnapshot_thresholdNotReached)
-	//todo: test ErrSnapshotInProgress
-	t.Run("restartSendUpdates", test_takeSnapshot_restartSendUpdates)
-}
-
 func test_takeSnapshot_emptyFSM(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 1)
 	defer c.shutdown()

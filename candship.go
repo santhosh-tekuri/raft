@@ -99,8 +99,7 @@ func (c *candShip) onVoteResult(v voteResult) {
 		c.votesNeeded--
 		if c.votesNeeded == 0 {
 			debug(c, "candidate -> leader")
-			c.state = Leader
-			c.leader = c.id
+			c.state, c.leader = Leader, c.id
 		}
 	}
 }

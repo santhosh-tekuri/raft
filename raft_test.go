@@ -26,16 +26,51 @@ func TestRaft(t *testing.T) {
 	t.Run("bootstrap", test_bootstrap)
 	t.Run("singleNode", test_singleNode)
 	t.Run("tripleNode", test_tripleNode)
-	t.Run("leader", test_leader)
+	t.Run("leader", func(t *testing.T) {
+		t.Run("stepDown", test_leader_stepDown)
+		t.Run("quorumWait", test_leader_quorumWait)
+	})
 	t.Run("behindFollower", test_behindFollower)
-	t.Run("update", test_update)
+	t.Run("update", func(t *testing.T) {
+		t.Run("nonLeader", test_update_nonLeader)
+		t.Run("concurrent", test_update_concurrent)
+	})
 	t.Run("barrier", test_barrier)
 	t.Run("query", test_query)
-	t.Run("takeSnapshot", test_takeSnapshot)
-	t.Run("sendSnapshot", test_sendSnapshot)
-	t.Run("changeConfig", test_changeConfig)
-	t.Run("nonvoter", test_nonvoter)
-	t.Run("promote", test_promote)
+	t.Run("takeSnapshot", func(t *testing.T) {
+		t.Run("emptyFSM", test_takeSnapshot_emptyFSM)
+		t.Run("thresholdNotReached", test_takeSnapshot_thresholdNotReached)
+		//todo: test ErrSnapshotInProgress
+		t.Run("restartSendUpdates", test_takeSnapshot_restartSendUpdates)
+	})
+	t.Run("sendSnapshot", func(t *testing.T) {
+		t.Run("case1", func(t *testing.T) {
+			test_sendSnapshot_case(t, false)
+		})
+		t.Run("case2", func(t *testing.T) {
+			test_sendSnapshot_case(t, true)
+		})
+	})
+	t.Run("changeConfig", func(t *testing.T) {
+		t.Run("validations", test_changeConfig_validations)
+		t.Run("committedByAll", test_changeConfig_committedByAll)
+	})
+	t.Run("nonvoter", func(t *testing.T) {
+		t.Run("catchesUp_followsLeader", test_nonvoter_catchesUp_followsLeader)
+		t.Run("reconnects_catchesUp", test_nonvoter_reconnects_catchesUp)
+		t.Run("leaderChanged_followsNewLeader", test_nonvoter_leaderChanged_followsNewLeader)
+	})
+	t.Run("promote", func(t *testing.T) {
+		t.Run("newNode", func(t *testing.T) {
+			t.Run("singleRound", test_promote_newNode_singleRound)
+			t.Run("uptodateButConfigChangeInProgress", test_promote_newNode_uptodateButConfigChangeInProgress)
+			t.Run("multipleRound", test_promote_newNode_multipleRounds)
+		})
+		t.Run("existingNode", func(t *testing.T) {
+			t.Run("notUpToDate", test_promote_existingNode_notUpToDate)
+			t.Run("upToDate", test_promote_existingNode_upToDate)
+		})
+	})
 }
 
 // todo: test that non voter does not start election

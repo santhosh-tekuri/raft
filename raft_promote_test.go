@@ -5,26 +5,6 @@ import (
 	"time"
 )
 
-func test_promote(t *testing.T) {
-	t.Run("newNode", test_promote_newNode)
-	t.Run("existingNode", test_promote_existingNode)
-}
-
-// ---------------------------------------------------------
-
-func test_promote_newNode(t *testing.T) {
-	t.Run("singleRound", test_promote_newNode_singleRound)
-	t.Run("uptodateButConfigChangeInProgress", test_promote_newNode_uptodateButConfigChangeInProgress)
-	t.Run("multipleRound", test_promote_newNode_multipleRounds)
-}
-
-func test_promote_existingNode(t *testing.T) {
-	t.Run("notUpToDate", test_promote_existingNode_notUpToDate)
-	t.Run("upToDate", test_promote_existingNode_upToDate)
-}
-
-// ---------------------------------------------------------
-
 // basically we are making 3 node cluster into 5 node cluster
 func test_promote_newNode_singleRound(t *testing.T) {
 	// create 3 node cluster
