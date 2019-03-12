@@ -163,22 +163,22 @@ func (l *ldrShip) checkReplUpdates(u interface{}) {
 			l.setTerm(u.val)
 			return
 		case roundCompleted:
-			round := u.round
-			if round.id > u.status.rounds {
-				debug(l, "roundCompleted", round)
+			r := u.round
+			if r.Ordinal > u.status.rounds {
+				debug(l, "completed", r)
 				u.status.rounds++
 				if l.trace.RoundCompleted != nil {
-					l.trace.RoundCompleted(l.liveInfo(), u.status.id, round.id, round.lastIndex, round.duration())
+					l.trace.RoundCompleted(l.liveInfo(), u.status.id, r)
 				}
 			} else {
-				debug(l, u.status.id, "is reminding promotion:", round)
+				debug(l, u.status.id, "is reminding promotion:", r)
 			}
 			if !l.configs.IsCommitted() {
 				debug(l, "config not committed")
 				break
 			}
 			hasNewEntries := l.lastLogIndex > u.status.matchIndex
-			if hasNewEntries && round.duration() > l.promoteThreshold {
+			if hasNewEntries && r.Duration() > l.promoteThreshold {
 				debug(l, "best of luck for next round")
 				break // best of luck for next round !!!
 			}
@@ -194,7 +194,7 @@ func (l *ldrShip) checkReplUpdates(u interface{}) {
 			n.Voter, n.Promote = true, false
 			config.Nodes[n.ID] = n
 			if l.trace.Promoting != nil {
-				l.trace.Promoting(l.liveInfo(), n.ID, round.id)
+				l.trace.Promoting(l.liveInfo(), n.ID, r.Ordinal)
 			}
 			l.doChangeConfig(nil, config)
 		}

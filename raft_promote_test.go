@@ -30,8 +30,8 @@ func test_promote_newNode_singleRound(t *testing.T) {
 		if e.target != id {
 			t.Fatalf("promoted: got M%d, want M%d", e.target, id)
 		}
-		if e.round != 1 {
-			t.Fatalf("M%d round: got %d, want %d", id, e.round, 1)
+		if e.numRounds != 1 {
+			t.Fatalf("M%d round: got %d, want %d", id, e.numRounds, 1)
 		}
 
 		// wait for config commit, with new raft as voter
@@ -124,8 +124,8 @@ func test_promote_newNode_uptodateButConfigChangeInProgress(t *testing.T) {
 	if e.target != m3.id {
 		t.Fatalf("promoted.target: got M%d, want M%d", e.target, m3.id)
 	}
-	if e.round != 1 {
-		t.Fatalf("M%d round: got %d, want %d", m3.id, e.round, 1)
+	if e.numRounds != 1 {
+		t.Fatalf("M%d round: got %d, want %d", m3.id, e.numRounds, 1)
 	}
 
 	// wait for config commit, with m3 as voter

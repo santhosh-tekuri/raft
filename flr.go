@@ -25,7 +25,7 @@ type flr struct {
 	sendEntries   bool
 
 	node  Node
-	round *round // nil if no promotion reqd
+	round *Round // nil if no promotion reqd
 
 	// from this time node is unreachable
 	// zero value means node is reachable
@@ -51,9 +51,9 @@ func (f *flr) replicate(req *appendEntriesReq) {
 
 	debug(f, "f.start")
 	if f.node.promote() {
-		f.round = new(round)
+		f.round = new(Round)
 		f.round.begin(f.ldrLastIndex)
-		debug(f, "started round:", f.round)
+		debug(f, "started:", f.round)
 	}
 
 	timer := newSafeTimer()
@@ -110,18 +110,18 @@ func (f *flr) onLeaderUpdate(u leaderUpdate, req *appendEntriesReq) {
 				f.round = nil
 			} else if f.round == nil {
 				// start first round
-				f.round = new(round)
+				f.round = new(Round)
 				f.round.begin(f.ldrLastIndex)
-				debug(f, "started round:", f.round)
+				debug(f, "started:", f.round)
 			}
 		}
 	}
 
 	// if round was completed
 	if f.round != nil && f.round.finished() {
-		if f.ldrLastIndex > f.round.lastIndex {
+		if f.ldrLastIndex > f.round.LastIndex {
 			f.round.begin(f.ldrLastIndex)
-			debug(f, "started round:", f.round)
+			debug(f, "started:", f.round)
 		} else {
 			debug(f, "reminding leader about promotion")
 			f.notifyRoundCompleted() // no new entries, reminding leader about promotion
@@ -299,7 +299,7 @@ func (f *flr) notifyLdr(u interface{}) {
 
 	// check if we just completed round
 	if _, ok := u.(matchIndex); ok && f.round != nil {
-		if f.matchIndex >= f.round.lastIndex {
+		if f.matchIndex >= f.round.LastIndex {
 			f.notifyRoundCompleted()
 		}
 	}
@@ -309,16 +309,16 @@ func (f *flr) notifyRoundCompleted() {
 	if !f.round.finished() {
 		f.round.finish()
 	}
-	debug(f, "notify roundCompleted:", f.round)
+	debug(f, "notify completed:", f.round)
 	update := roundCompleted{&f.status, *f.round}
 	select {
 	case <-f.stopCh:
 	case f.toLeaderCh <- update:
 	}
 	// if any entries still left, start next round
-	if f.ldrLastIndex > f.round.lastIndex {
+	if f.ldrLastIndex > f.round.LastIndex {
 		f.round.begin(f.ldrLastIndex)
-		debug(f, "started round:", f.round)
+		debug(f, "started:", f.round)
 	}
 }
 
@@ -331,25 +331,25 @@ func (f *flr) getSnapLog() (snapIndex, snapTerm uint64) {
 
 // ------------------------------------------------
 
-type round struct {
-	id        uint64
-	start     time.Time
-	end       time.Time
-	lastIndex uint64
+type Round struct {
+	Ordinal   uint64
+	Start     time.Time
+	End       time.Time
+	LastIndex uint64
 }
 
-func (r *round) begin(lastIndex uint64) {
-	r.id, r.start, r.lastIndex = r.id+1, time.Now(), lastIndex
+func (r *Round) begin(lastIndex uint64) {
+	r.Ordinal, r.Start, r.LastIndex = r.Ordinal+1, time.Now(), lastIndex
 }
-func (r *round) duration() time.Duration { return r.end.Sub(r.start) }
-func (r *round) finish()                 { r.end = time.Now() }
-func (r *round) finished() bool          { return !r.end.IsZero() }
+func (r *Round) finish()                { r.End = time.Now() }
+func (r *Round) finished() bool         { return !r.End.IsZero() }
+func (r Round) Duration() time.Duration { return r.End.Sub(r.Start) }
 
-func (r round) String() string {
+func (r Round) String() string {
 	if r.finished() {
-		return fmt.Sprintf("%d %s lastIndex: %d", r.id, r.duration(), r.lastIndex)
+		return fmt.Sprintf("round{#%d %s lastIndex: %d}", r.Ordinal, r.Duration(), r.LastIndex)
 	}
-	return fmt.Sprintf("%d lastIndex: %d", r.id, r.lastIndex)
+	return fmt.Sprintf("round{#%d lastIndex: %d}", r.Ordinal, r.LastIndex)
 }
 
 // ------------------------------------------------
@@ -396,7 +396,7 @@ type newTerm struct {
 
 type roundCompleted struct {
 	status *flrStatus
-	round  round
+	round  Round
 }
 
 type flrStatus struct {

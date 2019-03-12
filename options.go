@@ -55,8 +55,8 @@ type Trace struct {
 	ConfigChanged     func(info Info)
 	ConfigCommitted   func(info Info)
 	ConfigReverted    func(info Info)
-	RoundCompleted    func(info Info, id, round, lastIndex uint64, d time.Duration)
-	Promoting         func(info Info, id, rounds uint64)
+	RoundCompleted    func(info Info, id uint64, round Round)
+	Promoting         func(info Info, id, numRounds uint64)
 	Unreachable       func(info Info, id uint64, since time.Time, err error)
 	QuorumUnreachable func(info Info, since time.Time)
 	ShuttingDown      func(info Info)
@@ -90,11 +90,11 @@ func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
 			info("raft: config committed")
 		}
 	}
-	trace.RoundCompleted = func(rinfo Info, id, round, lastIndex uint64, d time.Duration) {
-		info("raft: nonVoter", id, "completed round", round, "in", d, ", its lastIndex:", lastIndex)
+	trace.RoundCompleted = func(rinfo Info, id uint64, r Round) {
+		info("raft: nonVoter", id, "completed round", r.Ordinal, "in", r.Duration(), ", its lastIndex:", r.LastIndex)
 	}
-	trace.Promoting = func(rinfo Info, id, rounds uint64) {
-		info("raft: promoting node", id, "to voter, after", rounds, "rounds")
+	trace.Promoting = func(rinfo Info, id, numRounds uint64) {
+		info("raft: promoting node", id, "to voter, after", numRounds, "rounds")
 	}
 	trace.Unreachable = func(rinfo Info, id uint64, since time.Time, err error) {
 		if since.IsZero() {

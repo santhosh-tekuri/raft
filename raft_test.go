@@ -644,16 +644,15 @@ type event struct {
 	src uint64
 	typ eventType
 
-	fsmLen         uint64
-	state          State
-	configs        Configs
-	target         uint64
-	since          time.Time
-	err            error
-	msgType        string
-	round          uint64
-	roundDuration  time.Duration
-	roundLastIndex uint64
+	fsmLen    uint64
+	state     State
+	configs   Configs
+	target    uint64
+	since     time.Time
+	err       error
+	msgType   string
+	round     Round
+	numRounds uint64
 }
 
 func (e event) matches(typ eventType, rr ...*Raft) bool {
@@ -826,23 +825,21 @@ func (ee *events) trace() (trace Trace) {
 		})
 	}
 
-	trace.RoundCompleted = func(info Info, id, round, lastIndex uint64, d time.Duration) {
+	trace.RoundCompleted = func(info Info, id uint64, r Round) {
 		ee.sendEvent(event{
-			src:            info.ID(),
-			typ:            roundFinished,
-			target:         id,
-			round:          round,
-			roundDuration:  d,
-			roundLastIndex: lastIndex,
+			src:    info.ID(),
+			typ:    roundFinished,
+			target: id,
+			round:  r,
 		})
 	}
 
-	trace.Promoting = func(info Info, id, rounds uint64) {
+	trace.Promoting = func(info Info, id, numRounds uint64) {
 		ee.sendEvent(event{
-			src:    info.ID(),
-			typ:    promoting,
-			target: id,
-			round:  rounds,
+			src:       info.ID(),
+			typ:       promoting,
+			target:    id,
+			numRounds: numRounds,
 		})
 	}
 
