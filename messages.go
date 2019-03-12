@@ -82,7 +82,7 @@ type entryType uint8
 const (
 	entryBarrier entryType = iota + 1 // note: don't use zero value
 	entryUpdate
-	entryQuery
+	entryRead
 	entryNop
 	entryConfig
 )
@@ -93,8 +93,8 @@ func (t entryType) String() string {
 		return "barrier"
 	case entryUpdate:
 		return "update"
-	case entryQuery:
-		return "query"
+	case entryRead:
+		return "read"
 	case entryNop:
 		return "nop"
 	case entryConfig:

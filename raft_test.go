@@ -497,7 +497,7 @@ func (c *cluster) waitUnreachableDetected(ldr, failed *Raft) {
 func (c *cluster) sendUpdates(r *Raft, from, to int) Task {
 	var ne NewEntry
 	for i := from; i <= to; i++ {
-		ne = UpdateEntry([]byte(fmt.Sprintf("update:%d", i)))
+		ne = UpdateFSM([]byte(fmt.Sprintf("update:%d", i)))
 		r.NewEntries() <- ne
 	}
 	return ne
@@ -505,7 +505,7 @@ func (c *cluster) sendUpdates(r *Raft, from, to int) Task {
 
 func (c *cluster) waitBarrier(r *Raft, timeout time.Duration) {
 	c.Helper()
-	if _, err := waitNewEntry(r, BarrierEntry(), timeout); err != nil {
+	if _, err := waitNewEntry(r, BarrierFSM(), timeout); err != nil {
 		c.Fatalf("Barrer(M%d): timeout", r.ID())
 	}
 }
@@ -611,11 +611,11 @@ func waitNewEntry(r *Raft, ne NewEntry, timeout time.Duration) (fsmReply, error)
 }
 
 func waitUpdate(r *Raft, cmd string, timeout time.Duration) (fsmReply, error) {
-	return waitNewEntry(r, UpdateEntry([]byte(cmd)), timeout)
+	return waitNewEntry(r, UpdateFSM([]byte(cmd)), timeout)
 }
 
 func waitQuery(r *Raft, query string, timeout time.Duration) (fsmReply, error) {
-	return waitNewEntry(r, QueryEntry([]byte(query)), timeout)
+	return waitNewEntry(r, QueryFSM([]byte(query)), timeout)
 }
 
 // events ---------------------------------------------

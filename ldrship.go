@@ -83,7 +83,7 @@ func (l *ldrShip) storeEntry(ne NewEntry) {
 	ne.entry.index, ne.entry.term = l.lastLogIndex+1, l.term
 	l.newEntries.PushBack(ne)
 
-	if ne.typ == entryQuery || ne.typ == entryBarrier { // non-log entry
+	if ne.typ == entryRead || ne.typ == entryBarrier { // non-log entry
 		l.applyCommitted()
 		return
 	}
@@ -297,7 +297,7 @@ func (l *ldrShip) applyCommitted() {
 		for l.newEntries.Len() > 0 {
 			elem := l.newEntries.Front()
 			ne := elem.Value.(NewEntry)
-			if ne.index == l.lastApplied+1 && (ne.typ == entryQuery || ne.typ == entryBarrier) {
+			if ne.index == l.lastApplied+1 && (ne.typ == entryRead || ne.typ == entryBarrier) {
 				l.newEntries.Remove(elem)
 				debug(l, "fms <- {", ne.typ, ne.index, "}")
 				select {

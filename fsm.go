@@ -23,7 +23,7 @@ func (r *Raft) fsmLoop() {
 		case NewEntry:
 			debug(r.id, "fsm.execute", t.typ, t.index)
 			var resp interface{}
-			if t.typ == entryUpdate || t.typ == entryQuery {
+			if t.typ == entryUpdate || t.typ == entryRead {
 				resp = r.fsm.Execute(t.entry.data)
 				if t.typ == entryUpdate {
 					updateIndex, updateTerm = t.index, t.term

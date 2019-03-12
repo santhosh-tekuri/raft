@@ -146,11 +146,11 @@ func test_query(t *testing.T) {
 	// send updates, in between do queries and check query reply
 	for i := 0; i < 101; i++ {
 		cmd := fmt.Sprintf("cmd%d", i)
-		ldr.NewEntries() <- UpdateEntry([]byte(cmd))
+		ldr.NewEntries() <- UpdateFSM([]byte(cmd))
 		if i%10 == 0 {
 			qq := []NewEntry{
-				QueryEntry([]byte("query:last")),
-				QueryEntry([]byte("query:last")),
+				QueryFSM([]byte("query:last")),
+				QueryFSM([]byte("query:last")),
 			}
 			for _, q := range qq {
 				ldr.NewEntries() <- q
