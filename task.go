@@ -208,13 +208,13 @@ type inspect struct {
 	fn func(api Info)
 }
 
-func Inspect(fn func(r Info)) Task {
+func inspectFunc(fn func(r Info)) Task {
 	return inspect{task: newTask(), fn: fn}
 }
 
 func (r *Raft) Info() Info {
 	var info Info
-	t := Inspect(func(r Info) {
+	t := inspectFunc(func(r Info) {
 		info = cachedInfo{
 			json: r.JSON().(json),
 		}

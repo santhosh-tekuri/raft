@@ -580,7 +580,7 @@ func waitAddNonVoter(ldr *Raft, id uint64, addr string, promote bool) error {
 }
 
 func waitInspect(r *Raft, fn func(Info)) {
-	_, _ = waitTask(r, Inspect(fn), 0)
+	_, _ = waitTask(r, InspectFunc(fn), 0)
 }
 
 // use zero timeout, to wait till reply received

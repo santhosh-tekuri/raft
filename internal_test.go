@@ -8,8 +8,12 @@ func Debug(args ...interface{}) {
 	debug(args...)
 }
 
+func InspectFunc(fn func(info Info)) Task {
+	return inspectFunc(fn)
+}
+
 func RequestVote(from, to *Raft) (granted bool, err error) {
-	t := Inspect(func(info Info) {
+	t := inspectFunc(func(info Info) {
 		req := &voteReq{
 			term:         info.Term(),
 			lastLogIndex: info.LastLogIndex(),

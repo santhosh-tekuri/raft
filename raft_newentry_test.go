@@ -85,10 +85,8 @@ func TODO_TestRaft_BackPressure(t *testing.T) {
 			fmt.Println("lastLogIndex:", info.LastLogIndex(), "committed:", info.Committed())
 			t.Fatalf("leader changed state to %s", e.state)
 		case <-timer:
-			waitInspect(ldr, func(info Info) {
-				fmt.Println("lastLogIndex:", info.LastLogIndex(), "committed:", info.Committed())
-				fmt.Println("xxx", ldr.newEntryCh)
-			})
+			info := ldr.Info()
+			fmt.Println("lastLogIndex:", info.LastLogIndex(), "committed:", info.Committed())
 		}
 	}
 }
