@@ -8,20 +8,17 @@ import (
 )
 
 type Options struct {
-	HeartbeatTimeout   time.Duration
-	LeaderLeaseTimeout time.Duration
-	PromoteThreshold   time.Duration
-	SnapshotThreshold  uint64
-	Trace              Trace
-	Resolver           Resolver
+	HeartbeatTimeout  time.Duration
+	QuorumWait        time.Duration
+	PromoteThreshold  time.Duration
+	SnapshotThreshold uint64
+	Trace             Trace
+	Resolver          Resolver
 }
 
 func (o Options) validate() error {
 	if o.HeartbeatTimeout == 0 {
 		return errors.New("raft.options: HeartbeatTimeout is zero")
-	}
-	if o.LeaderLeaseTimeout == 0 {
-		return errors.New("raft.options: LeaderLeaseTimeout is zero")
 	}
 	if o.PromoteThreshold == 0 {
 		return errors.New("raft.options: PromoteThreshold is zero")
@@ -40,10 +37,10 @@ func DefaultOptions() Options {
 	}
 	hbTimeout := 1000 * time.Millisecond
 	return Options{
-		HeartbeatTimeout:   hbTimeout,
-		LeaderLeaseTimeout: hbTimeout,
-		PromoteThreshold:   hbTimeout,
-		Trace:              DefaultTrace(logger("[INFO]"), logger("[WARN]")),
+		HeartbeatTimeout: hbTimeout,
+		QuorumWait:       hbTimeout,
+		PromoteThreshold: hbTimeout,
+		Trace:            DefaultTrace(logger("[INFO]"), logger("[WARN]")),
 	}
 }
 

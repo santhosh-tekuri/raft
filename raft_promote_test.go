@@ -83,9 +83,9 @@ func test_promote_newNode_multipleRounds(t *testing.T) {
 }
 
 func test_promote_newNode_uptodateButConfigChangeInProgress(t *testing.T) {
-	// create 2 node cluster, with long leaderLease
+	// create 2 node cluster, with long quorumWait
 	c := newCluster(t)
-	c.opt.LeaderLeaseTimeout = 10 * time.Second
+	c.opt.QuorumWait = 10 * time.Second
 	ldr, followers := c.ensureLaunch(2)
 	defer c.shutdown()
 

@@ -8,8 +8,6 @@ import (
 	"time"
 )
 
-const minCheckInterval = 10 * time.Millisecond
-
 type ldrShip struct {
 	*Raft
 
@@ -53,7 +51,7 @@ func (l *ldrShip) init() {
 	})
 }
 
-func (l *ldrShip) onTimeout() { l.checkLeaderLease() }
+func (l *ldrShip) onTimeout() { l.checkQuorum(0) }
 
 func (l *ldrShip) release() {
 	for id, f := range l.flrs {
@@ -216,47 +214,36 @@ func (l *ldrShip) checkReplUpdates(u interface{}) {
 		l.onMajorityCommit()
 	}
 	if noContactUpdated {
-		l.checkLeaderLease()
+		l.checkQuorum(l.quorumWait)
 	}
 }
 
-func (l *ldrShip) checkLeaderLease() {
+func (l *ldrShip) checkQuorum(wait time.Duration) {
 	voters, reachable := 0, 0
-	now, firstFailure := time.Now(), time.Time{}
 	for id, node := range l.configs.Latest.Nodes {
 		if node.Voter {
 			voters++
-			if id == l.id {
+			if id == l.id || l.flrs[id].status.noContact.IsZero() {
 				reachable++
-			} else {
-				noContact := l.flrs[node.ID].status.noContact
-				if noContact.IsZero() {
-					reachable++
-				} else if now.Sub(noContact) <= l.ldrLeaseTimeout {
-					reachable++
-					if firstFailure.IsZero() || noContact.Before(firstFailure) {
-						firstFailure = noContact
-					}
-				}
 			}
 		}
 	}
 
-	// todo: if quorum unreachable raise alert
-	if reachable < voters/2+1 {
-		debug(l, "leader -> follower quorumUnreachable")
-		l.state = Follower
-		l.leader = 0
+	if reachable >= voters/2+1 {
+		if l.timer.active {
+			debug(l, "quorumReachable")
+			l.timer.stop()
+		}
 		return
 	}
 
-	l.timer.stop()
-	if !firstFailure.IsZero() {
-		d := l.ldrLeaseTimeout - now.Sub(firstFailure)
-		if d < minCheckInterval {
-			d = minCheckInterval
-		}
-		l.timer.reset(d)
+	// todo: if quorum unreachable raise alert
+	if wait == 0 {
+		debug(l, "leader -> follower quorumUnreachable")
+		l.state, l.leader = Follower, 0
+	} else if !l.timer.active {
+		debug(l, "quorumUnreachable: waiting", wait)
+		l.timer.reset(wait)
 	}
 }
 

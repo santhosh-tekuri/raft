@@ -154,7 +154,12 @@ func test_tripleNode(t *testing.T) {
 	c.waitFSMLen(1)
 }
 
-func test_leaderFail(t *testing.T) {
+func test_leader(t *testing.T) {
+	t.Run("stepDown", test_leader_stepDown)
+	t.Run("quorumWait", test_leader_quorumWait)
+}
+
+func test_leader_stepDown(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -238,15 +243,26 @@ func test_behindFollower(t *testing.T) {
 	c.ensureLeader(c.leader().ID())
 }
 
-func test_leaderLeaseExpire(t *testing.T) {
-	c, ldr, followers := launchCluster(t, 2)
+func test_leader_quorumWait(t *testing.T) {
+	c := newCluster(t)
+	c.opt.QuorumWait = 2 * time.Second
+	ldr, followers := c.ensureLaunch(2)
 	defer c.shutdown()
 
 	// disconnect the follower now
 	c.disconnect(followers[0])
 
-	// the leader should stepDown within leaderLeaseTimeout
-	c.waitForState(ldr, 2*c.heartbeatTimeout, Follower, Candidate)
+	// wait for leader to detect
+	c.waitUnreachableDetected(ldr, followers[0])
+	start := time.Now()
+
+	// the leader should stepDown
+	c.waitForState(ldr, c.longTimeout, Follower, Candidate)
+
+	// ensure that leader waited for quorumConfigured before stepDown
+	if got := time.Now().Sub(start); got < 1*time.Second {
+		t.Fatalf("quorumWait: got %s, want %s", got, c.opt.QuorumWait)
+	}
 
 	// should be no leaders
 	if n := len(c.getInState(Leader)); n != 0 {

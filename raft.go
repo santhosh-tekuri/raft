@@ -29,7 +29,7 @@ type Raft struct {
 
 	// options
 	hbTimeout        time.Duration
-	ldrLeaseTimeout  time.Duration
+	quorumWait       time.Duration
 	promoteThreshold time.Duration
 	trace            Trace
 
@@ -67,7 +67,7 @@ func New(id uint64, opt Options, fsm FSM, storage Storage) (*Raft, error) {
 		storage:          store,
 		state:            Follower,
 		hbTimeout:        opt.HeartbeatTimeout,
-		ldrLeaseTimeout:  opt.LeaderLeaseTimeout,
+		quorumWait:       opt.QuorumWait,
 		promoteThreshold: opt.PromoteThreshold,
 		trace:            opt.Trace,
 		dialFn:           net.DialTimeout,

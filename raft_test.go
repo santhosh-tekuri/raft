@@ -26,9 +26,8 @@ func TestRaft(t *testing.T) {
 	t.Run("bootstrap", test_bootstrap)
 	t.Run("singleNode", test_singleNode)
 	t.Run("tripleNode", test_tripleNode)
-	t.Run("leaderFail", test_leaderFail)
+	t.Run("leader", test_leader)
 	t.Run("behindFollower", test_behindFollower)
-	t.Run("leaderLeaseExpire", test_leaderLeaseExpire)
 	t.Run("update", test_update)
 	t.Run("barrier", test_barrier)
 	t.Run("query", test_query)
@@ -106,10 +105,10 @@ func newCluster(t *testing.T) *cluster {
 		events:           &events{observers: make(map[int]observer)},
 	}
 	c.opt = Options{
-		HeartbeatTimeout:   heartbeatTimeout,
-		LeaderLeaseTimeout: heartbeatTimeout,
-		PromoteThreshold:   heartbeatTimeout,
-		Trace:              c.events.trace(),
+		HeartbeatTimeout: heartbeatTimeout,
+		QuorumWait:       heartbeatTimeout,
+		PromoteThreshold: heartbeatTimeout,
+		Trace:            c.events.trace(),
 	}
 	return c
 }
@@ -312,13 +311,14 @@ func (c *cluster) ensureLeader(leader uint64) {
 	c.Helper()
 	for _, r := range c.rr {
 		if got := r.Info().Leader(); got != leader {
-			c.Fatalf("leader of %s: got %s, want %s", r.ID(), got, leader)
+			c.Fatalf("leader of M%d: got M%d, want M%d", r.ID(), got, leader)
 		}
 	}
 }
 
 // wait until state is one of given states
 func (c *cluster) waitForState(r *Raft, timeout time.Duration, states ...State) {
+	c.Helper()
 	condition := func() bool {
 		got := r.Info().State()
 		for _, want := range states {
@@ -331,7 +331,7 @@ func (c *cluster) waitForState(r *Raft, timeout time.Duration, states ...State) 
 	stateChanged := c.registerFor(stateChanged)
 	defer c.unregister(stateChanged)
 	if !stateChanged.waitFor(condition, timeout) {
-		c.Fatalf("waitForState(%s, %v) timeout", r.ID(), states)
+		c.Fatalf("waitForState(M%d, %v) timeout", r.ID(), states)
 	}
 }
 
@@ -374,7 +374,7 @@ func (c *cluster) waitFSMLen(fsmLen uint64, rr ...*Raft) {
 	if !fsmChanged.waitFor(condition, c.longTimeout) {
 		c.Logf("fsmLen: want %d", fsmLen)
 		for _, r := range rr {
-			c.Logf("%s got %d", r.ID(), fsm(r).len())
+			c.Logf("M%d got %d", r.ID(), fsm(r).len())
 		}
 		c.Fatalf("waitFSMLen(%d) timeout", fsmLen)
 	}
@@ -387,7 +387,7 @@ func (c *cluster) ensureFSMLen(fsmLen uint64, rr ...*Raft) {
 	}
 	for _, r := range rr {
 		if got := fsm(r).len(); got != fsmLen {
-			c.Fatalf("ensureFSMLen(%s): got %d, want %d", r.ID(), got, fsmLen)
+			c.Fatalf("ensureFSMLen(M%d): got %d, want %d", r.ID(), got, fsmLen)
 		}
 	}
 }
@@ -429,7 +429,7 @@ func (c *cluster) waitCatchup(rr ...*Raft) {
 			if info.LastLogIndex() < ldr.LastLogIndex() ||
 				info.Committed() < ldr.Committed() {
 				if print {
-					c.Logf("waitCatchup: %s lastLogIndex:%d committed:%d", r.ID(), info.LastLogIndex(), info.Committed())
+					c.Logf("waitCatchup: M%d lastLogIndex:%d committed:%d", r.ID(), info.LastLogIndex(), info.Committed())
 				}
 				return false
 			}
@@ -437,7 +437,7 @@ func (c *cluster) waitCatchup(rr ...*Raft) {
 		return true
 	}
 	if !waitForCondition(condition, c.commitTimeout, c.longTimeout) {
-		c.Logf("waitCatchup: ldr %s lastLogIndex:%d committed:%d", ldr.ID(), ldr.LastLogIndex(), ldr.Committed())
+		c.Logf("waitCatchup: ldr M%d lastLogIndex:%d committed:%d", ldr.ID(), ldr.LastLogIndex(), ldr.Committed())
 		print = true
 		condition()
 		c.Fatal("waitCatchup: timeout")
@@ -452,7 +452,7 @@ func (c *cluster) waitUnreachableDetected(ldr, failed *Raft) {
 	unreachable := c.registerFor(unreachable, ldr)
 	defer c.unregister(unreachable)
 	if !unreachable.waitFor(condition, c.longTimeout) {
-		c.Fatalf("waitUnreachableDetected: ldr %s failed to detect %s is unreachable", ldr.ID(), failed.ID())
+		c.Fatalf("waitUnreachableDetected: ldr M%d failed to detect M%d is unreachable", ldr.ID(), failed.ID())
 	}
 }
 
@@ -468,7 +468,7 @@ func (c *cluster) sendUpdates(r *Raft, from, to int) Task {
 func (c *cluster) waitBarrier(r *Raft, timeout time.Duration) {
 	c.Helper()
 	if _, err := waitNewEntry(r, BarrierEntry(), timeout); err != nil {
-		c.Fatalf("Barrer(%s): timeout", r.ID())
+		c.Fatalf("Barrer(M%d): timeout", r.ID())
 	}
 }
 
@@ -478,7 +478,7 @@ func (c *cluster) takeSnapshot(r *Raft, threshold uint64, want error) {
 	r.Tasks() <- takeSnap
 	<-takeSnap.Done()
 	if takeSnap.Err() != want {
-		c.Fatalf("takeSnapshot(%s).err: got %s, want %s", takeSnap.Err(), want)
+		c.Fatalf("takeSnapshot(M%d).err: got %s, want %v", r.id, takeSnap.Err(), want)
 	}
 }
 
