@@ -231,14 +231,22 @@ func (l *ldrShip) checkQuorum(wait time.Duration) {
 	if reachable >= voters/2+1 {
 		if l.timer.active {
 			debug(l, "quorumReachable")
+			if l.trace.QuorumUnreachable != nil {
+				l.trace.QuorumUnreachable(l.liveInfo(), time.Time{})
+			}
 			l.timer.stop()
 		}
 		return
 	}
 
 	// todo: if quorum unreachable raise alert
+	if l.quorumWait == 0 || !l.timer.active {
+		if l.trace.QuorumUnreachable != nil {
+			l.trace.QuorumUnreachable(l.liveInfo(), time.Now())
+		}
+	}
 	if wait == 0 {
-		debug(l, "leader -> follower quorumUnreachable")
+		debug(l, "leader -> follower")
 		l.state, l.leader = Follower, 0
 	} else if !l.timer.active {
 		debug(l, "quorumUnreachable: waiting", wait)

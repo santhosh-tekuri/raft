@@ -47,18 +47,19 @@ func DefaultOptions() Options {
 // trace ----------------------------------------------------------
 
 type Trace struct {
-	Error           func(err error)
-	Starting        func(info Info)
-	StateChanged    func(info Info)
-	ElectionStarted func(info Info)
-	ElectionAborted func(info Info, reason string)
-	ConfigChanged   func(info Info)
-	ConfigCommitted func(info Info)
-	ConfigReverted  func(info Info)
-	RoundCompleted  func(info Info, id, round, lastIndex uint64, d time.Duration)
-	Promoting       func(info Info, id, rounds uint64)
-	Unreachable     func(info Info, id uint64, since time.Time) // todo: can we give err also
-	ShuttingDown    func(info Info)
+	Error             func(err error)
+	Starting          func(info Info)
+	StateChanged      func(info Info)
+	ElectionStarted   func(info Info)
+	ElectionAborted   func(info Info, reason string)
+	ConfigChanged     func(info Info)
+	ConfigCommitted   func(info Info)
+	ConfigReverted    func(info Info)
+	RoundCompleted    func(info Info, id, round, lastIndex uint64, d time.Duration)
+	Promoting         func(info Info, id, rounds uint64)
+	Unreachable       func(info Info, id uint64, since time.Time) // todo: can we give err also
+	QuorumUnreachable func(info Info, since time.Time)
+	ShuttingDown      func(info Info)
 
 	sending  func(self, to uint64, state State, msg message)
 	received func(self, from uint64, state State, term uint64, msg message)

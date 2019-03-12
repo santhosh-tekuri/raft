@@ -628,6 +628,7 @@ const (
 	configCommitted
 	configReverted
 	unreachable
+	quorumUnreachable
 	roundFinished
 	promoting
 	sending
@@ -809,6 +810,14 @@ func (ee *events) trace() (trace Trace) {
 			typ:    unreachable,
 			target: id,
 			since:  since,
+		})
+	}
+
+	trace.QuorumUnreachable = func(info Info, since time.Time) {
+		ee.sendEvent(event{
+			src:   info.ID(),
+			typ:   quorumUnreachable,
+			since: since,
 		})
 	}
 
