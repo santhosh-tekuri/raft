@@ -84,7 +84,7 @@ func (f *flr) replicate(req *appendEntriesReq) {
 			case update := <-f.fromLeaderCh:
 				f.onLeaderUpdate(update, req)
 			case <-timer.C:
-				timer.receive = false
+				timer.active = false
 			}
 			timer.stop()
 		} else {

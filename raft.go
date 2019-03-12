@@ -159,7 +159,7 @@ func (r *Raft) stateLoop() {
 				}
 
 			case <-r.timer.C:
-				r.timer.receive = false
+				r.timer.active = false
 				ships[r.state].onTimeout()
 
 			case ne := <-r.newEntryCh:

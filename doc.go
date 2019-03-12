@@ -2,7 +2,6 @@ package raft
 
 // todo:
 //
-// * add encode/decode to Node
 // * add writeUint64s
 // * export round
 // * add OpError, use for storage/fsm/repl failures

@@ -29,10 +29,9 @@ type safeTimer struct {
 	timer *time.Timer
 	C     <-chan time.Time
 
-	// tells we need to receive from channel
-	// NOTE: after receiving from channel, this
-	// must be set to false
-	receive bool
+	// true if timer is started, but not yet received from channel
+	// NOTE: must be set to false, after receiving from channel
+	active bool
 }
 
 func newSafeTimer() *safeTimer {
@@ -45,17 +44,17 @@ func newSafeTimer() *safeTimer {
 
 func (t *safeTimer) stop() {
 	if !t.timer.Stop() {
-		if t.receive {
+		if t.active {
 			<-t.C
 		}
 	}
-	t.receive = false
+	t.active = false
 }
 
 func (t *safeTimer) reset(d time.Duration) {
 	t.stop()
 	t.timer.Reset(d)
-	t.receive = true
+	t.active = true
 }
 
 // backOff ------------------------------------------------
