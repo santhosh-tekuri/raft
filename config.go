@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"strconv"
 )
@@ -33,6 +34,39 @@ func (n Node) promote() bool {
 		return false
 	}
 	return n.Promote
+}
+
+func (n Node) encode(w io.Writer) *entry {
+	if err := writeUint64(w, n.ID); err != nil {
+		panic(err)
+	}
+	if err := writeString(w, n.Addr); err != nil {
+		panic(err)
+	}
+	if err := writeBool(w, n.Voter); err != nil {
+		panic(err)
+	}
+	if err := writeBool(w, n.promote()); err != nil {
+		panic(err)
+	}
+	return nil
+}
+
+func (n *Node) decode(r io.Reader) error {
+	var err error
+	if n.ID, err = readUint64(r); err != nil {
+		return err
+	}
+	if n.Addr, err = readString(r); err != nil {
+		return err
+	}
+	if n.Voter, err = readBool(r); err != nil {
+		return err
+	}
+	if n.Promote, err = readBool(r); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (n Node) validate() error {
@@ -106,17 +140,8 @@ func (c Config) encode() *entry {
 	if err := writeUint32(w, uint32(len(c.Nodes))); err != nil {
 		panic(err)
 	}
-	for _, node := range c.Nodes {
-		if err := writeUint64(w, node.ID); err != nil {
-			panic(err)
-		}
-		if err := writeString(w, node.Addr); err != nil {
-			panic(err)
-		}
-		if err := writeBool(w, node.Voter); err != nil {
-			panic(err)
-		}
-		if err := writeBool(w, node.promote()); err != nil {
+	for _, n := range c.Nodes {
+		if err := n.encode(w); err != nil {
 			panic(err)
 		}
 	}
@@ -140,23 +165,11 @@ func (c *Config) decode(e *entry) error {
 	}
 	c.Nodes = make(map[uint64]Node)
 	for ; size > 0; size-- {
-		id, err := readUint64(r)
-		if err != nil {
+		n := Node{}
+		if err := n.decode(r); err != nil {
 			return err
 		}
-		addr, err := readString(r)
-		if err != nil {
-			return err
-		}
-		voter, err := readBool(r)
-		if err != nil {
-			return err
-		}
-		promote, err := readBool(r)
-		if err != nil {
-			return err
-		}
-		c.Nodes[id] = Node{ID: id, Addr: addr, Voter: voter, Promote: promote}
+		c.Nodes[n.ID] = n
 	}
 	c.Index, c.Term = e.index, e.term
 	return nil
