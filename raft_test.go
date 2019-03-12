@@ -28,7 +28,10 @@ func TestRaft(t *testing.T) {
 	t.Run("tripleNode", test_tripleNode)
 	t.Run("leader", func(t *testing.T) {
 		t.Run("stepDown", test_leader_stepDown)
-		t.Run("quorumWait", test_leader_quorumWait)
+		t.Run("quorumWait", func(t *testing.T) {
+			t.Run("unreachable", test_leader_quorumWait_unreachable)
+			t.Run("reachable", test_leader_quorumWait_reachable)
+		})
 	})
 	t.Run("behindFollower", test_behindFollower)
 	t.Run("update", func(t *testing.T) {

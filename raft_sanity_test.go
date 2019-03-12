@@ -238,20 +238,38 @@ func test_behindFollower(t *testing.T) {
 	c.ensureLeader(c.leader().ID())
 }
 
-func test_leader_quorumWait(t *testing.T) {
+func test_leader_quorumWait_unreachable(t *testing.T) {
 	c := newCluster(t)
 	c.opt.QuorumWait = 2 * time.Second
 	ldr, followers := c.ensureLaunch(2)
 	defer c.shutdown()
 
+	unreachable := c.registerFor(unreachable, ldr)
+	defer c.unregister(unreachable)
+	quorumUnreachable := c.registerFor(quorumUnreachable, ldr)
+	defer c.unregister(quorumUnreachable)
+
 	// disconnect the follower now
 	c.disconnect(followers[0])
 
 	// wait for leader to detect
-	c.waitUnreachableDetected(ldr, followers[0])
+	c.ensure(unreachable.waitForEvent(c.heartbeatTimeout))
 	start := time.Now()
 
-	// the leader should stepDown
+	// check that we got quorumUnreachable trace
+	e, err := quorumUnreachable.waitForEvent(c.heartbeatTimeout)
+	if err != nil {
+		t.Fatalf("waitQuorumUnreachable: %v", err)
+	}
+	if e.since.IsZero() {
+		t.Fatal("quorum must be unreachable")
+	}
+	if d := time.Now().Sub(start); d > 10*time.Millisecond {
+		t.Fatalf("quorumUnreachable detection took %s", d)
+	}
+	start = time.Now()
+
+	// wait for leader to stepDown
 	c.waitForState(ldr, c.longTimeout, Follower, Candidate)
 
 	// ensure that leader waited for quorumConfigured before stepDown
@@ -267,4 +285,47 @@ func test_leader_quorumWait(t *testing.T) {
 	// Ensure both have cleared their leader
 	c.waitForState(followers[0], 2*c.heartbeatTimeout, Candidate)
 	c.ensureLeader(0)
+}
+
+func test_leader_quorumWait_reachable(t *testing.T) {
+	c := newCluster(t)
+	c.opt.QuorumWait = 30 * time.Minute
+	ldr, followers := c.ensureLaunch(2)
+	defer c.shutdown()
+
+	unreachable := c.registerFor(unreachable, ldr)
+	defer c.unregister(unreachable)
+	quorumUnreachable := c.registerFor(quorumUnreachable, ldr)
+	defer c.unregister(quorumUnreachable)
+
+	// disconnect the follower now
+	c.disconnect(followers[0])
+
+	// wait for leader to detect
+	c.ensure(unreachable.waitForEvent(c.heartbeatTimeout))
+	start := time.Now()
+
+	// check that we got quorumUnreachable trace
+	e, err := quorumUnreachable.waitForEvent(c.heartbeatTimeout)
+	if err != nil {
+		t.Fatalf("waitQuorumUnreachable: %v", err)
+	}
+	if e.since.IsZero() {
+		t.Fatal("quorum must be unreachable")
+	}
+	if d := time.Now().Sub(start); d > 10*time.Millisecond {
+		t.Fatalf("quorumUnreachable detection took %s", d)
+	}
+
+	// connect the follower now
+	c.connect()
+
+	// check that we got quorumReachable trace
+	e, err = quorumUnreachable.waitForEvent(c.heartbeatTimeout)
+	if err != nil {
+		t.Fatalf("waitQuorumReachable: %v", err)
+	}
+	if !e.since.IsZero() {
+		t.Fatal("quorum must be reachable")
+	}
 }
