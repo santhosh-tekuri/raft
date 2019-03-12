@@ -460,13 +460,13 @@ func (c *cluster) waitCatchup(rr ...*Raft) {
 		rr = c.exclude(leaders[0])
 	}
 	ldr := leaders[0].Info()
-	print := false
+	log := false
 	condition := func() bool {
 		for _, r := range rr {
 			info := r.Info()
 			if info.LastLogIndex() < ldr.LastLogIndex() ||
 				info.Committed() < ldr.Committed() {
-				if print {
+				if log {
 					c.Logf("waitCatchup: M%d lastLogIndex:%d committed:%d", r.ID(), info.LastLogIndex(), info.Committed())
 				}
 				return false
@@ -476,7 +476,7 @@ func (c *cluster) waitCatchup(rr ...*Raft) {
 	}
 	if !waitForCondition(condition, c.commitTimeout, c.longTimeout) {
 		c.Logf("waitCatchup: ldr M%d lastLogIndex:%d committed:%d", ldr.ID(), ldr.LastLogIndex(), ldr.Committed())
-		print = true
+		log = true
 		condition()
 		c.Fatal("waitCatchup: timeout")
 	}
@@ -649,6 +649,7 @@ type event struct {
 	configs        Configs
 	target         uint64
 	since          time.Time
+	err            error
 	msgType        string
 	round          uint64
 	roundDuration  time.Duration
@@ -807,12 +808,13 @@ func (ee *events) trace() (trace Trace) {
 		})
 	}
 
-	trace.Unreachable = func(info Info, id uint64, since time.Time) {
+	trace.Unreachable = func(info Info, id uint64, since time.Time, err error) {
 		ee.sendEvent(event{
 			src:    info.ID(),
 			typ:    unreachable,
 			target: id,
 			since:  since,
+			err:    err,
 		})
 	}
 

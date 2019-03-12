@@ -214,7 +214,7 @@ func Inspect(fn func(r Info)) Task {
 
 func (r *Raft) Info() Info {
 	var info Info
-	task := Inspect(func(r Info) {
+	t := Inspect(func(r Info) {
 		info = cachedInfo{
 			json: r.JSON().(json),
 		}
@@ -222,8 +222,8 @@ func (r *Raft) Info() Info {
 	select {
 	case <-r.shutdownCh:
 		return nil
-	case r.taskCh <- task:
-		<-task.Done()
+	case r.taskCh <- t:
+		<-t.Done()
 		return info
 	}
 }

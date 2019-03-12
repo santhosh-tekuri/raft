@@ -245,7 +245,7 @@ func (f *flr) retryRPC(req request, resp message) error {
 			if f.noContact.IsZero() {
 				f.noContact = time.Now()
 				debug(f, "noContact", err)
-				f.notifyLdr(noContact{&f.status, f.noContact})
+				f.notifyLdr(noContact{&f.status, f.noContact, err})
 			}
 			failures++
 			select {
@@ -260,7 +260,7 @@ func (f *flr) retryRPC(req request, resp message) error {
 	if !f.noContact.IsZero() {
 		f.noContact = time.Time{} // zeroing
 		debug(f, "yesContact")
-		f.notifyLdr(noContact{&f.status, f.noContact})
+		f.notifyLdr(noContact{&f.status, f.noContact, nil})
 	}
 	if resp.getTerm() > req.getTerm() {
 		f.notifyLdr(newTerm{resp.getTerm()})
@@ -387,6 +387,7 @@ type matchIndex struct {
 type noContact struct {
 	status *flrStatus
 	time   time.Time
+	err    error
 }
 
 type newTerm struct {

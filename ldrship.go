@@ -153,7 +153,7 @@ func (l *ldrShip) checkReplUpdates(u interface{}) {
 			noContactUpdated = true
 			u.status.noContact = u.time
 			if l.trace.Unreachable != nil {
-				l.trace.Unreachable(l.liveInfo(), u.status.id, u.time)
+				l.trace.Unreachable(l.liveInfo(), u.status.id, u.time, u.err)
 			}
 		case newTerm:
 			// if response contains term T > currentTerm:
