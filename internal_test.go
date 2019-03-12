@@ -8,25 +8,22 @@ func Debug(args ...interface{}) {
 	debug(args...)
 }
 
-func InspectFunc(fn func(info Info)) Task {
-	return inspectFunc(fn)
-}
-
 func RequestVote(from, to *Raft) (granted bool, err error) {
-	t := inspectFunc(func(info Info) {
+	ierr := from.inspect(func(r *Raft) {
 		req := &voteReq{
-			term:         info.Term(),
-			lastLogIndex: info.LastLogIndex(),
-			lastLogTerm:  info.LastLogTerm(),
-			candidate:    info.ID(),
+			term:         r.term,
+			lastLogIndex: r.lastLogIndex,
+			lastLogTerm:  r.lastLogTerm,
+			candidate:    r.id,
 		}
-		connPool := from.getConnPool(to.id)
+		pool := from.getConnPool(to.id)
 		cand := candShip{Raft: from}
-		resp, errr := cand.requestVote(connPool, req, time.Time{})
+		resp, errr := cand.requestVote(pool, req, time.Time{})
 		granted, err = resp.result == success, errr
 	})
-	from.Tasks() <- t
-	<-t.Done()
+	if err == nil {
+		err = ierr
+	}
 	return
 }
 

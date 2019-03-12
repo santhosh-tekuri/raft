@@ -38,7 +38,7 @@ type flr struct {
 	toLeaderCh chan<- interface{}
 	stopCh     chan struct{}
 
-	trace *Trace
+	trace *Trace // todo: trace should not be shared with ldrShip
 	str   string // used for debug() calls
 }
 

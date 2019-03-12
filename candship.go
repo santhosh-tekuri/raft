@@ -49,10 +49,10 @@ func (c *candShip) startElection() {
 			}
 			continue
 		}
-		connPool := c.getConnPool(n.ID)
+		pool := c.getConnPool(n.ID)
 		go func(ch chan<- voteResult) {
-			resp, err := c.requestVote(connPool, req, deadline)
-			ch <- voteResult{voteResp: resp, from: connPool.id, err: err}
+			resp, err := c.requestVote(pool, req, deadline)
+			ch <- voteResult{voteResp: resp, from: pool.id, err: err}
 		}(c.voteCh)
 	}
 }

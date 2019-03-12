@@ -134,7 +134,6 @@ type Info interface {
 	LastApplied() uint64
 	Configs() Configs
 	Followers() map[uint64]FlrStatus
-	Trace() *Trace
 	JSON() interface{}
 }
 
@@ -152,7 +151,6 @@ func (info liveInfo) LastLogTerm() uint64  { return info.r.lastLogTerm }
 func (info liveInfo) Committed() uint64    { return info.r.commitIndex }
 func (info liveInfo) LastApplied() uint64  { return info.r.lastApplied }
 func (info liveInfo) Configs() Configs     { return info.r.configs.clone() }
-func (info liveInfo) Trace() *Trace        { return &info.r.trace }
 
 func (info liveInfo) Followers() map[uint64]FlrStatus {
 	if info.r.state != Leader {
@@ -200,32 +198,37 @@ func (info cachedInfo) Committed() uint64               { return info.json.Commi
 func (info cachedInfo) LastApplied() uint64             { return info.json.LastApplied }
 func (info cachedInfo) Configs() Configs                { return info.json.Configs }
 func (info cachedInfo) Followers() map[uint64]FlrStatus { return info.json.Followers }
-func (info cachedInfo) Trace() *Trace                   { return nil }
 func (info cachedInfo) JSON() interface{}               { return info.json }
 
 type inspect struct {
 	*task
-	fn func(api Info)
+	fn func(r *Raft)
 }
 
-func inspectFunc(fn func(r Info)) Task {
-	return inspect{task: newTask(), fn: fn}
-}
-
-func (r *Raft) Info() Info {
-	var info Info
-	t := inspectFunc(func(r Info) {
-		info = cachedInfo{
-			json: r.JSON().(json),
-		}
-	})
+func (r *Raft) inspect(fn func(r *Raft)) error {
+	t := inspect{task: newTask(), fn: fn}
 	select {
 	case <-r.shutdownCh:
-		return nil
+		return ErrServerClosed
 	case r.taskCh <- t:
 		<-t.Done()
-		return info
+		return nil
 	}
+}
+func (r *Raft) Info() Info {
+	var info Info
+	_ = r.inspect(func(r *Raft) {
+		info = cachedInfo{
+			json: r.liveInfo().JSON().(json),
+		}
+	})
+	return info
+}
+
+func (r *Raft) SetTrace(trace Trace) error {
+	return r.inspect(func(*Raft) {
+		r.trace = trace
+	})
 }
 
 // ------------------------------------------------------------------------
@@ -334,7 +337,7 @@ func (r *Raft) executeTask(t Task) {
 		r.snapTakenCh = make(chan snapTaken)
 		go r.takeSnapshot(t) // goroutine tracked by r.snapTakenCh
 	case inspect:
-		t.fn(r.liveInfo())
+		t.fn(r)
 		t.reply(nil)
 	default:
 		if r.state == Leader {

@@ -579,10 +579,6 @@ func waitAddNonVoter(ldr *Raft, id uint64, addr string, promote bool) error {
 	return nil
 }
 
-func waitInspect(r *Raft, fn func(Info)) {
-	_, _ = waitTask(r, InspectFunc(fn), 0)
-}
-
 // use zero timeout, to wait till reply received
 func waitNewEntry(r *Raft, ne NewEntry, timeout time.Duration) (fsmReply, error) {
 	var timer <-chan time.Time
