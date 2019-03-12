@@ -71,7 +71,7 @@ func (n *Node) decode(r io.Reader) error {
 
 func (n Node) validate() error {
 	if n.ID == 0 {
-		return errors.New("node id is zero")
+		return errors.New("id must be greater than zero")
 	}
 	if n.Addr == "" {
 		return errors.New("empty address")

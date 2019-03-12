@@ -231,6 +231,9 @@ func (r *Raft) Info() Info {
 // ------------------------------------------------------------------------
 
 func (c *Config) AddNonVoter(id uint64, addr string, promote bool) error {
+	if id == 0 {
+		return errors.New("raft: id must be greater than zero")
+	}
 	if _, ok := c.Nodes[id]; ok {
 		return fmt.Errorf("raft: node %d already exists", id)
 	}

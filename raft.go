@@ -5,6 +5,8 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 type Raft struct {
@@ -48,6 +50,9 @@ type Raft struct {
 }
 
 func New(id uint64, opt Options, fsm FSM, storage Storage) (*Raft, error) {
+	if id == 0 {
+		return nil, errors.New("raft: id must be greater than zero")
+	}
 	if err := opt.validate(); err != nil {
 		return nil, err
 	}
