@@ -194,8 +194,12 @@ func (l *ldrShip) checkReplUpdates(u interface{}) {
 			} else {
 				debug(l, u.status.id, "is reminding promotion:", r)
 			}
+			if l.transferTimer.active {
+				debug(l, "cannot promote: transferLeadership in progress")
+				break
+			}
 			if !l.configs.IsCommitted() {
-				debug(l, "config not committed")
+				debug(l, "cannot promote: config not committed")
 				break
 			}
 			hasNewEntries := l.lastLogIndex > u.status.matchIndex
