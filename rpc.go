@@ -5,43 +5,64 @@ import (
 	"io/ioutil"
 )
 
-// If election timeout elapses without receiving AppendEntries
-// RPC from current leader or granting vote to candidate:
-// convert to candidate.
+// resetTimer tells whether follower should reset its electionTimer or not
 //
-// replyRPC return true if it is appendEntries request
-// or vote granted
-func (r *Raft) replyRPC(rpc *rpc) bool {
-	var (
-		resetTimer = true
-		result     rpcResult
-		err        error
-	)
+// Diego says:
+//   If election timeout elapses without receiving AppendEntries
+//   RPC from current leader or granting vote to candidate:
+//   convert to candidate.
+func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 	if r.trace.received != nil {
 		r.trace.received(r.id, rpc.req.from(), r.state, r.term, rpc.req)
 	}
-	switch req := rpc.req.(type) {
-	case *voteReq:
-		result = r.onVoteRequest(req)
-		rpc.resp, resetTimer = &voteResp{r.term, result}, result == success
-	case *appendEntriesReq:
-		result, err = r.onAppendEntriesRequest(req)
-		rpc.resp = &appendEntriesResp{r.term, result, r.lastLogIndex}
-	case *installSnapReq:
-		result, err = r.onInstallSnapRequest(req)
-		if result == readErr {
-			rpc.readErr = err
+
+	result, err := rpcResult(0), error(nil)
+	if rpc.req.getTerm() < r.term {
+		result = staleTerm
+	} else {
+		if rpc.req.getTerm() > r.term {
+			r.setState(Follower)
+			r.setTerm(rpc.req.getTerm())
 		}
-		if rpc.readErr == nil && req.size > 0 {
-			_, rpc.readErr = io.CopyN(ioutil.Discard, req.snapshot, req.size)
+
+		switch rpc.req.rpcType() {
+		case rpcAppendEntries, rpcInstallSnap:
+			r.setState(Follower)
+			r.setLeader(rpc.req.from())
+			resetTimer = true
 		}
-		rpc.resp = &installSnapResp{r.term, result}
-	case *timeoutNowReq:
-		r.onTimeoutNowRequest()
-		rpc.resp = &timeoutNowResp{r.term, success}
-	default:
-		assert(false, "unexpected request: %T", req)
+
+		// do actual processing of request
+		switch req := rpc.req.(type) {
+		case *voteReq:
+			result = r.onVoteRequest(req)
+			resetTimer = result == success
+		case *appendEntriesReq:
+			result, err = r.onAppendEntriesRequest(req)
+		case *installSnapReq:
+			result, err = r.onInstallSnapRequest(req)
+		case *timeoutNowReq:
+			r.onTimeoutNowRequest()
+		default:
+			assert(false, "unexpected request: %T", req)
+		}
 	}
+
+	// construct response
+	rpc.resp = rpc.req.rpcType().createResp(r, result)
+
+	// if possible, drain any partially read requests
+	if result == readErr {
+		rpc.readErr = err
+	} else {
+		switch req := rpc.req.(type) {
+		case *installSnapReq:
+			if req.size > 0 {
+				_, rpc.readErr = io.CopyN(ioutil.Discard, req.snapshot, req.size)
+			}
+		}
+	}
+
 	if result == unexpectedErr && r.trace.Error != nil {
 		r.trace.Error(err)
 	}
@@ -53,22 +74,6 @@ func (r *Raft) replyRPC(rpc *rpc) bool {
 }
 
 func (r *Raft) onVoteRequest(req *voteReq) rpcResult {
-	if req.term < r.term {
-		return staleTerm
-	}
-	if req.term > r.term {
-		r.setState(Follower)
-		r.setTerm(req.term)
-	}
-
-	//// if we have leader, we only vote for him
-	//if r.leader != 0 {
-	//	if req.candidate == r.leader {
-	//		return success
-	//	}
-	//	return leaderKnown
-	//}
-
 	// if we already voted
 	if r.votedFor != 0 {
 		if r.votedFor == req.candidate { // same candidate we votedFor
@@ -87,19 +92,6 @@ func (r *Raft) onVoteRequest(req *voteReq) rpcResult {
 }
 
 func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) (rpcResult, error) {
-	// reply false if older term
-	if req.term < r.term {
-		return staleTerm, nil
-	}
-
-	// if newer term, convert to follower
-	if req.term > r.term || r.state != Follower {
-		r.setState(Follower)
-		r.setTerm(req.term)
-	}
-
-	r.setLeader(req.leader)
-
 	// reply false if log at req.prevLogIndex does not match
 	if req.prevLogIndex > r.snapIndex {
 		if req.prevLogIndex > r.lastLogIndex {
@@ -186,6 +178,12 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) (rpcResult, error) 
 	return success, nil
 }
 
+func (r *Raft) canCommit(req *appendEntriesReq, index, term uint64) bool {
+	return req.ldrCommitIndex >= index && // did leader committed it ?
+		term == req.term && // don't commit any entry, until leader has committed an entry with his term
+		index > r.commitIndex // haven't we committed yet
+}
+
 // if commitIndex > lastApplied: increment lastApplied, apply
 // log[lastApplied] to state machine
 func (r *Raft) applyCommitted(ne *entry) error {
@@ -208,35 +206,7 @@ func (r *Raft) applyCommitted(ne *entry) error {
 	return nil
 }
 
-func (r *Raft) canCommit(req *appendEntriesReq, index, term uint64) bool {
-	return req.ldrCommitIndex >= index && // did leader committed it ?
-		term == req.term && // don't commit any entry, until leader has committed an entry with his term
-		index > r.commitIndex // haven't we committed yet
-}
-
-func lastEntry(req *appendEntriesReq) (index, term uint64) {
-	if n := len(req.entries); n == 0 {
-		return req.prevLogIndex, req.prevLogTerm
-	} else {
-		last := req.entries[n-1]
-		return last.index, last.term
-	}
-}
-
 func (r *Raft) onInstallSnapRequest(req *installSnapReq) (rpcResult, error) {
-	// reply false if older term
-	if req.term < r.term {
-		return staleTerm, nil
-	}
-
-	// if newer term, convert to follower
-	if req.term > r.term || r.state != Follower {
-		r.setState(Follower)
-		r.setTerm(req.term)
-	}
-
-	r.setLeader(req.leader)
-
 	// store snapshot
 	sink, err := r.snapshots.New(req.lastIndex, req.lastTerm, req.lastConfig)
 	if err != nil {

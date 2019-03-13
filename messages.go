@@ -29,6 +29,21 @@ func (t rpcType) createReq() request {
 	}
 }
 
+func (t rpcType) createResp(r *Raft, result rpcResult) message {
+	switch t {
+	case rpcVote:
+		return &voteResp{r.term, result}
+	case rpcAppendEntries:
+		return &appendEntriesResp{r.term, result, r.lastLogIndex}
+	case rpcInstallSnap:
+		return &installSnapResp{r.term, result}
+	case rpcTimeoutNow:
+		return &timeoutNowResp{r.term, success}
+	default:
+		panic(fmt.Errorf("unknown rpcType: %d", t))
+	}
+}
+
 type rpcResult uint8
 
 const (

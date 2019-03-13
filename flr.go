@@ -329,6 +329,15 @@ func (f *flr) getSnapLog() (snapIndex, snapTerm uint64) {
 	return f.storage.snapIndex, f.storage.snapTerm
 }
 
+func lastEntry(req *appendEntriesReq) (index, term uint64) {
+	if n := len(req.entries); n == 0 {
+		return req.prevLogIndex, req.prevLogTerm
+	} else {
+		last := req.entries[n-1]
+		return last.index, last.term
+	}
+}
+
 // ------------------------------------------------
 
 type Round struct {
