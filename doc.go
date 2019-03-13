@@ -17,3 +17,4 @@ package raft
 // * resolver should catch latest resolved addr
 // * leader should back pressure on newEntryCh
 // * add cluster id
+// * can we provide type safe tasks: task.Result() now returns interface{}

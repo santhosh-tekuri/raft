@@ -86,6 +86,7 @@ func TestRaft(t *testing.T) {
 		t.Run("rejectLogUpdateTasks", test_transferLeadership_rejectLogUpdateTasks)
 		t.Run("quorumUnreachable", test_transferLeadership_quorumUnreachable)
 		t.Run("newTermDetected", test_transferLeadership_newTermDetected)
+		// todo: add test for timeoutError
 	})
 }
 
