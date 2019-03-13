@@ -48,6 +48,42 @@ func test_transferLeadership_fiveNodes(t *testing.T) {
 	}
 }
 
+// leader should reject any transferLeadership requests,
+// while one is already in progress
+func test_transferLeadership_inProgressErr(t *testing.T) {
+	// launch 3 node cluster, with quorumWait 1 sec
+	c := newCluster(t)
+	c.opt.QuorumWait = time.Second
+	ldr, flrs := c.ensureLaunch(3)
+	defer c.shutdown()
+
+	// shutdown all followers
+	c.shutdown(flrs...)
+
+	// send an update, this makes sure that no transfer target is available
+	ldr.NewEntries() <- UpdateFSM([]byte("test"))
+
+	// request leadership transfer, with 5 sec timeout,
+	// this will not complete within 5 sec
+	transfer := TransferLeadership(5 * time.Second)
+	ldr.Tasks() <- transfer
+
+	// request another leadership transfer
+	start := time.Now()
+	_, err := waitTask(ldr, TransferLeadership(5*time.Second), c.longTimeout)
+
+	// this new request must fail with InProgressError
+	if _, ok := err.(InProgressError); !ok {
+		t.Fatalf("err: got %#v, want InProgressError", err)
+	}
+
+	// check that we got InProgressError without any wait
+	d := time.Now().Sub(start)
+	if d > 5*time.Millisecond {
+		t.Fatalf("duration: got %v, want <5s", d)
+	}
+}
+
 // if quorum became unreachable during transferLeadership,
 // leader should reply ErrQuorumUnreachable
 func test_transferLeadership_quorumUnreachable(t *testing.T) {
