@@ -57,8 +57,7 @@ func (r *Raft) onVoteRequest(req *voteReq) rpcResult {
 		return staleTerm
 	}
 	if req.term > r.term {
-		debug(r, "stateChange", req.term, Follower)
-		r.state = Follower
+		r.setState(Follower)
 		r.setTerm(req.term)
 	}
 
@@ -95,12 +94,11 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) (rpcResult, error) 
 
 	// if newer term, convert to follower
 	if req.term > r.term || r.state != Follower {
-		debug(r, "stateChange", req.term, Follower)
-		r.state = Follower
+		r.setState(Follower)
 		r.setTerm(req.term)
 	}
 
-	r.leader = req.leader
+	r.setLeader(req.leader)
 
 	// reply false if log at req.prevLogIndex does not match
 	if req.prevLogIndex > r.snapIndex {
@@ -233,12 +231,11 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq) (rpcResult, error) {
 
 	// if newer term, convert to follower
 	if req.term > r.term || r.state != Follower {
-		debug(r, "stateChange", req.term, Follower)
-		r.state = Follower
+		r.setState(Follower)
 		r.setTerm(req.term)
 	}
 
-	r.leader = req.leader
+	r.setLeader(req.leader)
 
 	// store snapshot
 	sink, err := r.snapshots.New(req.lastIndex, req.lastTerm, req.lastConfig)
@@ -293,5 +290,6 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq) (rpcResult, error) {
 }
 
 func (r *Raft) onTimeoutNowRequest() {
-	r.state, r.leader = Candidate, 0
+	r.setState(Candidate)
+	r.setLeader(0)
 }

@@ -50,6 +50,7 @@ type Trace struct {
 	Error             func(err error)
 	Starting          func(info Info)
 	StateChanged      func(info Info)
+	LeaderChanged     func(info Info)
 	ElectionStarted   func(info Info)
 	ElectionAborted   func(info Info, reason string)
 	ConfigChanged     func(info Info)
@@ -73,8 +74,15 @@ func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
 		info("raft: starting with Config", rinfo.Configs().Latest)
 	}
 	trace.StateChanged = func(rinfo Info) {
-		if rinfo.State() == Leader {
+		info("raft: state changed to", rinfo.State())
+	}
+	trace.LeaderChanged = func(rinfo Info) {
+		if rinfo.Leader() == 0 {
+			info("raft: no known leader")
+		} else if rinfo.Leader() == rinfo.ID() {
 			info("raft: cluster leadership acquired")
+		} else {
+			info("raft: cluster leadership acquired by node", rinfo.Leader())
 		}
 	}
 	trace.ElectionAborted = func(rinfo Info, reason string) {

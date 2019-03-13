@@ -88,8 +88,7 @@ func (c *candShip) onVoteResult(v voteResult) {
 	// if response contains term T > currentTerm:
 	// set currentTerm = T, convert to follower
 	if v.term > c.term {
-		debug(c, "candidate -> follower")
-		c.state = Follower
+		c.setState(Follower)
 		c.setTerm(v.term)
 		return
 	}
@@ -98,8 +97,8 @@ func (c *candShip) onVoteResult(v voteResult) {
 	if v.result == success {
 		c.votesNeeded--
 		if c.votesNeeded == 0 {
-			debug(c, "candidate -> leader")
-			c.state, c.leader = Leader, c.id
+			c.setState(Leader)
+			c.setLeader(c.id)
 		}
 	}
 }

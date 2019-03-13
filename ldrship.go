@@ -72,7 +72,7 @@ func (l *ldrShip) release() {
 		delete(l.flrs, id)
 	}
 	if l.leader == l.id {
-		l.leader = 0
+		l.setLeader(0)
 	}
 
 	// respond to any pending user entries
@@ -180,7 +180,8 @@ func (l *ldrShip) checkReplUpdates(u interface{}) {
 			// if response contains term T > currentTerm:
 			// set currentTerm = T, convert to follower
 			debug(l, "leader -> follower")
-			l.state, l.leader = Follower, 0
+			l.setState(Follower)
+			l.setLeader(0)
 			l.setTerm(u.val)
 			return
 		case roundCompleted:
@@ -271,8 +272,8 @@ func (l *ldrShip) checkQuorum(wait time.Duration) {
 		}
 	}
 	if wait == 0 {
-		debug(l, "leader -> follower")
-		l.state, l.leader = Follower, 0
+		l.setState(Follower)
+		l.setLeader(0)
 	} else if !l.timer.active {
 		debug(l, "quorumUnreachable: waiting", wait)
 		l.timer.reset(wait)

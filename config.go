@@ -259,8 +259,7 @@ func (r *Raft) bootstrap(t bootstrap) {
 	}
 	r.changeConfig(config)
 	t.reply(nil)
-	debug(r, "follower -> candidate")
-	r.state = Candidate
+	r.setState(Candidate)
 }
 
 func (l *ldrShip) changeConfig(t changeConfig) {
@@ -352,7 +351,8 @@ func (r *Raft) setCommitIndex(index uint64) {
 			// if we are no longer voter after this config is committed,
 			// then what is the point of accepting fsm entries from user ????
 			debug(r, "leader -> follower notVoter")
-			r.state, r.leader = Follower, 0
+			r.setState(Follower)
+			r.setLeader(0)
 		}
 		// todo: we can provide option to shutdown
 		//       if it is no longer part of new config

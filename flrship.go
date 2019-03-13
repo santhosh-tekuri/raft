@@ -21,8 +21,7 @@ func (f *flrShip) resetTimer() {
 
 func (f *flrShip) onTimeout() {
 	debug(f, "heartbeatTimeout leader:", f.leader)
-	f.leader = 0
-
+	f.setLeader(0)
 	if can, reason := f.canStartElection(); !can {
 		debug(f, "electionAborted", reason)
 		f.electionAborted = true
@@ -31,9 +30,7 @@ func (f *flrShip) onTimeout() {
 		}
 		return
 	}
-
-	debug(f, "follower -> candidate")
-	f.state = Candidate
+	f.setState(Candidate)
 }
 
 func (f *flrShip) canStartElection() (can bool, reason string) {

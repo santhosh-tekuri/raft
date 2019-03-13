@@ -203,9 +203,6 @@ func (r *Raft) stateLoop() {
 				l.onTimeoutNow(err)
 			}
 		}
-		if r.trace.StateChanged != nil {
-			r.trace.StateChanged(r.liveInfo())
-		}
 		r.timer.stop()
 		ships[rstate].release()
 	}
@@ -254,6 +251,26 @@ func (r *Raft) isClosed() bool {
 }
 
 // misc --------------------------------------------------------
+
+func (r *Raft) setState(s State) {
+	if s != r.state {
+		debug(r, r.state, "->", s)
+		if r.trace.StateChanged != nil {
+			r.trace.StateChanged(r.liveInfo())
+		}
+	}
+	r.state = s
+}
+
+func (r *Raft) setLeader(id uint64) {
+	if id != r.leader {
+		debug(r, "leader:", id)
+		if r.trace.LeaderChanged != nil {
+			r.trace.LeaderChanged(r.liveInfo())
+		}
+	}
+	r.leader = id
+}
 
 func (r *Raft) ID() uint64 {
 	return r.id
