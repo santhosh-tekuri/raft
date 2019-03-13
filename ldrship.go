@@ -94,7 +94,7 @@ func (l *ldrShip) release() {
 
 func (l *ldrShip) storeEntry(ne NewEntry) error {
 	ne.entry.index, ne.entry.term = l.lastLogIndex+1, l.term
-	l.newEntries.PushBack(ne)
+	elem := l.newEntries.PushBack(ne)
 
 	if ne.typ == entryRead || ne.typ == entryBarrier { // non-log entry
 		l.applyCommitted()
@@ -102,6 +102,7 @@ func (l *ldrShip) storeEntry(ne NewEntry) error {
 	}
 
 	if l.transferTimer.active {
+		l.newEntries.Remove(elem)
 		ne.reply(InProgressError("transferLeadership"))
 		return InProgressError("transferLeadership")
 	}

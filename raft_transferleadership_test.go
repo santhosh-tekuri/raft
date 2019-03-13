@@ -50,7 +50,7 @@ func test_transferLeadership_fiveNodes(t *testing.T) {
 
 // leader should reject any transferLeadership requests,
 // while one is already in progress
-func test_transferLeadership_inProgressErr(t *testing.T) {
+func test_transferLeadership_anotherTransferRequest(t *testing.T) {
 	// launch 3 node cluster, with quorumWait 1 sec
 	c := newCluster(t)
 	c.opt.QuorumWait = time.Second
@@ -81,6 +81,39 @@ func test_transferLeadership_inProgressErr(t *testing.T) {
 	d := time.Now().Sub(start)
 	if d > 5*time.Millisecond {
 		t.Fatalf("duration: got %v, want <5s", d)
+	}
+}
+
+// leader should reject any requests that update log,
+// while transferLeadership is in progress
+func test_transferLeadership_rejectLogUpdateTasks(t *testing.T) {
+	// launch 3 node cluster, with quorumWait 1 sec
+	c := newCluster(t)
+	c.opt.QuorumWait = time.Second
+	ldr, flrs := c.ensureLaunch(3)
+	defer c.shutdown()
+
+	// shutdown all followers
+	c.shutdown(flrs...)
+
+	// send an update, this makes sure that no transfer target is available
+	ldr.NewEntries() <- UpdateFSM([]byte("test"))
+
+	// request leadership transfer, with 5 sec timeout,
+	// this will not complete within 5 sec
+	transfer := TransferLeadership(5 * time.Second)
+	ldr.Tasks() <- transfer
+
+	// send updateFSM request, must be rejected with InProgressError
+	_, err := waitUpdate(ldr, "hello", 5*time.Millisecond)
+	if _, ok := err.(InProgressError); !ok {
+		t.Fatalf("err: got %#v, want InProgressError", err)
+	}
+
+	// send configChange request, must be rejected with InProgressError
+	err = waitAddNonVoter(ldr, 5, id2Addr(5), false)
+	if _, ok := err.(InProgressError); !ok {
+		t.Fatalf("err: got %#v, want InProgressError", err)
 	}
 }
 
