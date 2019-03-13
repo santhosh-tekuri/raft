@@ -244,8 +244,8 @@ func (l *ldrShip) checkReplUpdates(u interface{}) {
 
 func (l *ldrShip) checkQuorum(wait time.Duration) {
 	voters, reachable := 0, 0
-	for id, node := range l.configs.Latest.Nodes {
-		if node.Voter {
+	for id, n := range l.configs.Latest.Nodes {
+		if n.Voter {
 			voters++
 			if id == l.id || l.flrs[id].status.noContact.IsZero() {
 				reachable++
