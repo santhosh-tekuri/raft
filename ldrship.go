@@ -102,8 +102,8 @@ func (l *ldrShip) storeEntry(ne NewEntry) error {
 	}
 
 	if l.transferTimer.active {
-		ne.reply(ErrLeadershipTransferInProgress)
-		return ErrLeadershipTransferInProgress
+		ne.reply(InProgressError("transferLeadership"))
+		return InProgressError("transferLeadership")
 	}
 
 	debug(l, "log.append", ne.typ, ne.index)
@@ -384,7 +384,7 @@ func (l *ldrShip) onTransferLeadership(t transferLdr) {
 	debug(l, "got transferLeadership request", t.timeout)
 	if l.transferTimer.active {
 		debug(l, "leadership transfer already in progress")
-		t.reply(ErrLeadershipTransferInProgress)
+		t.reply(InProgressError("transferLeadership"))
 		return
 	}
 	if l.configs.Latest.numVoters() == 1 {
@@ -433,7 +433,7 @@ func (l *ldrShip) doTransferLeadership() {
 }
 
 func (l *ldrShip) onTransferTimeout() {
-	l.replyTransferLeadership(ErrLeadershipTransferTimeout)
+	l.replyTransferLeadership(TimeoutError("transferLeadership"))
 }
 
 func (l *ldrShip) onTimeoutNow(err error) {

@@ -265,7 +265,7 @@ func (r *Raft) bootstrap(t bootstrap) {
 
 func (l *ldrShip) changeConfig(t changeConfig) {
 	if !l.configs.IsCommitted() {
-		t.reply(ErrConfigChangeInProgress)
+		t.reply(InProgressError("configChange"))
 		return
 	}
 	if l.commitIndex < l.startIndex {

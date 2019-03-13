@@ -12,17 +12,13 @@ var (
 
 	// ErrAlreadyBootstrapped is returned when bootstrap task received
 	// by already bootstrapped server
-	ErrAlreadyBootstrapped          = errors.New("raft.bootstrap: already bootstrapped")
-	ErrConfigChangeInProgress       = errors.New("raft.configChange: another in progress")
-	ErrNotCommitReady               = errors.New("raft.configChange: not ready to commit")
-	ErrConfigChanged                = errors.New("raft.configChange: config changed meanwhile")
-	ErrSnapshotThreshold            = errors.New("raft.takeSnapshot: not enough outstanding logs to snapshot")
-	ErrSnapshotInProgress           = errors.New("raft.takeSnapshot: another snapshot in progress")
-	ErrNoUpdates                    = errors.New("raft.takeSnapshot: no updates to FSM")
-	ErrLeadershipTransferInProgress = errors.New("raft.transferLeadership: another in progress")
-	ErrLeadershipTransferTimeout    = errors.New("raft.transferLeadership: timeout")
-	ErrQuorumUnreachable            = errors.New("raft: quorum unreachable")
-	ErrLeadershipTransferNoVoter    = errors.New("raft.transferLeadership: no other voter to transfer")
+	ErrAlreadyBootstrapped       = errors.New("raft.bootstrap: already bootstrapped")
+	ErrNotCommitReady            = errors.New("raft.configChange: not ready to commit")
+	ErrConfigChanged             = errors.New("raft.configChange: config changed meanwhile")
+	ErrSnapshotThreshold         = errors.New("raft.takeSnapshot: not enough outstanding logs to snapshot")
+	ErrNoUpdates                 = errors.New("raft.takeSnapshot: no updates to FSM")
+	ErrQuorumUnreachable         = errors.New("raft: quorum unreachable")
+	ErrLeadershipTransferNoVoter = errors.New("raft.transferLeadership: no other voter to transfer")
 )
 
 var (
@@ -56,6 +52,20 @@ func (e NotLeaderError) Error() string {
 		return "raft: Lost leadership" + contact
 	}
 	return "raft: this node is not the leader" + contact
+}
+
+// -----------------------------------------------------------
+
+type InProgressError string
+
+func (e InProgressError) Error() string {
+	return fmt.Sprintf("raft: another %s in progress", string(e))
+}
+
+type TimeoutError string
+
+func (e TimeoutError) Error() string {
+	return fmt.Sprintf("raft: %s timeout", string(e))
 }
 
 // -----------------------------------------------------------

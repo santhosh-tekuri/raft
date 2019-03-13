@@ -343,7 +343,7 @@ func (r *Raft) executeTask(t Task) {
 		r.bootstrap(t)
 	case takeSnapshot:
 		if r.snapTakenCh != nil {
-			t.reply(ErrSnapshotInProgress)
+			t.reply(InProgressError("takeSnapshot"))
 			return
 		}
 		t.lastSnapIndex = r.snapIndex
