@@ -74,7 +74,10 @@ func TestRaft(t *testing.T) {
 			t.Run("upToDate", test_promote_existingNode_upToDate)
 		})
 	})
-	t.Run("transferLeadership", test_transferLeadership)
+	t.Run("transferLeadership", func(t *testing.T) {
+		t.Run("singleNode", test_transferLeadership_singleNode)
+		t.Run("fiveNodes", test_transferLeadership_fiveNodes)
+	})
 }
 
 // todo: test that non voter does not start election

@@ -330,13 +330,38 @@ func test_leader_quorumWait_reachable(t *testing.T) {
 	}
 }
 
-func test_transferLeadership(t *testing.T) {
+func test_transferLeadership_singleNode(t *testing.T) {
+	// launch single node cluster
+	c, ldr, _ := launchCluster(t, 1)
+	defer c.shutdown()
+
+	// transfer leadershipt, must return ErrLeadershipTransferNoVoter
+	_, err := waitTask(ldr, TransferLeadership(c.longTimeout), c.longTimeout)
+	if err != ErrLeadershipTransferNoVoter {
+		c.Fatalf("err: got %v, want %v", err, ErrLeadershipTransferNoVoter)
+	}
+}
+
+func test_transferLeadership_fiveNodes(t *testing.T) {
+	// launch 5 node cluster
 	c, ldr, _ := launchCluster(t, 5)
 	defer c.shutdown()
 
+	term := ldr.Info().Term()
+
+	// transfer leadership, ensure no error
 	c.ensure(waitTask(ldr, TransferLeadership(c.longTimeout), c.longTimeout))
+
+	// wait for new leader
 	newLdr := c.waitForLeader()
+
+	// check leader is changed
 	if ldr.ID() == newLdr.ID() {
 		c.Fatal("no change in leader")
+	}
+
+	// new leader term must be one greater than old leader term
+	if got := newLdr.Info().Term(); got != term+1 {
+		c.Fatalf("newLdr.term: got %d, want %d", got, term+1)
 	}
 }
