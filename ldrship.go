@@ -307,7 +307,7 @@ func (l *ldrShip) majorityMatchIndex() uint64 {
 // and log[N].term == currentTerm: set commitIndex = N
 func (l *ldrShip) onMajorityCommit() {
 	majorityMatchIndex := l.majorityMatchIndex()
-	if l.transferTimer.active && l.transferLdr.rpcCh != nil && l.transferTgt != 0 {
+	if l.transferTimer.active && l.transferLdr.rpcCh == nil && l.transferTgt != 0 {
 		l.doTransferLeadership()
 	}
 

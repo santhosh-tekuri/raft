@@ -24,12 +24,17 @@ func test_transferLeadership_singleVoter(t *testing.T) {
 }
 
 // happy path: transfer leadership in 5 node cluster
-func test_transferLeadership_fiveNodes(t *testing.T) {
+func test_transferLeadership_fiveNodes(t *testing.T, targetReady bool) {
 	// launch 5 node cluster
 	c, ldr, _ := launchCluster(t, 5)
 	defer c.shutdown()
 
 	term := ldr.Info().Term()
+
+	c.sendUpdates(ldr, 1, 10)
+	if targetReady {
+		c.waitFSMLen(10)
+	}
 
 	// transfer leadership, ensure no error
 	c.ensure(waitTask(ldr, TransferLeadership(c.longTimeout), c.longTimeout))
