@@ -20,7 +20,7 @@ func test_promote_newNode_singleRound(t *testing.T) {
 		nr := c.launch(1, false)[id]
 
 		// add him as nonvoter with promote=true
-		c.ensure(waitAddNonVoter(ldr, id, id2Addr(id), true))
+		c.ensure(waitAddNonvoter(ldr, id, id2Addr(id), true))
 
 		// wait until leader promotes him to voter
 		e, err := promoting.waitForEvent(c.longTimeout)
@@ -77,7 +77,7 @@ func test_promote_newNode_uptodateButConfigChangeInProgress(t *testing.T) {
 	defer c.unregister(roundCompleted)
 	promoting := c.registerFor(promoting, ldr)
 	defer c.unregister(promoting)
-	task := addNonVoter(ldr, 3, id2Addr(3), true)
+	task := addNonvoter(ldr, 3, id2Addr(3), true)
 	select {
 	case <-task.Done():
 		t.Fatalf("should not be done: %v", task.Err())

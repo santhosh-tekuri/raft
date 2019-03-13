@@ -13,12 +13,12 @@ func test_changeConfig_validations(t *testing.T) {
 	configs := ldr.Info().Configs()
 
 	// adding node with empty id should fail
-	if err := waitAddNonVoter(ldr, 0, "localhost:8888", false); err == nil {
+	if err := waitAddNonvoter(ldr, 0, "localhost:8888", false); err == nil {
 		t.Fatal(err)
 	}
 
 	// adding node with empty addr should fail
-	if err := waitAddNonVoter(ldr, 10, "", false); err == nil {
+	if err := waitAddNonvoter(ldr, 10, "", false); err == nil {
 		t.Fatal(err)
 	}
 
@@ -32,7 +32,7 @@ func test_changeConfig_validations(t *testing.T) {
 
 	// adding node with existing addr should fail
 	for _, n := range ldr.Info().Configs().Latest.Nodes {
-		if err := waitAddNonVoter(ldr, 12, n.Addr, false); err == nil {
+		if err := waitAddNonvoter(ldr, 12, n.Addr, false); err == nil {
 			t.Fatal(err)
 		}
 	}
@@ -57,7 +57,7 @@ func test_changeConfig_committedByAll(t *testing.T) {
 	defer c.unregister(configRelated)
 
 	// add M4 as nonvoter, wait for success reply
-	c.ensure(waitAddNonVoter(ldr, m4.ID(), id2Addr(m4.ID()), false))
+	c.ensure(waitAddNonvoter(ldr, m4.ID(), id2Addr(m4.ID()), false))
 
 	// ensure that leader raised configChange
 	select {
@@ -157,7 +157,7 @@ func test_nonvoter_catchesUp_followsLeader(t *testing.T) {
 	m4 := c.launch(1, false)[4]
 
 	// add M4 as nonvoter, wait for success reply
-	c.ensure(waitAddNonVoter(ldr, m4.ID(), id2Addr(m4.ID()), false))
+	c.ensure(waitAddNonvoter(ldr, m4.ID(), id2Addr(m4.ID()), false))
 
 	// ensure that M4 got its FSM replicated
 	c.waitFSMLen(10, m4)
@@ -176,7 +176,7 @@ func test_nonvoter_reconnects_catchesUp(t *testing.T) {
 	m4 := c.launch(1, false)[4]
 
 	// add M4 as nonvoter, wait for success reply
-	c.ensure(waitAddNonVoter(ldr, m4.ID(), id2Addr(m4.ID()), false))
+	c.ensure(waitAddNonvoter(ldr, m4.ID(), id2Addr(m4.ID()), false))
 
 	// now disconnect nonvoter m4
 	m4StateChanged := c.registerFor(stateChanged, m4)
@@ -226,7 +226,7 @@ func test_nonvoter_leaderChanged_followsNewLeader(t *testing.T) {
 	m4 := c.launch(1, false)[4]
 
 	// add M4 as nonvoter, wait for success reply
-	c.ensure(waitAddNonVoter(ldr, m4.ID(), id2Addr(m4.ID()), false))
+	c.ensure(waitAddNonvoter(ldr, m4.ID(), id2Addr(m4.ID()), false))
 
 	// now shutdown the leader
 	ldr.Shutdown().Wait()

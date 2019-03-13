@@ -109,6 +109,10 @@ func TestMain(m *testing.M) {
 
 // ---------------------------------------------
 
+func host(r *Raft) string {
+	return id2Host(r.ID())
+}
+
 func id2Host(id uint64) string {
 	return fmt.Sprintf("M%d", id)
 }
@@ -206,6 +210,7 @@ loop:
 
 func (c *cluster) launch(n int, bootstrap bool) map[uint64]*Raft {
 	c.Helper()
+	tdebug("launch:", n, "bootstrap:", bootstrap)
 	nodes := make(map[uint64]Node, n)
 	for i := 1; i <= n; i++ {
 		id := uint64(i + len(c.rr))
@@ -256,14 +261,14 @@ func (c *cluster) shutdown(rr ...*Raft) {
 	c.Helper()
 	checkLeak := false
 	if len(rr) == 0 {
-		Debug("<<----------------------------------shutting down cluster")
+		tdebug("shutting down cluster")
 		checkLeak = true
 		rr = c.exclude()
 	}
 	for _, r := range rr {
-		Debug("<<----------------------------------shutting down", id2Host(r.ID()))
+		tdebug("shutting down", host(r))
 		r.Shutdown().Wait()
-		Debug(r.ID(), "<< shutdown()")
+		tdebug(host(r), "is shutdown")
 	}
 	if checkLeak && c.checkLeak != nil {
 		c.testTimeout.Stop()
@@ -274,8 +279,7 @@ func (c *cluster) shutdown(rr ...*Raft) {
 
 func (c *cluster) restart(r *Raft) *Raft {
 	c.Helper()
-	r.Shutdown().Wait()
-	Debug(r.ID(), "<< shutdown()")
+	c.shutdown(r)
 
 	newFSM := &fsmMock{id: r.ID(), changed: c.events.onFMSChanged}
 	storage := c.storage[r.ID()]
@@ -284,21 +288,22 @@ func (c *cluster) restart(r *Raft) *Raft {
 		c.Fatal(err)
 	}
 
-	host := c.network.Host(id2Host(r.ID()))
-	newr.dialFn = host.DialTimeout
+	h := c.network.Host(id2Host(r.ID()))
+	newr.dialFn = h.DialTimeout
 
-	l, err := host.Listen("tcp", id2Addr(r.ID()))
+	l, err := h.Listen("tcp", id2Addr(r.ID()))
 	if err != nil {
 		c.Fatal(err)
 	}
 	c.rr[r.ID()] = newr
-	Debug("<<----------------------------------restarting", r.ID())
+	tdebug("restarting", host(r))
 	go newr.Serve(l)
 	return newr
 }
 
 func (c *cluster) waitForStability(rr ...*Raft) {
 	c.Helper()
+	tdebug("waitForStability:", hosts(rr))
 	stateChanged := c.registerFor(stateChanged, rr...)
 	defer c.unregister(stateChanged)
 	electionStarted := c.registerFor(electionStarted, rr...)
@@ -371,6 +376,7 @@ func (c *cluster) ensureLeader(leader uint64) {
 // wait until state is one of given states
 func (c *cluster) waitForState(r *Raft, timeout time.Duration, states ...State) {
 	c.Helper()
+	tdebug("waitForState:", host(r), timeout, states)
 	condition := func() bool {
 		got := r.Info().State()
 		for _, want := range states {
@@ -389,6 +395,7 @@ func (c *cluster) waitForState(r *Raft, timeout time.Duration, states ...State) 
 
 func (c *cluster) waitForLeader(rr ...*Raft) *Raft {
 	c.Helper()
+	tdebug("waitForLeader:", hosts(rr))
 	if len(rr) == 0 {
 		rr = c.exclude()
 	}
@@ -410,6 +417,7 @@ func (c *cluster) waitForLeader(rr ...*Raft) *Raft {
 
 func (c *cluster) waitFSMLen(fsmLen uint64, rr ...*Raft) {
 	c.Helper()
+	tdebug("waitFSMLen:", fsmLen, hosts(rr))
 	if len(rr) == 0 {
 		rr = c.exclude()
 	}
@@ -434,6 +442,7 @@ func (c *cluster) waitFSMLen(fsmLen uint64, rr ...*Raft) {
 
 func (c *cluster) ensureFSMLen(fsmLen uint64, rr ...*Raft) {
 	c.Helper()
+	tdebug("ensureFSMLen:", fsmLen, hosts(rr))
 	if len(rr) == 0 {
 		rr = c.exclude()
 	}
@@ -466,6 +475,7 @@ func (c *cluster) ensureFSMSame(want []string, rr ...*Raft) {
 
 func (c *cluster) waitCatchup(rr ...*Raft) {
 	c.Helper()
+	tdebug("waitCatchup:", hosts(rr))
 	leaders := c.getInState(Leader)
 	if len(leaders) != 1 {
 		c.Fatalf("leaders: got %d, want 1", len(leaders))
@@ -498,6 +508,7 @@ func (c *cluster) waitCatchup(rr ...*Raft) {
 
 func (c *cluster) waitUnreachableDetected(ldr, failed *Raft) {
 	c.Helper()
+	tdebug("waitUnreachableDetected: ldr:", host(ldr), "failed:", host(failed))
 	condition := func() bool {
 		return !ldr.Info().Followers()[failed.ID()].Unreachable.IsZero()
 	}
@@ -509,6 +520,7 @@ func (c *cluster) waitUnreachableDetected(ldr, failed *Raft) {
 }
 
 func (c *cluster) sendUpdates(r *Raft, from, to int) Task {
+	tdebug("sendUpdates:", host(r), from, "to", to)
 	var ne NewEntry
 	for i := from; i <= to; i++ {
 		ne = UpdateFSM([]byte(fmt.Sprintf("update:%d", i)))
@@ -526,6 +538,7 @@ func (c *cluster) waitBarrier(r *Raft, timeout time.Duration) {
 
 func (c *cluster) takeSnapshot(r *Raft, threshold uint64, want error) {
 	c.Helper()
+	tdebug("takeSnapshot:", host(r), "threshold:", threshold, "want:", want)
 	takeSnap := TakeSnapshot(threshold)
 	r.Tasks() <- takeSnap
 	<-takeSnap.Done()
@@ -535,8 +548,8 @@ func (c *cluster) takeSnapshot(r *Raft, threshold uint64, want error) {
 }
 
 func (c *cluster) disconnect(rr ...*Raft) {
+	tdebug("disconnect:", hosts(rr))
 	if len(rr) == 0 {
-		Debug("-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<- disconnecting all")
 		c.network.SetFirewall(fnet.AllowSelf)
 		return
 	}
@@ -544,12 +557,11 @@ func (c *cluster) disconnect(rr ...*Raft) {
 	for _, r := range rr {
 		hosts = append(hosts, id2Host(r.ID()))
 	}
-	Debug("-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<- disconnecting", hosts)
 	c.network.SetFirewall(fnet.Split(hosts, fnet.AllowAll))
 }
 
 func (c *cluster) connect() {
-	Debug("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ reconnecting")
+	tdebug("reconnecting")
 	c.network.SetFirewall(fnet.AllowAll)
 }
 
@@ -560,6 +572,7 @@ func fsm(r *Raft) *fsmMock {
 }
 
 func waitTask(r *Raft, t Task, timeout time.Duration) (interface{}, error) {
+	tdebug("waitTask:", host(r), t, timeout)
 	var timer <-chan time.Time
 	if timeout > 0 {
 		timer = time.After(timeout)
@@ -583,7 +596,8 @@ func waitBootstrap(r *Raft, nodes map[uint64]Node, timeout time.Duration) error 
 	return err
 }
 
-func addNonVoter(ldr *Raft, id uint64, addr string, promote bool) Task {
+func addNonvoter(ldr *Raft, id uint64, addr string, promote bool) Task {
+	tdebug("addNonvoter:", host(ldr), id2Host(id), addr, promote)
 	newConf := ldr.Info().Configs().Latest
 	newConf.Nodes[id] = Node{ID: id, Addr: addr, Promote: promote}
 	t := ChangeConfig(newConf)
@@ -591,7 +605,8 @@ func addNonVoter(ldr *Raft, id uint64, addr string, promote bool) Task {
 	return t
 }
 
-func waitAddNonVoter(ldr *Raft, id uint64, addr string, promote bool) error {
+func waitAddNonvoter(ldr *Raft, id uint64, addr string, promote bool) error {
+	tdebug("waitAddNonvoter:", host(ldr), id2Host(id), addr, promote)
 	newConf := ldr.Info().Configs().Latest
 	newConf.Nodes[id] = Node{ID: id, Addr: addr, Promote: promote}
 	t := ChangeConfig(newConf)
@@ -603,6 +618,7 @@ func waitAddNonVoter(ldr *Raft, id uint64, addr string, promote bool) error {
 
 // use zero timeout, to wait till reply received
 func waitNewEntry(r *Raft, ne NewEntry, timeout time.Duration) (fsmReply, error) {
+	tdebug("waitNewEntry:", host(r), ne, timeout)
 	var timer <-chan time.Time
 	if timeout > 0 {
 		timer = time.After(timeout)
@@ -1167,6 +1183,25 @@ func (s *inmemStorage) Open() (SnapshotMeta, io.ReadCloser, error) {
 }
 
 // ------------------------------------------------------------------
+
+func tdebug(args ...interface{}) {
+	prefix := "[testing]-----------------------"
+	debug(append([]interface{}{prefix}, args...)...)
+}
+
+func hosts(rr []*Raft) string {
+	if len(rr) == 0 {
+		return "all"
+	}
+	var buf bytes.Buffer
+	for i, r := range rr {
+		if i != 0 {
+			buf.WriteString(" ")
+		}
+		buf.WriteString(id2Host(r.ID()))
+	}
+	return buf.String()
+}
 
 func timeAfter(timeout time.Duration) <-chan time.Time {
 	if timeout == 0 {

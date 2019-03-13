@@ -10,6 +10,7 @@ import (
 	"github.com/fatih/color"
 )
 
+var colorT = color.New(color.BgBlue, color.FgHiYellow)
 var colorL = color.New(color.FgWhite)
 var colorC = color.New(color.FgRed)
 var colorF = color.New(color.FgCyan)
@@ -27,6 +28,9 @@ var messages = func() chan string {
 				continue
 			}
 			switch {
+			case strings.Index(msg, "[testing]") != -1:
+				colorT.Print(strings.TrimSpace(msg))
+				fmt.Println()
 			case strings.Index(msg, " L | M") != -1:
 				colorR.Print(msg)
 			case strings.Index(msg, " L | ") != -1:
@@ -94,4 +98,21 @@ func (i *liveInfo) String() string {
 
 func (i *cachedInfo) String() string {
 	return fmt.Sprintf("M%d %d %s |", i.ID(), i.Term(), string(i.State()))
+}
+
+func (ne NewEntry) String() string {
+	switch ne.typ {
+	case entryUpdate:
+		return fmt.Sprintf("update{%s}", string(ne.data))
+	case entryRead:
+		return fmt.Sprintf("read{%s}", string(ne.data))
+	case entryBarrier:
+		return "barrier"
+	default:
+		return fmt.Sprintf("%#v", ne)
+	}
+}
+
+func (t transferLdr) String() string {
+	return fmt.Sprintf("transferLdr{%s}", t.timeout)
 }

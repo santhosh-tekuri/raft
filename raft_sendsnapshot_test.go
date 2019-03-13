@@ -15,7 +15,7 @@ func test_sendSnapshot_case(t *testing.T, updateFSMAfterSnap bool) {
 	c.waitBarrier(ldr, 0)
 
 	// add two nonVoters M4; wait all commit them
-	c.ensure(waitAddNonVoter(ldr, 4, id2Addr(4), false))
+	c.ensure(waitAddNonvoter(ldr, 4, id2Addr(4), false))
 	c.waitCatchup()
 
 	// now send one update
