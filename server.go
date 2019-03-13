@@ -129,8 +129,8 @@ func (s *server) isClosed() bool {
 	}
 }
 func (s *server) shutdown() {
-	close(s.shutdownCh)
 	s.mu.RLock()
+	close(s.shutdownCh)
 	if s.listener != nil {
 		_ = s.listener.Close()
 	}

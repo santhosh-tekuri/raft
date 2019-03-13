@@ -189,7 +189,7 @@ func (c Config) validate() error {
 		}
 		addrs[node.Addr] = true
 	}
-	if c.numVoters() == 1 {
+	if c.numVoters() == 0 {
 		return errors.New("zero voters")
 	}
 	return nil

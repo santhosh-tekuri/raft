@@ -5,10 +5,16 @@ import (
 	"time"
 )
 
-func test_transferLeadership_singleNode(t *testing.T) {
+// in cluster with single voter, leader should reject transferLeadership
+// requests with ErrLeadershipTransferNoVoter
+func test_transferLeadership_singleVoter(t *testing.T) {
 	// launch single node cluster
 	c, ldr, _ := launchCluster(t, 1)
 	defer c.shutdown()
+
+	// launch new raft, and add him as nonvoter
+	c.launch(1, false)
+	c.ensure(waitAddNonVoter(ldr, 2, id2Addr(2), false))
 
 	// transfer leadership, must return ErrLeadershipTransferNoVoter
 	_, err := waitTask(ldr, TransferLeadership(c.longTimeout), c.longTimeout)
@@ -17,6 +23,7 @@ func test_transferLeadership_singleNode(t *testing.T) {
 	}
 }
 
+// happy path: transfer leadership in 5 node cluster
 func test_transferLeadership_fiveNodes(t *testing.T) {
 	// launch 5 node cluster
 	c, ldr, _ := launchCluster(t, 5)
@@ -41,7 +48,8 @@ func test_transferLeadership_fiveNodes(t *testing.T) {
 	}
 }
 
-// if quorumUnreachable during transferLeadership
+// if quorum became unreachable during transferLeadership,
+// leader should reply ErrQuorumUnreachable
 func test_transferLeadership_quorumUnreachable(t *testing.T) {
 	// launch 3 node cluster, with quorumWait 1 sec
 	c := newCluster(t)
