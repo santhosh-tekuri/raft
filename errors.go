@@ -12,13 +12,17 @@ var (
 
 	// ErrAlreadyBootstrapped is returned when bootstrap task received
 	// by already bootstrapped server
-	ErrAlreadyBootstrapped    = errors.New("raft.bootstrap: already bootstrapped")
-	ErrConfigChangeInProgress = errors.New("raft.configChange: another in progress")
-	ErrNotCommitReady         = errors.New("raft.configChange: not ready to commit")
-	ErrConfigChanged          = errors.New("raft.configChange: config changed meanwhile")
-	ErrSnapshotThreshold      = errors.New("raft.takeSnapshot: not enough outstanding logs to snapshot")
-	ErrSnapshotInProgress     = errors.New("raft.takeSnapshot: another snapshot in progress")
-	ErrNoUpdates              = errors.New("raft.takeSnapshot: no updates to FSM")
+	ErrAlreadyBootstrapped          = errors.New("raft.bootstrap: already bootstrapped")
+	ErrConfigChangeInProgress       = errors.New("raft.configChange: another in progress")
+	ErrNotCommitReady               = errors.New("raft.configChange: not ready to commit")
+	ErrConfigChanged                = errors.New("raft.configChange: config changed meanwhile")
+	ErrSnapshotThreshold            = errors.New("raft.takeSnapshot: not enough outstanding logs to snapshot")
+	ErrSnapshotInProgress           = errors.New("raft.takeSnapshot: another snapshot in progress")
+	ErrNoUpdates                    = errors.New("raft.takeSnapshot: no updates to FSM")
+	ErrLeadershipTransferInProgress = errors.New("raft.transferLeadership: another in progress")
+	ErrLeadershipTransferTimeout    = errors.New("raft.transferLeadership: timeout")
+	ErrQuorumUnreachable            = errors.New("raft: quorum unreachable")
+	ErrLeadershipTransferNoVoter    = errors.New("raft.transferLeadership: no other voter to transfer")
 )
 
 var (

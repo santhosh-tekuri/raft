@@ -321,6 +321,20 @@ func TakeSnapshot(threshold uint64) Task {
 	return takeSnapshot{task: newTask(), threshold: threshold}
 }
 
+type transferLdr struct {
+	*task
+	timeout time.Duration
+	term    uint64
+	rpcCh   <-chan error // non-nil, when transfer in progress and timeoutNow request sent
+}
+
+func TransferLeadership(timeout time.Duration) Task {
+	return transferLdr{
+		task:    newTask(),
+		timeout: timeout,
+	}
+}
+
 // ------------------------------------------------------------------------
 
 func (r *Raft) executeTask(t Task) {
@@ -354,6 +368,8 @@ func (l *ldrShip) executeTask(t Task) {
 		t.reply(errors.New("raft: use Raft.NewEntries() for NewEntry"))
 	case changeConfig:
 		l.changeConfig(t)
+	case transferLdr:
+		l.onTransferLeadership(t)
 	default:
 		t.reply(errInvalidTask)
 	}

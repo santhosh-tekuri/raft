@@ -74,6 +74,7 @@ func TestRaft(t *testing.T) {
 			t.Run("upToDate", test_promote_existingNode_upToDate)
 		})
 	})
+	t.Run("transferLeadership", test_transferLeadership)
 }
 
 // todo: test that non voter does not start election
@@ -841,8 +842,8 @@ func (ee *events) trace() (trace Trace) {
 
 	trace.sending = func(from, to uint64, state State, msg message) {
 		if _, ok := msg.(request); ok && state != Leader {
-			str := fmt.Sprintf("M%d %d %s |", from, msg.getTerm(), string(state))
-			Debug(str, to, ">>>", msg)
+			str := fmt.Sprintf("M%d %d %s | M%d", from, msg.getTerm(), string(state), to)
+			Debug(str, ">>>", msg)
 		}
 		ee.sendEvent(event{
 			src:     from,
@@ -858,7 +859,8 @@ func (ee *events) trace() (trace Trace) {
 			if _, ok := msg.(request); ok {
 				Debug(str, "<<<", msg)
 			} else {
-				Debug(str, from, "<<<", msg)
+				str = fmt.Sprintf("%s M%d", str, from)
+				Debug(str, "<<<", msg)
 			}
 		}
 		ee.sendEvent(event{

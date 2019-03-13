@@ -16,3 +16,4 @@ package raft
 // * Snapshots add recover support
 // * resolver should catch latest resolved addr
 // * leader should back pressure on newEntryCh
+// * add cluster id

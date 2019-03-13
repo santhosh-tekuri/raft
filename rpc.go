@@ -36,6 +36,9 @@ func (r *Raft) replyRPC(rpc *rpc) bool {
 			_, rpc.readErr = io.CopyN(ioutil.Discard, req.snapshot, req.size)
 		}
 		rpc.resp = &installSnapResp{r.term, result}
+	case *timeoutNowReq:
+		r.onTimeoutNowRequest()
+		rpc.resp = &timeoutNowResp{r.term, success}
 	default:
 		assert(false, "unexpected request: %T", req)
 	}
@@ -59,13 +62,13 @@ func (r *Raft) onVoteRequest(req *voteReq) rpcResult {
 		r.setTerm(req.term)
 	}
 
-	// if we have leader, we only vote for him
-	if r.leader != 0 {
-		if req.candidate == r.leader {
-			return success
-		}
-		return leaderKnown
-	}
+	//// if we have leader, we only vote for him
+	//if r.leader != 0 {
+	//	if req.candidate == r.leader {
+	//		return success
+	//	}
+	//	return leaderKnown
+	//}
 
 	// if we already voted
 	if r.votedFor != 0 {
@@ -287,4 +290,8 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq) (rpcResult, error) {
 	}
 
 	return success, nil
+}
+
+func (r *Raft) onTimeoutNowRequest() {
+	r.state, r.leader = Candidate, 0
 }

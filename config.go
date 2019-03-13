@@ -314,10 +314,13 @@ func (l *ldrShip) changeConfig(t changeConfig) {
 
 func (l *ldrShip) doChangeConfig(t *task, config Config) {
 	// store config, and update our latest config
-	l.storeEntry(NewEntry{
+	err := l.storeEntry(NewEntry{
 		entry: config.encode(),
 		task:  t,
 	})
+	if err != nil {
+		return
+	}
 
 	// remove flrs
 	for id, f := range l.flrs {

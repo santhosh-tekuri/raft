@@ -11,6 +11,7 @@ const (
 	rpcVote rpcType = iota
 	rpcAppendEntries
 	rpcInstallSnap
+	rpcTimeoutNow
 )
 
 func (t rpcType) createReq() request {
@@ -21,6 +22,8 @@ func (t rpcType) createReq() request {
 		return &appendEntriesReq{}
 	case rpcInstallSnap:
 		return &installSnapReq{}
+	case rpcTimeoutNow:
+		return &timeoutNowReq{}
 	default:
 		panic(fmt.Errorf("unknown rpcType: %d", t))
 	}
@@ -48,6 +51,8 @@ func (r rpcResult) String() string {
 		return "staleTerm"
 	case alreadyVoted:
 		return "alreadyVoted"
+	case leaderKnown:
+		return "leaderKnown"
 	case logNotUptodate:
 		return "logNotUptodate"
 	case prevEntryNotFound:
@@ -447,6 +452,9 @@ type installSnapResp struct {
 }
 
 func (resp *installSnapResp) getTerm() uint64 { return resp.term }
+func (resp *installSnapResp) String() string {
+	return fmt.Sprintf("installSnapResp{T%d %s}", resp.term, resp.result)
+}
 
 func (resp *installSnapResp) decode(r io.Reader) error {
 	var err error
@@ -463,6 +471,75 @@ func (resp *installSnapResp) decode(r io.Reader) error {
 }
 
 func (resp *installSnapResp) encode(w io.Writer) error {
+	if err := writeUint64(w, resp.term); err != nil {
+		return err
+	}
+	if err := writeUint8(w, uint8(resp.result)); err != nil {
+		return err
+	}
+	return nil
+}
+
+// ------------------------------------------------------
+
+type timeoutNowReq struct {
+	term   uint64 // leader's term
+	leader uint64 // so followers can redirect clients
+}
+
+func (req *timeoutNowReq) getTerm() uint64  { return req.term }
+func (req *timeoutNowReq) rpcType() rpcType { return rpcTimeoutNow }
+func (req *timeoutNowReq) from() uint64     { return req.leader }
+func (req *timeoutNowReq) String() string {
+	return fmt.Sprintf("timeoutNowReq{T%d M%d}", req.term, req.leader)
+}
+
+func (req *timeoutNowReq) decode(r io.Reader) error {
+	var err error
+
+	if req.term, err = readUint64(r); err != nil {
+		return err
+	}
+	if req.leader, err = readUint64(r); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (req *timeoutNowReq) encode(w io.Writer) error {
+	if err := writeUint64(w, req.term); err != nil {
+		return err
+	}
+	return writeUint64(w, req.leader)
+}
+
+// ------------------------------------------------------
+
+type timeoutNowResp struct {
+	term   uint64
+	result rpcResult
+}
+
+func (resp *timeoutNowResp) getTerm() uint64 { return resp.term }
+func (resp *timeoutNowResp) String() string {
+	return fmt.Sprintf("timeoutNowResp{T%d %s}", resp.term, resp.result)
+}
+
+func (resp *timeoutNowResp) decode(r io.Reader) error {
+	var err error
+
+	if resp.term, err = readUint64(r); err != nil {
+		return err
+	}
+	if result, err := readUint8(r); err != nil {
+		return err
+	} else {
+		resp.result = rpcResult(result)
+	}
+	return nil
+}
+
+func (resp *timeoutNowResp) encode(w io.Writer) error {
 	if err := writeUint64(w, resp.term); err != nil {
 		return err
 	}

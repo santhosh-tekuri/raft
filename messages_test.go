@@ -44,6 +44,8 @@ func TestMessages(t *testing.T) {
 		},
 		&installSnapResp{term: 5, result: success},
 		&installSnapResp{term: 5, result: unexpectedErr},
+		&timeoutNowReq{term: 5, leader: 3},
+		&timeoutNowResp{term: 5, result: success},
 	}
 	for _, test := range tests {
 		name := fmt.Sprintf("message(%T)", test)

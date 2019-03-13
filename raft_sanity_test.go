@@ -329,3 +329,14 @@ func test_leader_quorumWait_reachable(t *testing.T) {
 		t.Fatal("quorum must be reachable")
 	}
 }
+
+func test_transferLeadership(t *testing.T) {
+	c, ldr, _ := launchCluster(t, 5)
+	defer c.shutdown()
+
+	c.ensure(waitTask(ldr, TransferLeadership(c.longTimeout), c.longTimeout))
+	newLdr := c.waitForLeader()
+	if ldr.ID() == newLdr.ID() {
+		c.Fatal("no change in leader")
+	}
+}

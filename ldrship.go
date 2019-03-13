@@ -27,6 +27,10 @@ type ldrShip struct {
 
 	// to receive updates from replicators
 	fromReplsCh chan interface{}
+
+	transferTimer *safeTimer // is active when transfer is in progress
+	transferLdr   transferLdr
+	transferTgt   uint64 // is always calculated, in spite of no transferLdr task
 }
 
 func (l *ldrShip) init() {
@@ -44,6 +48,7 @@ func (l *ldrShip) init() {
 	}
 
 	// add a blank no-op entry into log at the start of its term
+	// todo: on err step down immediately, and dont do startElection ever
 	l.storeEntry(NewEntry{
 		entry: &entry{
 			typ: entryNop,
@@ -54,6 +59,14 @@ func (l *ldrShip) init() {
 func (l *ldrShip) onTimeout() { l.checkQuorum(0) }
 
 func (l *ldrShip) release() {
+	if l.transferTimer.active {
+		if l.term > l.transferLdr.term {
+			l.replyTransferLeadership(nil)
+		} else {
+			l.replyTransferLeadership(ErrQuorumUnreachable)
+		}
+	}
+
 	for id, f := range l.flrs {
 		close(f.stopCh)
 		delete(l.flrs, id)
@@ -79,17 +92,23 @@ func (l *ldrShip) release() {
 	l.fromReplsCh = nil
 }
 
-func (l *ldrShip) storeEntry(ne NewEntry) {
+func (l *ldrShip) storeEntry(ne NewEntry) error {
 	ne.entry.index, ne.entry.term = l.lastLogIndex+1, l.term
 	l.newEntries.PushBack(ne)
 
 	if ne.typ == entryRead || ne.typ == entryBarrier { // non-log entry
 		l.applyCommitted()
-		return
+		return nil
+	}
+
+	if l.transferTimer.active {
+		ne.reply(ErrLeadershipTransferInProgress)
+		return ErrLeadershipTransferInProgress
 	}
 
 	debug(l, "log.append", ne.typ, ne.index)
 	l.storage.appendEntry(ne.entry)
+	l.transferTgt = 0
 	if ne.typ == entryConfig {
 		config := Config{}
 		err := config.decode(ne.entry)
@@ -98,6 +117,7 @@ func (l *ldrShip) storeEntry(ne NewEntry) {
 		l.Raft.changeConfig(config)
 	}
 	l.notifyFlr(ne.typ == entryConfig)
+	return nil
 }
 
 func (l *ldrShip) addFlr(node Node) {
@@ -265,6 +285,9 @@ func (l *ldrShip) majorityMatchIndex() uint64 {
 				matched[i] = l.lastLogIndex
 			} else {
 				matched[i] = l.flrs[node.ID].status.matchIndex
+				if matched[i] == l.lastLogIndex {
+					l.transferTgt = node.ID
+				}
 			}
 			i++
 		}
@@ -279,6 +302,9 @@ func (l *ldrShip) majorityMatchIndex() uint64 {
 // and log[N].term == currentTerm: set commitIndex = N
 func (l *ldrShip) onMajorityCommit() {
 	majorityMatchIndex := l.majorityMatchIndex()
+	if l.transferTimer.active && l.transferLdr.rpcCh != nil && l.transferTgt != 0 {
+		l.doTransferLeadership()
+	}
 
 	// note: if majorityMatchIndex >= ldr.startIndex, it also mean
 	// majorityMatchIndex.term == currentTerm
@@ -352,4 +378,75 @@ func (l *ldrShip) notifyFlr(includeConfig bool) {
 	if l.voter {
 		l.onMajorityCommit()
 	}
+}
+
+func (l *ldrShip) onTransferLeadership(t transferLdr) {
+	debug(l, "got transferLeadership request", t.timeout)
+	if l.transferTimer.active {
+		debug(l, "leadership transfer already in progress")
+		t.reply(ErrLeadershipTransferInProgress)
+		return
+	}
+	if l.configs.Latest.numVoters() == 1 {
+		debug(l, "leadership transfer no other voter")
+		t.reply(ErrLeadershipTransferNoVoter)
+		return
+	}
+	l.transferTimer.reset(t.timeout)
+	t.term = l.term
+	l.transferLdr = t
+	if l.transferTgt > 0 {
+		l.doTransferLeadership()
+	}
+}
+
+func (l *ldrShip) doTransferLeadership() {
+	debug(l, "transferring leadership:", l.transferTgt)
+	pool := l.getConnPool(l.transferTgt)
+	ch := make(chan error, 1)
+	l.transferLdr.rpcCh = ch
+	req := &timeoutNowReq{l.term, l.id}
+	go func() {
+		conn, err := pool.getConn()
+		if err != nil {
+			ch <- err
+			return
+		}
+		resp := new(timeoutNowResp)
+		debug(l.id, ">>", req)
+		if l.trace.sending != nil {
+			l.trace.sending(l.id, pool.id, Leader, req)
+		}
+		_ = conn.conn.SetDeadline(time.Now().Add(5 * l.hbTimeout)) // todo
+		if err = conn.doRPC(req, resp); err != nil {
+			_ = conn.close()
+			ch <- err
+			return
+		}
+		pool.returnConn(conn)
+		debug(l.id, "<<", resp)
+		if l.trace.received != nil {
+			l.trace.received(l.id, pool.id, Leader, req.term, resp)
+		}
+		ch <- nil
+	}()
+}
+
+func (l *ldrShip) onTransferTimeout() {
+	l.replyTransferLeadership(ErrLeadershipTransferTimeout)
+}
+
+func (l *ldrShip) onTimeoutNow(err error) {
+	if err != nil {
+		l.replyTransferLeadership(err)
+	}
+}
+
+func (l *ldrShip) replyTransferLeadership(err error) {
+	if l.transferTimer.active {
+		debug(l, "reply leadership transfer:", err)
+		l.transferLdr.reply(err)
+	}
+	l.transferTimer.stop()
+	l.transferLdr.rpcCh = nil
 }

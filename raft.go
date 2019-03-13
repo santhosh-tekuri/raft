@@ -133,9 +133,11 @@ func (r *Raft) stateLoop() {
 		f = &flrShip{Raft: r}
 		c = &candShip{Raft: r}
 		l = &ldrShip{
-			Raft:       r,
-			newEntries: list.New(),
-			flrs:       make(map[uint64]*flr),
+			Raft:          r,
+			newEntries:    list.New(),
+			flrs:          make(map[uint64]*flr),
+			transferTimer: newSafeTimer(),
+			transferLdr:   TransferLeadership(0).(transferLdr),
 		}
 	)
 	r.ldr = l
@@ -169,7 +171,7 @@ func (r *Raft) stateLoop() {
 
 			case ne := <-r.newEntryCh:
 				if r.state == Leader {
-					l.storeEntry(ne)
+					_ = l.storeEntry(ne)
 				} else {
 					ne.reply(NotLeaderError{f.leaderAddr(), false})
 				}
@@ -192,6 +194,13 @@ func (r *Raft) stateLoop() {
 			case u := <-l.fromReplsCh:
 				assert(r.state == Leader, "%s BUG: %v", r.id, r.state)
 				l.checkReplUpdates(u)
+
+			case <-l.transferTimer.C:
+				l.transferTimer.active = false
+				l.onTransferTimeout()
+
+			case err := <-l.transferLdr.rpcCh:
+				l.onTimeoutNow(err)
 			}
 		}
 		if r.trace.StateChanged != nil {
