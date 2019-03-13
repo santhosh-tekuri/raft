@@ -87,6 +87,7 @@ func TestRaft(t *testing.T) {
 		t.Run("quorumUnreachable", test_transferLeadership_quorumUnreachable)
 		t.Run("newTermDetected", test_transferLeadership_newTermDetected)
 		// todo: add test for timeoutError
+		// todo: if ldr knows that a node is unreachable it should not try sending timeoutNow
 	})
 }
 

@@ -443,6 +443,8 @@ func (l *ldrShip) onTransferTimeout() {
 }
 
 func (l *ldrShip) onTimeoutNow(err error) {
+	//todo: if err, try next possible transferTgt.
+	//      repeat this until transfer timeout
 	if err != nil {
 		l.replyTransferLeadership(err)
 	}
