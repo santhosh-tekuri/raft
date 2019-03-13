@@ -78,6 +78,7 @@ func TestRaft(t *testing.T) {
 		t.Run("singleVoter", test_transferLeadership_singleVoter)
 		t.Run("fiveNodes", test_transferLeadership_fiveNodes)
 		t.Run("quorumUnreachable", test_transferLeadership_quorumUnreachable)
+		t.Run("newTermDetected", test_transferLeadership_newTermDetected)
 	})
 }
 

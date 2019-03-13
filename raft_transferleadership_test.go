@@ -57,7 +57,7 @@ func test_transferLeadership_quorumUnreachable(t *testing.T) {
 	ldr, flrs := c.ensureLaunch(3)
 	defer c.shutdown()
 
-	// disconnect all followers
+	// shutdown all followers
 	c.shutdown(flrs...)
 
 	// send an update, this makes sure that no transfer target is available
@@ -70,6 +70,52 @@ func test_transferLeadership_quorumUnreachable(t *testing.T) {
 	// request must fail with ErrQuorumUnreachable
 	if err != ErrQuorumUnreachable {
 		t.Fatalf("err: got %v, want %v", err, ErrQuorumUnreachable)
+	}
+
+	// check that we got reply before specified timeout
+	d := time.Now().Sub(start)
+	if d > 2*time.Second {
+		t.Fatalf("duration: got %v, want <5s", d)
+	}
+}
+
+// if new term detected during transferLeadership before/after timeoutNow,
+// leader should reply success
+func test_transferLeadership_newTermDetected(t *testing.T) {
+	// launch 3 node cluster, with quorumWait 1 sec
+	c := newCluster(t)
+	c.opt.QuorumWait = time.Second
+	ldr, flrs := c.ensureLaunch(3)
+	defer c.shutdown()
+
+	// shutdown all followers
+	c.shutdown(flrs...)
+
+	// send an update, this makes sure that no transfer target is available
+	ldr.NewEntries() <- UpdateFSM([]byte("test"))
+
+	// request leadership transfer, with 5 sec timeout
+	start := time.Now()
+	transfer := TransferLeadership(5 * time.Second)
+	ldr.Tasks() <- transfer
+
+	// send requestVote with one of the follower as candidate with new term
+	flrs[0].term++
+	_, err := RequestVote(flrs[0], ldr)
+	if err != nil {
+		c.Fatalf("requestVote: %v", err)
+	}
+
+	// wait for transferLeadership reply
+	select {
+	case <-transfer.Done():
+	case <-time.After(c.longTimeout):
+		c.Fatal("transferLeadership: timeout")
+	}
+
+	// reply must be success
+	if transfer.Err() != nil {
+		c.Fatalf("transferLeadership.Err: got %v, want nil", transfer.Err())
 	}
 
 	// check that we got reply before specified timeout

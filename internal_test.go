@@ -9,7 +9,7 @@ func Debug(args ...interface{}) {
 }
 
 func RequestVote(from, to *Raft) (granted bool, err error) {
-	ierr := from.inspect(func(r *Raft) {
+	fn := func(r *Raft) {
 		req := &voteReq{
 			term:         r.term,
 			lastLogIndex: r.lastLogIndex,
@@ -20,9 +20,14 @@ func RequestVote(from, to *Raft) (granted bool, err error) {
 		cand := candShip{Raft: from}
 		resp, errr := cand.requestVote(pool, req, time.Time{})
 		granted, err = resp.result == success, errr
-	})
-	if err == nil {
-		err = ierr
+	}
+	if from.isClosed() {
+		fn(from)
+	} else {
+		ierr := from.inspect(fn)
+		if err == nil {
+			err = ierr
+		}
 	}
 	return
 }
