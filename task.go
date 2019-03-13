@@ -77,7 +77,7 @@ func UpdateFSM(data []byte) NewEntry {
 	return newEntry(entryUpdate, data)
 }
 
-func QueryFSM(data []byte) NewEntry {
+func ReadFSM(data []byte) NewEntry {
 	return newEntry(entryRead, data)
 }
 

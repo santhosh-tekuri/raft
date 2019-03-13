@@ -118,7 +118,7 @@ func test_barrier(t *testing.T) {
 	}
 }
 
-func test_query(t *testing.T) {
+func test_read(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -127,7 +127,7 @@ func test_query(t *testing.T) {
 
 	// send query
 	want := ldr.Info().LastLogIndex()
-	if _, err := waitQuery(ldr, "query:last", 0); err != errNoCommands {
+	if _, err := waitRead(ldr, "query:last", 0); err != errNoCommands {
 		t.Fatalf("got %v, want %v", err, errNoCommands)
 	}
 
@@ -147,8 +147,8 @@ func test_query(t *testing.T) {
 		ldr.NewEntries() <- UpdateFSM([]byte(cmd))
 		if i%10 == 0 {
 			qq := []NewEntry{
-				QueryFSM([]byte("query:last")),
-				QueryFSM([]byte("query:last")),
+				ReadFSM([]byte("query:last")),
+				ReadFSM([]byte("query:last")),
 			}
 			for _, q := range qq {
 				ldr.NewEntries() <- q

@@ -39,7 +39,7 @@ func TestRaft(t *testing.T) {
 		t.Run("concurrent", test_update_concurrent)
 	})
 	t.Run("barrier", test_barrier)
-	t.Run("query", test_query)
+	t.Run("read", test_read)
 	t.Run("takeSnapshot", func(t *testing.T) {
 		t.Run("emptyFSM", test_takeSnapshot_emptyFSM)
 		t.Run("thresholdNotReached", test_takeSnapshot_thresholdNotReached)
@@ -648,8 +648,8 @@ func waitUpdate(r *Raft, cmd string, timeout time.Duration) (fsmReply, error) {
 	return waitNewEntry(r, UpdateFSM([]byte(cmd)), timeout)
 }
 
-func waitQuery(r *Raft, query string, timeout time.Duration) (fsmReply, error) {
-	return waitNewEntry(r, QueryFSM([]byte(query)), timeout)
+func waitRead(r *Raft, read string, timeout time.Duration) (fsmReply, error) {
+	return waitNewEntry(r, ReadFSM([]byte(read)), timeout)
 }
 
 // events ---------------------------------------------
