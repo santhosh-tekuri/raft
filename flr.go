@@ -58,7 +58,7 @@ func (f *flr) replicate(req *appendEntriesReq) {
 
 	timer := newSafeTimer()
 	for {
-		assert(f.matchIndex < f.nextIndex, "%s assert %d<%d", f, f.matchIndex, f.nextIndex)
+		assert(f.matchIndex < f.nextIndex, "%v assert %d<%d", f, f.matchIndex, f.nextIndex)
 
 		err := f.sendAppEntriesReq(req)
 		if err == errNoEntryFound {
@@ -155,7 +155,7 @@ func (f *flr) sendAppEntriesReq(req *appendEntriesReq) error {
 
 	var n uint64
 	if f.sendEntries {
-		assert(f.matchIndex == req.prevLogIndex, "%s assert %d==%d", f, f.matchIndex, req.prevLogIndex)
+		assert(f.matchIndex == req.prevLogIndex, "%v assert %d==%d", f, f.matchIndex, req.prevLogIndex)
 		n = min(f.ldrLastIndex-f.matchIndex, maxAppendEntries)
 	}
 	if n > 0 {

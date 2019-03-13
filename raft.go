@@ -187,12 +187,12 @@ func (r *Raft) stateLoop() {
 
 			// candidate --------------
 			case v := <-c.voteCh:
-				assert(r.state == Candidate, "%s BUG: %v", r.id, r.state)
+				assert(r.state == Candidate, "M%d BUG: %v", r.id, r.state)
 				c.onVoteResult(v)
 
 			// leader --------------
 			case u := <-l.fromReplsCh:
-				assert(r.state == Leader, "%s BUG: %v", r.id, r.state)
+				assert(r.state == Leader, "M%d BUG: %v", r.id, r.state)
 				l.checkReplUpdates(u)
 
 			case <-l.transferTimer.C:

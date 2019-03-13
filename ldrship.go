@@ -34,7 +34,7 @@ type ldrShip struct {
 }
 
 func (l *ldrShip) init() {
-	assert(l.leader == l.id, "%s ldr.leader: got %s, want %s", l, l.leader, l.id)
+	assert(l.leader == l.id, "%v ldr.leader: got %d, want %d", l, l.leader, l.id)
 
 	l.voter = true
 	l.startIndex = l.lastLogIndex + 1
