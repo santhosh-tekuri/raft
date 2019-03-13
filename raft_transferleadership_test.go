@@ -55,7 +55,7 @@ func test_transferLeadership_fiveNodes(t *testing.T, targetReady bool) {
 
 // leader should reject any transferLeadership requests,
 // while one is already in progress
-func test_transferLeadership_anotherTransferRequest(t *testing.T) {
+func test_transferLeadership_rejectAnotherTransferRequest(t *testing.T) {
 	// launch 3 node cluster, with quorumWait 1 sec
 	c := newCluster(t)
 	c.opt.QuorumWait = time.Second

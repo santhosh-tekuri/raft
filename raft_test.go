@@ -82,8 +82,8 @@ func TestRaft(t *testing.T) {
 		t.Run("targetReady", func(t *testing.T) {
 			test_transferLeadership_fiveNodes(t, true)
 		})
-		t.Run("anotherTransferRequest", test_transferLeadership_anotherTransferRequest)
-		t.Run("logUpdateTasks", test_transferLeadership_rejectLogUpdateTasks)
+		t.Run("rejectAnotherTransferRequest", test_transferLeadership_rejectAnotherTransferRequest)
+		t.Run("rejectLogUpdateTasks", test_transferLeadership_rejectLogUpdateTasks)
 		t.Run("quorumUnreachable", test_transferLeadership_quorumUnreachable)
 		t.Run("newTermDetected", test_transferLeadership_newTermDetected)
 	})

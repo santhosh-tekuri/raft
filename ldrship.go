@@ -385,6 +385,7 @@ func (l *ldrShip) notifyFlr(includeConfig bool) {
 	}
 }
 
+// todo: if transferTgt is unreachable, try another another transferTgt
 func (l *ldrShip) onTransferLeadership(t transferLdr) {
 	debug(l, "got transferLeadership request", t.timeout)
 	if l.transferTimer.active {
