@@ -77,6 +77,7 @@ func TestRaft(t *testing.T) {
 	t.Run("transferLeadership", func(t *testing.T) {
 		t.Run("singleNode", test_transferLeadership_singleNode)
 		t.Run("fiveNodes", test_transferLeadership_fiveNodes)
+		t.Run("quorumUnreachable", test_transferLeadership_quorumUnreachable)
 	})
 }
 
@@ -251,7 +252,7 @@ func (c *cluster) shutdown(rr ...*Raft) {
 		rr = c.exclude()
 	}
 	for _, r := range rr {
-		Debug("<<----------------------------------shutting down", r.ID())
+		Debug("<<----------------------------------shutting down", id2Host(r.ID()))
 		r.Shutdown().Wait()
 		Debug(r.ID(), "<< shutdown()")
 	}
@@ -524,10 +525,18 @@ func (c *cluster) takeSnapshot(r *Raft, threshold uint64, want error) {
 	}
 }
 
-func (c *cluster) disconnect(r *Raft) {
-	host := id2Host(r.ID())
-	Debug("-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<- disconnecting", host)
-	c.network.SetFirewall(fnet.Split([]string{host}, fnet.AllowAll))
+func (c *cluster) disconnect(rr ...*Raft) {
+	if len(rr) == 0 {
+		Debug("-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<- disconnecting all")
+		c.network.SetFirewall(fnet.AllowSelf)
+		return
+	}
+	var hosts []string
+	for _, r := range rr {
+		hosts = append(hosts, id2Host(r.ID()))
+	}
+	Debug("-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<- disconnecting", hosts)
+	c.network.SetFirewall(fnet.Split(hosts, fnet.AllowAll))
 }
 
 func (c *cluster) connect() {
