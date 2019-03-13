@@ -281,25 +281,25 @@ func (l *ldrShip) checkQuorum(wait time.Duration) {
 
 // computes N such that, a majority of matchIndex[i] ≥ N
 func (l *ldrShip) majorityMatchIndex() uint64 {
-	numVoters := l.configs.Latest.numVoters()
-	matched := make(decrUint64Slice, numVoters)
+	matched := make(decrUint64Slice, len(l.configs.Latest.Nodes))
 	i := 0
-	for _, node := range l.configs.Latest.Nodes {
-		if node.Voter {
-			if node.ID == l.id {
+	for _, n := range l.configs.Latest.Nodes {
+		if n.Voter {
+			if n.ID == l.id {
 				matched[i] = l.lastLogIndex
 			} else {
-				matched[i] = l.flrs[node.ID].status.matchIndex
-				if matched[i] == l.lastLogIndex {
-					l.transferTgt = node.ID
+				f := l.flrs[n.ID]
+				matched[i] = f.status.matchIndex
+				if f.status.noContact.IsZero() && matched[i] == l.lastLogIndex {
+					l.transferTgt = n.ID
 				}
 			}
 			i++
 		}
 	}
 	// sort in decrease order
-	sort.Sort(matched)
-	quorum := numVoters/2 + 1
+	sort.Sort(matched[:i])
+	quorum := i/2 + 1
 	return matched[quorum-1]
 }
 
