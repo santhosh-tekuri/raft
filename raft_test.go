@@ -141,7 +141,7 @@ func newCluster(t *testing.T) *cluster {
 	tdebug(t.Name(), "--------------------------")
 	heartbeatTimeout := 50 * time.Millisecond
 	testTimeout := time.AfterFunc(time.Minute, func() {
-		fmt.Println("test timed out; failing...")
+		fmt.Printf("test %s timed out; failing...", t.Name())
 		buf := make([]byte, 1024)
 		for {
 			n := runtime.Stack(buf, true)
@@ -281,7 +281,7 @@ func (c *cluster) shutdown(rr ...*Raft) {
 	}
 	for _, r := range rr {
 		tdebug("shutting down", host(r))
-		r.Shutdown().Wait()
+		<-r.Shutdown()
 		tdebug(host(r), "is shutdown")
 	}
 	if checkLeak && c.checkLeak != nil {

@@ -45,9 +45,9 @@ type Raft struct {
 
 	appendErr error
 
-	wg         sync.WaitGroup
-	shutdownMu sync.Mutex
-	shutdownCh chan struct{}
+	closeOnce sync.Once
+	closing   chan struct{}
+	closed    chan struct{}
 }
 
 func New(id uint64, opt Options, fsm FSM, storage Storage) (*Raft, error) {
@@ -85,7 +85,8 @@ func New(id uint64, opt Options, fsm FSM, storage Storage) (*Raft, error) {
 		connPools:        make(map[uint64]*connPool),
 		taskCh:           make(chan Task),
 		newEntryCh:       make(chan NewEntry),
-		shutdownCh:       make(chan struct{}),
+		closing:          make(chan struct{}),
+		closed:           make(chan struct{}),
 	}
 
 	r.resolver = &resolver{
@@ -101,18 +102,11 @@ func New(id uint64, opt Options, fsm FSM, storage Storage) (*Raft, error) {
 // todo: note that we dont support multiple listeners
 
 func (r *Raft) Serve(l net.Listener) error {
-	// ensure waitGroup FirstAdd and Wait order
-	r.shutdownMu.Lock()
-	closed := r.isClosed()
-	if !closed {
-		r.wg.Add(1)
-	}
-	r.shutdownMu.Unlock()
+	defer close(r.closed)
 
-	if closed {
+	if r.isClosed() {
 		return ErrServerClosed
 	}
-
 	debug(r, "starting....")
 	if r.trace.Starting != nil {
 		r.trace.Starting(r.liveInfo())
@@ -127,7 +121,6 @@ func (r *Raft) Serve(l net.Listener) error {
 		debug(r, "server shutdown")
 		close(r.fsm.taskCh)
 		wg.Wait()
-		r.wg.Done()
 	}()
 
 	wg.Add(1)
@@ -195,7 +188,7 @@ func (r *Raft) stateLoop() (err error) {
 		ships[rstate].init()
 		for r.state == rstate {
 			select {
-			case <-r.shutdownCh:
+			case <-r.closing:
 				return ErrServerClosed
 
 			case rpc := <-r.rpcCh:
@@ -258,26 +251,24 @@ func (r *Raft) release() {
 	}
 }
 
-func (r *Raft) Shutdown() *sync.WaitGroup {
-	r.shutdownMu.Lock()
-	defer r.shutdownMu.Unlock()
-	if !r.isClosed() {
+func (r *Raft) Shutdown() <-chan struct{} {
+	r.closeOnce.Do(func() {
 		debug(r.id, ">> shutdown()")
 		if r.trace.ShuttingDown != nil {
 			r.trace.ShuttingDown(r.liveInfo())
 		}
-		close(r.shutdownCh)
-	}
-	return &r.wg
+		close(r.closing)
+	})
+	return r.closed
 }
 
 func (r *Raft) Closed() <-chan struct{} {
-	return r.shutdownCh
+	return r.closing
 }
 
 // tells whether shutdown was called
 func (r *Raft) isClosed() bool {
-	return isClosed(r.shutdownCh)
+	return isClosed(r.closing)
 }
 
 // misc --------------------------------------------------------

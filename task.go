@@ -208,7 +208,7 @@ type inspect struct {
 func (r *Raft) inspect(fn func(r *Raft)) error {
 	t := inspect{task: newTask(), fn: fn}
 	select {
-	case <-r.shutdownCh:
+	case <-r.closing:
 		return ErrServerClosed
 	case r.taskCh <- t:
 		<-t.Done()

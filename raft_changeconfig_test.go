@@ -229,7 +229,7 @@ func test_nonvoter_leaderChanged_followsNewLeader(t *testing.T) {
 	c.ensure(waitAddNonvoter(ldr, m4.ID(), id2Addr(m4.ID()), false))
 
 	// now shutdown the leader
-	ldr.Shutdown().Wait()
+	<-ldr.Shutdown()
 
 	// wait for newLeader
 	newLdr := c.waitForLeader(c.exclude(ldr)...)

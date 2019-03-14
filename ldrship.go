@@ -233,7 +233,7 @@ func (l *ldrShip) checkReplUpdates(u interface{}) {
 
 		// get any waiting update
 		select {
-		case <-l.shutdownCh:
+		case <-l.closing:
 			return
 		case u = <-l.fromReplsCh:
 			continue
@@ -339,7 +339,7 @@ func (l *ldrShip) applyCommitted() {
 				l.newEntries.Remove(elem)
 				debug(l, "fms <- {", ne.typ, ne.index, "}")
 				select {
-				case <-l.shutdownCh:
+				case <-l.closing:
 					ne.reply(ErrServerClosed)
 					return
 				case l.fsm.taskCh <- ne:
