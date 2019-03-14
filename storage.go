@@ -186,18 +186,17 @@ func (s *storage) getEntry(index uint64, e *entry) error {
 }
 
 // called by raft.runLoop. getEntry call can be called during this
-func (s *storage) appendEntry(e *entry) {
+func (s *storage) appendEntry(e *entry) error {
+	assert(e.index == s.lastLogIndex+1, "log.append: got %d, want %d", e.index, s.lastLogIndex+1)
 	w := new(bytes.Buffer)
 	if err := e.encode(w); err != nil {
-		panic(fmt.Sprintf("raft: entry.encode(%d) failed: %v", e.index, err))
+		fatal("entry.encode(%d): %v", e.index, err)
 	}
 	if err := s.log.Append(w.Bytes()); err != nil {
-		panic(opError(err, "Log.Append"))
-	}
-	if e.index != s.lastLogIndex+1 {
-		assert(false, fmt.Sprintf("log.append: mismatch %d, %d", e.index, s.lastLogIndex))
+		return opError(err, "Log.Append")
 	}
 	s.lastLogIndex, s.lastLogTerm = e.index, e.term
+	return nil
 }
 
 // never called with invalid index

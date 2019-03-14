@@ -157,7 +157,9 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) (rpcResult, error) 
 			}
 		}
 		// new entry not in the log, append it
-		r.storage.appendEntry(ne)
+		if err := r.storage.appendEntry(ne); err != nil {
+			return unexpectedErr, err
+		}
 		if ne.typ == entryConfig {
 			var newConfig Config
 			if err := newConfig.decode(ne); err != nil {

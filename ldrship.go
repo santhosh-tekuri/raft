@@ -48,12 +48,12 @@ func (l *ldrShip) init() {
 	}
 
 	// add a blank no-op entry into log at the start of its term
-	// todo: on err step down immediately, and dont do startElection ever
-	l.storeEntry(NewEntry{
-		entry: &entry{
-			typ: entryNop,
-		},
-	})
+	nop := NewEntry{entry: &entry{typ: entryNop}}
+	if err := l.storeEntry(nop); err != nil {
+		// todo: dont do startElection ever
+		l.setState(Follower)
+		l.setLeader(0)
+	}
 }
 
 func (l *ldrShip) onTimeout() { l.checkQuorum(0) }
@@ -108,7 +108,13 @@ func (l *ldrShip) storeEntry(ne NewEntry) error {
 	}
 
 	debug(l, "log.append", ne.typ, ne.index)
-	l.storage.appendEntry(ne.entry)
+	if err := l.storage.appendEntry(ne.entry); err != nil {
+		if l.trace.Error != nil {
+			l.trace.Error(err)
+		}
+		ne.reply(err)
+		return err
+	}
 	l.transferTgt = 0
 	if ne.typ == entryConfig {
 		config := Config{}

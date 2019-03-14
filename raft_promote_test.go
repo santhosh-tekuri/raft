@@ -39,12 +39,17 @@ func test_promote_newNode_singleRound(t *testing.T) {
 			n, ok := ldr.Info().Configs().Committed.Nodes[id]
 			return ok && n.Voter
 		}
-		waitForCondition(isVoter, c.commitTimeout, c.longTimeout)
+		if !waitForCondition(isVoter, c.commitTimeout, c.longTimeout) {
+			c.Fatal("waitLdrConfigCommit: timeout")
+		}
 
 		// check that new node, knows that it is voter
-		n, ok := nr.Info().Configs().Committed.Nodes[id]
-		if !ok || !n.Voter {
-			t.Fatalf("M%d must have become voter", id)
+		isVoter = func() bool {
+			n, ok := nr.Info().Configs().Committed.Nodes[id]
+			return ok && n.Voter
+		}
+		if !waitForCondition(isVoter, c.commitTimeout, c.longTimeout) {
+			c.Fatalf("M%d must have become voter", id)
 		}
 	}
 

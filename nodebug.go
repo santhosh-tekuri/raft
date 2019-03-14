@@ -10,3 +10,7 @@ func assert(b bool, format string, args ...interface{}) {
 		panic(fmt.Errorf(format, args...))
 	}
 }
+
+func fatal(format string, args ...interface{}) {
+	assert(false, format, args...)
+}
