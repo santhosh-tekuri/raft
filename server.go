@@ -43,6 +43,7 @@ func (s *server) serve(l net.Listener) {
 	s.mu.Unlock()
 
 	conns := make(map[net.Conn]struct{})
+	var wg sync.WaitGroup
 	for !s.isClosed() {
 		conn, err := s.lr.Accept()
 		if err != nil {
@@ -51,7 +52,7 @@ func (s *server) serve(l net.Listener) {
 		s.mu.Lock()
 		conns[conn] = struct{}{}
 		s.mu.Unlock()
-		s.wg.Add(1)
+		wg.Add(1)
 		go func() {
 			r, w := bufio.NewReader(conn), bufio.NewWriter(conn)
 			for !s.isClosed() {
@@ -63,7 +64,7 @@ func (s *server) serve(l net.Listener) {
 			delete(conns, conn)
 			s.mu.Unlock()
 			_ = conn.Close()
-			s.wg.Done()
+			wg.Done()
 		}()
 	}
 
@@ -72,6 +73,7 @@ func (s *server) serve(l net.Listener) {
 		_ = conn.Close()
 	}
 	s.mu.RUnlock()
+	wg.Wait()
 }
 
 // if shutdown signal received, returns ErrServerClosed immediately
