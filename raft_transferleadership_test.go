@@ -82,18 +82,11 @@ func test_transferLeadership_rejectAnotherTransferRequest(t *testing.T) {
 	defer c.shutdown()
 
 	// request another leadership transfer
-	start := time.Now()
-	_, err := waitTask(ldr, TransferLeadership(5*time.Second), c.longTimeout)
+	_, err := waitTask(ldr, TransferLeadership(5*time.Second), 5*time.Millisecond)
 
 	// this new request must fail with InProgressError
 	if _, ok := err.(InProgressError); !ok {
 		t.Fatalf("err: got %#v, want InProgressError", err)
-	}
-
-	// check that we got InProgressError without any wait
-	d := time.Now().Sub(start)
-	if d > 5*time.Millisecond {
-		t.Fatalf("duration: got %v, want <5s", d)
 	}
 }
 
@@ -122,23 +115,8 @@ func test_transferLeadership_quorumUnreachable(t *testing.T) {
 	c, _, _, transfer := setupTransferLeadershipTimeout(t, time.Second, 5*time.Second)
 	defer c.shutdown()
 
-	start := time.Now()
-	select {
-	case <-transfer.Done():
-	case <-time.After(c.longTimeout):
-		c.Fatal("transfer: timeout")
-	}
-
-	// transfer must fail with ErrQuorumUnreachable
-	if err := transfer.Err(); err != ErrQuorumUnreachable {
-		t.Fatalf("err: got %v, want %v", err, ErrQuorumUnreachable)
-	}
-
-	// check that we got reply before specified timeout
-	d := time.Now().Sub(start)
-	if d > 2*time.Second {
-		t.Fatalf("duration: got %v, want <5s", d)
-	}
+	// transfer reply must be ErrQuorumUnreachable
+	c.waitTaskDone(transfer, 2*time.Second, ErrQuorumUnreachable)
 }
 
 // if new term detected during transferLeadership before/after timeoutNow,
@@ -147,8 +125,6 @@ func test_transferLeadership_newTermDetected(t *testing.T) {
 	c, ldr, flrs, transfer := setupTransferLeadershipTimeout(t, time.Second, 5*time.Second)
 	defer c.shutdown()
 
-	start := time.Now()
-
 	// send requestVote with one of the follower as candidate with new term
 	flrs[0].term++
 	_, err := RequestVote(flrs[0], ldr)
@@ -156,21 +132,17 @@ func test_transferLeadership_newTermDetected(t *testing.T) {
 		c.Fatalf("requestVote: %v", err)
 	}
 
-	// wait for transferLeadership reply
-	select {
-	case <-transfer.Done():
-	case <-time.After(c.longTimeout):
-		c.Fatal("transferLeadership: timeout")
-	}
+	// transfer must succeed
+	c.waitTaskDone(transfer, 2*time.Second, nil)
+}
 
-	// reply must be success
-	if transfer.Err() != nil {
-		c.Fatalf("transferLeadership.Err: got %v, want nil", transfer.Err())
-	}
+func test_transferLeadership_onShutdownReplyServerClosed(t *testing.T) {
+	c, ldr, _, transfer := setupTransferLeadershipTimeout(t, time.Second, 5*time.Second)
+	defer c.shutdown()
 
-	// check that we got reply before specified timeout
-	d := time.Now().Sub(start)
-	if d > 2*time.Second {
-		t.Fatalf("duration: got %v, want <5s", d)
-	}
+	tdebug("shutting down leader")
+	ldr.Shutdown()
+
+	// transfer reply must be ErrServerClosed
+	c.waitTaskDone(transfer, 2*time.Second, ErrServerClosed)
 }

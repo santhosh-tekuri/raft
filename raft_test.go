@@ -85,6 +85,7 @@ func TestRaft(t *testing.T) {
 		t.Run("rejectAnotherTransferRequest", test_transferLeadership_rejectAnotherTransferRequest)
 		t.Run("rejectLogUpdateTasks", test_transferLeadership_rejectLogUpdateTasks)
 		t.Run("quorumUnreachable", test_transferLeadership_quorumUnreachable)
+		t.Run("onShutdownReplyServerClosed", test_transferLeadership_onShutdownReplyServerClosed)
 		t.Run("newTermDetected", test_transferLeadership_newTermDetected)
 		// todo: add test for timeoutError
 		// todo: if ldr knows that a node is unreachable it should not try sending timeoutNow
@@ -519,6 +520,23 @@ func (c *cluster) waitUnreachableDetected(ldr, failed *Raft) {
 	if !unreachable.waitFor(condition, c.longTimeout) {
 		c.Fatalf("waitUnreachableDetected: ldr M%d failed to detect M%d is unreachable", ldr.ID(), failed.ID())
 	}
+}
+
+func (c *cluster) waitTaskDone(t Task, timeout time.Duration, want error) interface{} {
+	c.Helper()
+
+	select {
+	case <-t.Done():
+	case <-time.After(timeout):
+		c.Fatal("transferLeadership: timeout")
+	}
+
+	// reply must be ErrServerClosed
+	if t.Err() != want {
+		c.Fatalf("task.Err: got %v, want %v", t.Err(), want)
+	}
+
+	return t.Result()
 }
 
 func (c *cluster) sendUpdates(r *Raft, from, to int) Task {
