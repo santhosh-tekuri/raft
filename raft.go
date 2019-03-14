@@ -126,11 +126,10 @@ func (r *Raft) Serve(l net.Listener) error {
 	r.wg.Add(1)
 	go r.server.serve(l)
 
-	r.stateLoop()
-	return ErrServerClosed
+	return r.stateLoop()
 }
 
-func (r *Raft) stateLoop() {
+func (r *Raft) stateLoop() (err error) {
 	var (
 		f = &flrShip{Raft: r}
 		c = &candShip{Raft: r}
@@ -149,15 +148,29 @@ func (r *Raft) stateLoop() {
 		Leader:    l,
 	}
 
+	defer func() {
+		if r := recover(); r != nil {
+			if opErr, ok := r.(OpError); ok {
+				err = opErr
+			} else {
+				panic(r)
+			}
+		}
+	}()
+
+	var rstate State
+	defer func() {
+		ships[rstate].release()
+		r.release()
+	}()
+
 	for {
-		rstate := r.state
+		rstate = r.state
 		ships[rstate].init()
 		for r.state == rstate {
 			select {
 			case <-r.shutdownCh:
-				ships[rstate].release()
-				r.release()
-				return
+				return ErrServerClosed
 
 			case rpc := <-r.server.rpcCh:
 				resetTimer := r.replyRPC(rpc)

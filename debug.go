@@ -78,6 +78,10 @@ func assert(b bool, format string, args ...interface{}) {
 	}
 }
 
+func fatal(format string, args ...interface{}) {
+	assert(false, format, args...)
+}
+
 // ----------------------------------------------------------
 
 func (r *Raft) String() string {
@@ -111,6 +115,18 @@ func (ne NewEntry) String() string {
 	default:
 		return fmt.Sprintf("%#v", ne)
 	}
+}
+
+func (t bootstrap) String() string {
+	return fmt.Sprintf("bootstrap{%s}", Config{Nodes: t.nodes})
+}
+
+func (t changeConfig) String() string {
+	return fmt.Sprintf("changeConfig{%s}", t.newConf)
+}
+
+func (t takeSnapshot) String() string {
+	return fmt.Sprintf("takeSnapshot{%d}", t.threshold)
 }
 
 func (t transferLdr) String() string {

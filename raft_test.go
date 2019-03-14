@@ -134,10 +134,10 @@ func launchCluster(t *testing.T, n int) (c *cluster, ldr *Raft, followers []*Raf
 }
 
 func newCluster(t *testing.T) *cluster {
-	Debug(t.Name(), "--------------------------")
+	tdebug(t.Name(), "--------------------------")
 	heartbeatTimeout := 50 * time.Millisecond
 	testTimeout := time.AfterFunc(time.Minute, func() {
-		t.Error("test timed out; failing...")
+		tdebug("test timed out; failing...")
 		buf := make([]byte, 1024)
 		for {
 			n := runtime.Stack(buf, true)
@@ -235,18 +235,27 @@ func (c *cluster) launch(n int, bootstrap bool) map[uint64]*Raft {
 		launched[r.ID()] = r
 		c.rr[node.ID] = r
 		c.storage[node.ID] = storage
-
-		// switch to fake transport
-		host := c.network.Host(id2Host(r.ID()))
-		r.dialFn = host.DialTimeout
-
-		l, err := host.Listen("tcp", node.Addr)
-		if err != nil {
-			c.Fatalf("raft.listen failed: %v", err)
-		}
-		go func() { _ = r.Serve(l) }()
+		c.serve(r)
 	}
 	return launched
+}
+
+func (c *cluster) serve(r *Raft) {
+	c.Helper()
+	// switch to fake transport
+	host := c.network.Host(id2Host(r.ID()))
+	r.dialFn = host.DialTimeout
+
+	l, err := host.Listen("tcp", id2Addr(r.ID()))
+	if err != nil {
+		c.Fatalf("raft.listen failed: %v", err)
+	}
+	go func() {
+		if err := r.Serve(l); err != ErrServerClosed {
+			c.Logf("raft.serve: %v", err)
+			c.Fail()
+		}
+	}()
 }
 
 func (c *cluster) ensureLaunch(n int) (ldr *Raft, followers []*Raft) {
@@ -288,17 +297,9 @@ func (c *cluster) restart(r *Raft) *Raft {
 	if err != nil {
 		c.Fatal(err)
 	}
-
-	h := c.network.Host(id2Host(r.ID()))
-	newr.dialFn = h.DialTimeout
-
-	l, err := h.Listen("tcp", id2Addr(r.ID()))
-	if err != nil {
-		c.Fatal(err)
-	}
 	c.rr[r.ID()] = newr
 	tdebug("restarting", host(r))
-	go newr.Serve(l)
+	c.serve(newr)
 	return newr
 }
 
