@@ -53,14 +53,13 @@ func test_transferLeadership_fiveNodes(t *testing.T, targetReady bool) {
 	}
 }
 
-// leader should reject any transferLeadership requests,
-// while one is already in progress
-func test_transferLeadership_rejectAnotherTransferRequest(t *testing.T) {
-	// launch 3 node cluster, with quorumWait 1 sec
-	c := newCluster(t)
-	c.opt.QuorumWait = time.Second
-	ldr, flrs := c.ensureLaunch(3)
-	defer c.shutdown()
+// launches 3 node cluster, with given quorumWait
+// submits transferLeadership with given timeout
+func setupTransferLeadershipTimeout(t *testing.T, quorumWait, taskTimeout time.Duration) (c *cluster, ldr *Raft, flrs []*Raft, transfer Task) {
+	// launch 3 node cluster, with given quorumWait
+	c = newCluster(t)
+	c.opt.QuorumWait = quorumWait
+	ldr, flrs = c.ensureLaunch(3)
 
 	// shutdown all followers
 	c.shutdown(flrs...)
@@ -68,10 +67,19 @@ func test_transferLeadership_rejectAnotherTransferRequest(t *testing.T) {
 	// send an update, this makes sure that no transfer target is available
 	ldr.NewEntries() <- UpdateFSM([]byte("test"))
 
-	// request leadership transfer, with 5 sec timeout,
-	// this will not complete within 5 sec
-	transfer := TransferLeadership(5 * time.Second)
+	// request leadership transfer, with given timeout,
+	// this will not complete within this timeout
+	transfer = TransferLeadership(taskTimeout)
 	ldr.Tasks() <- transfer
+
+	return
+}
+
+// leader should reject any transferLeadership requests,
+// while one is already in progress
+func test_transferLeadership_rejectAnotherTransferRequest(t *testing.T) {
+	c, ldr, _, _ := setupTransferLeadershipTimeout(t, time.Second, 5*time.Second)
+	defer c.shutdown()
 
 	// request another leadership transfer
 	start := time.Now()
@@ -92,22 +100,8 @@ func test_transferLeadership_rejectAnotherTransferRequest(t *testing.T) {
 // leader should reject any requests that update log,
 // while transferLeadership is in progress
 func test_transferLeadership_rejectLogUpdateTasks(t *testing.T) {
-	// launch 3 node cluster, with quorumWait 1 sec
-	c := newCluster(t)
-	c.opt.QuorumWait = time.Second
-	ldr, flrs := c.ensureLaunch(3)
+	c, ldr, _, _ := setupTransferLeadershipTimeout(t, time.Second, 5*time.Second)
 	defer c.shutdown()
-
-	// shutdown all followers
-	c.shutdown(flrs...)
-
-	// send an update, this makes sure that no transfer target is available
-	ldr.NewEntries() <- UpdateFSM([]byte("test"))
-
-	// request leadership transfer, with 5 sec timeout,
-	// this will not complete within 5 sec
-	transfer := TransferLeadership(5 * time.Second)
-	ldr.Tasks() <- transfer
 
 	// send updateFSM request, must be rejected with InProgressError
 	_, err := waitUpdate(ldr, "hello", 5*time.Millisecond)
@@ -125,24 +119,18 @@ func test_transferLeadership_rejectLogUpdateTasks(t *testing.T) {
 // if quorum became unreachable during transferLeadership,
 // leader should reply ErrQuorumUnreachable
 func test_transferLeadership_quorumUnreachable(t *testing.T) {
-	// launch 3 node cluster, with quorumWait 1 sec
-	c := newCluster(t)
-	c.opt.QuorumWait = time.Second
-	ldr, flrs := c.ensureLaunch(3)
+	c, _, _, transfer := setupTransferLeadershipTimeout(t, time.Second, 5*time.Second)
 	defer c.shutdown()
 
-	// shutdown all followers
-	c.shutdown(flrs...)
-
-	// send an update, this makes sure that no transfer target is available
-	ldr.NewEntries() <- UpdateFSM([]byte("test"))
-
-	// request leadership transfer, with 5 sec timeout
 	start := time.Now()
-	_, err := waitTask(ldr, TransferLeadership(5*time.Second), c.longTimeout)
+	select {
+	case <-transfer.Done():
+	case <-time.After(c.longTimeout):
+		c.Fatal("transfer: timeout")
+	}
 
-	// request must fail with ErrQuorumUnreachable
-	if err != ErrQuorumUnreachable {
+	// transfer must fail with ErrQuorumUnreachable
+	if err := transfer.Err(); err != ErrQuorumUnreachable {
 		t.Fatalf("err: got %v, want %v", err, ErrQuorumUnreachable)
 	}
 
@@ -156,22 +144,10 @@ func test_transferLeadership_quorumUnreachable(t *testing.T) {
 // if new term detected during transferLeadership before/after timeoutNow,
 // leader should reply success
 func test_transferLeadership_newTermDetected(t *testing.T) {
-	// launch 3 node cluster, with quorumWait 1 sec
-	c := newCluster(t)
-	c.opt.QuorumWait = time.Second
-	ldr, flrs := c.ensureLaunch(3)
+	c, ldr, flrs, transfer := setupTransferLeadershipTimeout(t, time.Second, 5*time.Second)
 	defer c.shutdown()
 
-	// shutdown all followers
-	c.shutdown(flrs...)
-
-	// send an update, this makes sure that no transfer target is available
-	ldr.NewEntries() <- UpdateFSM([]byte("test"))
-
-	// request leadership transfer, with 5 sec timeout
 	start := time.Now()
-	transfer := TransferLeadership(5 * time.Second)
-	ldr.Tasks() <- transfer
 
 	// send requestVote with one of the follower as candidate with new term
 	flrs[0].term++
