@@ -22,7 +22,10 @@ import (
 
 func TestRaft(t *testing.T) {
 	//t.Run("voting", test_voting)
-	t.Run("shutdown", test_shutdown)
+	t.Run("shutdown", func(t *testing.T) {
+		t.Run("once", test_shutdown_once)
+		t.Run("twice", test_shutdown_twice)
+	})
 	t.Run("bootstrap", test_bootstrap)
 	t.Run("singleNode", test_singleNode)
 	t.Run("tripleNode", test_tripleNode)

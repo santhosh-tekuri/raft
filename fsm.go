@@ -15,16 +15,23 @@ type FSMState interface {
 	Release()
 }
 
-func (r *Raft) fsmLoop() {
-	defer r.wg.Done()
+type stateMachine struct {
+	FSM
+	id uint64
+
+	taskCh    chan Task
+	snapshots Snapshots
+}
+
+func (fsm *stateMachine) runLoop() {
 	var updateIndex, updateTerm uint64
-	for t := range r.fsmTaskCh {
+	for t := range fsm.taskCh {
 		switch t := t.(type) {
 		case NewEntry:
-			debug(r.id, "fsm.execute", t.typ, t.index)
+			debug(fsm.id, "fsm.execute", t.typ, t.index)
 			var resp interface{}
 			if t.typ == entryUpdate || t.typ == entryRead {
-				resp = r.fsm.Execute(t.entry.data)
+				resp = fsm.Execute(t.entry.data)
 				if t.typ == entryUpdate {
 					updateIndex, updateTerm = t.index, t.term
 				}
@@ -39,9 +46,9 @@ func (r *Raft) fsmLoop() {
 				t.reply(ErrSnapshotThreshold)
 				continue
 			}
-			state, err := r.fsm.Snapshot()
+			state, err := fsm.Snapshot()
 			if err != nil {
-				debug(r, "fsm.Snapshot failed", err)
+				debug(fsm.id, "fsm.Snapshot failed", err)
 				// send to trace
 				t.reply(err)
 				continue
@@ -52,25 +59,24 @@ func (r *Raft) fsmLoop() {
 				state: state,
 			})
 		case fsmRestoreReq:
-			meta, sr, err := r.snapshots.Open()
+			meta, sr, err := fsm.snapshots.Open()
 			if err != nil {
-				debug(r, "snapshots.Open failed", err)
+				debug(fsm.id, "snapshots.Open failed", err)
 				t.reply(opError(err, "Snapshots.Open"))
 				continue
 			}
-			if err = r.fsm.RestoreFrom(sr); err != nil {
-				debug(r, "fsm.restore failed", err)
+			if err = fsm.RestoreFrom(sr); err != nil {
+				debug(fsm.id, "fsm.restore failed", err)
 				// todo: detect where err occurred in restoreFrom/sr.read
 				t.reply(opError(err, "FSM.RestoreFrom"))
 			} else {
 				updateIndex, updateTerm = meta.Index, meta.Term
-				debug(r, "restored snapshot", meta.Index)
+				debug(fsm.id, "restored snapshot", meta.Index)
 				t.reply(nil)
 			}
 			_ = sr.Close()
 		}
 	}
-	debug(r.id, "fsmLoop shutdown")
 }
 
 func (r *Raft) applyEntry(ne NewEntry) {
@@ -85,7 +91,7 @@ func (r *Raft) applyEntry(ne NewEntry) {
 		select {
 		case <-r.shutdownCh:
 			ne.reply(ErrServerClosed)
-		case r.fsmTaskCh <- ne:
+		case r.fsm.taskCh <- ne:
 		}
 	default:
 		fatal("raft.applyEntry: type %d", ne.typ)
@@ -108,7 +114,7 @@ func (r *Raft) takeSnapshot(t takeSnapshot) {
 
 	// get fsm state ---------------------------------------
 	req := fsmSnapReq{task: newTask(), index: t.lastSnapIndex + t.threshold}
-	r.fsmTaskCh <- req
+	r.fsm.taskCh <- req
 	select {
 	case <-r.shutdownCh:
 		err = ErrServerClosed
@@ -192,7 +198,7 @@ type snapTaken struct {
 
 func (r *Raft) restoreFSMFromSnapshot() error {
 	req := fsmRestoreReq{task: newTask()}
-	r.fsmTaskCh <- req
+	r.fsm.taskCh <- req
 	<-req.Done()
 	if req.Err() != nil {
 		return req.Err()

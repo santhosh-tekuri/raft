@@ -342,7 +342,7 @@ func (l *ldrShip) applyCommitted() {
 				case <-l.shutdownCh:
 					ne.reply(ErrServerClosed)
 					return
-				case l.fsmTaskCh <- ne:
+				case l.fsm.taskCh <- ne:
 				}
 			} else {
 				break

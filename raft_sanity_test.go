@@ -28,14 +28,16 @@ func test_voting(t *testing.T) {
 	}
 }
 
-func test_shutdown(t *testing.T) {
+func test_shutdown_once(t *testing.T) {
 	c := newCluster(t)
 	c.launch(1, true)
-
-	// shutdown
 	c.shutdown()
+}
 
-	// shutdown on stopped one, should work
+func test_shutdown_twice(t *testing.T) {
+	c := newCluster(t)
+	c.launch(1, true)
+	c.shutdown()
 	c.shutdown()
 }
 

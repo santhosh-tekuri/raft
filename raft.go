@@ -15,8 +15,7 @@ type Raft struct {
 	timer  *safeTimer
 	server *server
 
-	fsm           FSM
-	fsmTaskCh     chan Task
+	fsm           *stateMachine
 	snapTakenCh   chan snapTaken // non nil only when snapshot task is in progress
 	snapThreshold uint64
 
@@ -62,14 +61,19 @@ func New(id uint64, opt Options, fsm FSM, storage Storage) (*Raft, error) {
 	if err := store.init(); err != nil {
 		return nil, err
 	}
+	sm := &stateMachine{
+		FSM:       fsm,
+		id:        id,
+		taskCh:    make(chan Task, 128), // todo configurable capacity
+		snapshots: storage.Snapshots,
+	}
 
 	r := &Raft{
 		id:               id,
 		rtime:            newRandTime(),
 		timer:            newSafeTimer(),
 		server:           newServer(),
-		fsm:              fsm,
-		fsmTaskCh:        make(chan Task, 128), // todo configurable capacity
+		fsm:              sm,
 		snapThreshold:    opt.SnapshotThreshold,
 		storage:          store,
 		state:            Follower,
@@ -114,18 +118,32 @@ func (r *Raft) Serve(l net.Listener) error {
 		r.trace.Starting(r.liveInfo())
 	}
 
-	go r.fsmLoop()
+	var wg sync.WaitGroup
+	defer func() {
+		debug(r, "stateLoop shutdown")
+		r.server.shutdown()
+		debug(r, "server shutdown")
+		close(r.fsm.taskCh)
+		wg.Wait()
+		r.wg.Done()
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		r.fsm.runLoop()
+		debug(r.id, "fsmLoop shutdown")
+	}()
+
 	// restore fsm from last snapshot, if present
 	if r.snapIndex > 0 {
 		if err := r.restoreFSMFromSnapshot(); err != nil {
-			close(r.fsmTaskCh) // to stop fsmLoop
+			close(r.fsm.taskCh) // to stop fsmLoop
 			return err
 		}
 	}
 
-	r.wg.Add(1)
 	go r.server.serve(l)
-
 	return r.stateLoop()
 }
 
@@ -226,16 +244,10 @@ func (r *Raft) stateLoop() (err error) {
 // closing -----------------------------------------
 
 func (r *Raft) release() {
-	r.server.shutdown()
-	debug(r, "server shutdown")
-	close(r.fsmTaskCh)
-
 	// wait for snapshot to complete
 	if r.snapTakenCh != nil {
 		r.onSnapshotTaken(<-r.snapTakenCh)
 	}
-	r.wg.Done()
-	debug(r, "stateLoop shutdown")
 }
 
 func (r *Raft) Shutdown() *sync.WaitGroup {
@@ -292,7 +304,7 @@ func (r *Raft) ID() uint64 {
 }
 
 func (r *Raft) FSM() FSM {
-	return r.fsm
+	return r.fsm.FSM
 }
 
 func (r *Raft) addr() string {
