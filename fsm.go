@@ -48,7 +48,7 @@ func (fsm *stateMachine) runLoop() {
 			}
 			state, err := fsm.Snapshot()
 			if err != nil {
-				debug(fsm.id, "fsm.Snapshot failed", err)
+				debug(fsm, "fsm.Snapshot failed", err)
 				// send to trace
 				t.reply(err)
 				continue
@@ -61,17 +61,17 @@ func (fsm *stateMachine) runLoop() {
 		case fsmRestoreReq:
 			meta, sr, err := fsm.snapshots.Open()
 			if err != nil {
-				debug(fsm.id, "snapshots.Open failed", err)
+				debug(fsm, "snapshots.Open failed", err)
 				t.reply(opError(err, "Snapshots.Open"))
 				continue
 			}
 			if err = fsm.RestoreFrom(sr); err != nil {
-				debug(fsm.id, "fsm.restore failed", err)
+				debug(fsm, "fsm.restore failed", err)
 				// todo: detect where err occurred in restoreFrom/sr.read
 				t.reply(opError(err, "FSM.RestoreFrom"))
 			} else {
 				updateIndex, updateTerm = meta.Index, meta.Term
-				debug(fsm.id, "restored snapshot", meta.Index)
+				debug(fsm, "restored snapshot", meta.Index)
 				t.reply(nil)
 			}
 			_ = sr.Close()
@@ -101,26 +101,11 @@ func (r *Raft) applyEntry(ne NewEntry) {
 // --------------------------------------------------------------------------
 
 // todo: trace snapshot start and finish
-func (r *Raft) takeSnapshot(t takeSnapshot) {
-	// finally report back to raft, for log compaction
-	var err error
-	var meta SnapshotMeta
-	defer func() {
-		taken := snapTaken{req: t}
-		taken.err = err
-		taken.meta = meta
-		r.snapTakenCh <- taken
-	}()
-
-	// get fsm state ---------------------------------------
-	req := fsmSnapReq{task: newTask(), index: t.lastSnapIndex + t.threshold}
-	r.fsm.taskCh <- req
-	select {
-	case <-r.close:
-		err = ErrServerClosed
-		return
-	case <-req.Done():
-	}
+func doTakeSnapshot(fsm *stateMachine, index uint64, config Config) (meta SnapshotMeta, err error) {
+	// get fsm state
+	req := fsmSnapReq{task: newTask(), index: index}
+	fsm.taskCh <- req
+	<-req.Done()
 	if req.Err() != nil {
 		err = req.Err()
 		return
@@ -129,25 +114,25 @@ func (r *Raft) takeSnapshot(t takeSnapshot) {
 	defer resp.state.Release()
 
 	// write snapshot to storage
-	debug(r.id, "takingSnap:", resp.index)
-	sink, err := r.snapshots.New(resp.index, resp.term, t.config)
+	debug(fsm, "takingSnap:", resp.index)
+	sink, err := fsm.snapshots.New(resp.index, resp.term, config)
 	if err != nil {
-		debug(r, "snapshots.New failed", err)
+		debug(fsm, "snapshots.New failed", err)
 		err = opError(err, "Snapshots.New")
 		return
 	}
 	err = resp.state.WriteTo(sink)
 	meta, doneErr := sink.Done(err)
 	if err != nil {
-		debug(r, "FSMState.WriteTo failed", resp.index, err)
+		debug(fsm, "FSMState.WriteTo failed", resp.index, err)
 		err = opError(err, "FSMState.WriteTo")
 		return
 	}
-	if err == nil && doneErr != nil {
-		debug(r, "FSMState.Done failed", resp.index, err)
+	if doneErr != nil {
+		debug(fsm, "FSMState.Done failed", resp.index, err)
 		err = opError(err, "FSMState.Done")
-		return
 	}
+	return
 }
 
 func (r *Raft) onSnapshotTaken(t snapTaken) {
@@ -196,7 +181,7 @@ type snapTaken struct {
 
 // ---------------------------------------------------------------------------
 
-func (r *Raft) restoreFSMFromSnapshot() error {
+func (r *Raft) restoreFSM() error {
 	req := fsmRestoreReq{task: newTask()}
 	r.fsm.taskCh <- req
 	<-req.Done()

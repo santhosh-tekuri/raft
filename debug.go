@@ -92,6 +92,10 @@ func (f *flr) String() string {
 	return fmt.Sprintf("%s %d %d %d |", f.str, f.matchIndex, f.nextIndex, f.ldrLastIndex)
 }
 
+func (fsm *stateMachine) String() string {
+	return fmt.Sprintf("M%d", fsm.id)
+}
+
 func (u leaderUpdate) String() string {
 	return fmt.Sprintf("leaderUpdate{last:%d, commit:%d, config: %v}", u.lastIndex, u.commitIndex, u.config)
 }

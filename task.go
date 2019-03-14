@@ -346,10 +346,15 @@ func (r *Raft) executeTask(t Task) {
 			t.reply(InProgressError("takeSnapshot"))
 			return
 		}
-		t.lastSnapIndex = r.snapIndex
-		t.config = r.configs.Committed
-		r.snapTakenCh = make(chan snapTaken)
-		go r.takeSnapshot(t) // goroutine tracked by r.snapTakenCh
+		r.snapTakenCh = make(chan snapTaken, 1)
+		go func(index uint64, config Config) { // tracked by r.snapTakenCh
+			meta, err := doTakeSnapshot(r.fsm, index, config)
+			r.snapTakenCh <- snapTaken{
+				req:  t,
+				meta: meta,
+				err:  err,
+			}
+		}(r.snapIndex+t.threshold, r.configs.Committed)
 	case inspect:
 		t.fn(r)
 		t.reply(nil)

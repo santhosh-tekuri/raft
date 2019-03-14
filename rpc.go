@@ -253,7 +253,7 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq) (rpcResult, error) {
 		r.snapIndex, r.snapTerm = meta.Index, meta.Term
 
 		// reset fsm from this snapshot
-		if err = r.restoreFSMFromSnapshot(); err != nil {
+		if err = r.restoreFSM(); err != nil {
 			return unexpectedErr, err
 		}
 		// load snapshot config as cluster configuration
