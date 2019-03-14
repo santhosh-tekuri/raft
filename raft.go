@@ -2,11 +2,10 @@ package raft
 
 import (
 	"container/list"
+	"errors"
 	"net"
 	"sync"
 	"time"
-
-	"github.com/pkg/errors"
 )
 
 type Raft struct {
