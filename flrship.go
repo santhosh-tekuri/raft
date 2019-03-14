@@ -44,5 +44,8 @@ func (f *flrShip) canStartElection() (can bool, reason string) {
 	if !n.Voter {
 		return false, "not voter"
 	}
+	if f.appendErr != nil {
+		return false, f.appendErr.Error()
+	}
 	return true, ""
 }

@@ -44,6 +44,8 @@ type Raft struct {
 	taskCh     chan Task
 	newEntryCh chan NewEntry
 
+	appendErr error
+
 	wg         sync.WaitGroup
 	shutdownMu sync.Mutex
 	shutdownCh chan struct{}
@@ -173,7 +175,7 @@ func (r *Raft) stateLoop() {
 				if r.state == Leader {
 					_ = l.storeEntry(ne)
 				} else {
-					ne.reply(NotLeaderError{f.leaderAddr(), false})
+					ne.reply(NotLeaderError{f.leaderAddr(), false, nil})
 				}
 
 			case t := <-r.taskCh:

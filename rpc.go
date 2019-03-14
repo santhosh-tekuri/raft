@@ -39,6 +39,9 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 			resetTimer = result == success
 		case *appendEntriesReq:
 			result, err = r.onAppendEntriesRequest(req)
+			if result == unexpectedErr {
+				r.appendErr = err
+			}
 		case *installSnapReq:
 			result, err = r.onInstallSnapRequest(req)
 		case *timeoutNowReq:

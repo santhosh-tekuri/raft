@@ -177,11 +177,12 @@ func (s *storage) getEntry(index uint64, e *entry) error {
 	b, err := s.log.Get(offset)
 	s.snapMu.RUnlock()
 	if err != nil {
-		panic(opError(err, "Log.Get(%d)", offset))
+		return opError(err, "Log.Get(%d)", offset)
 	}
 	if err = e.decode(bytes.NewReader(b)); err != nil {
-		panic(fmt.Sprintf("raft: entry.decode(%d) failed: %v", index, err))
+		fatal("entry.decode(%d): %v", index, err)
 	}
+	assert(e.index == index, "log.Get(%d): index got %d, want %d", offset, e.index, index)
 	return nil
 }
 
@@ -224,7 +225,9 @@ func (s *storage) deleteGTE(index, prevTerm uint64) error {
 }
 
 func (s *storage) bootstrap(config Config) error {
-	s.appendEntry(config.encode())
+	if err := s.appendEntry(config.encode()); err != nil {
+		return err
+	}
 	s.setTerm(1)
 	return nil
 }

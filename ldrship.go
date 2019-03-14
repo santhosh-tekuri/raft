@@ -48,12 +48,7 @@ func (l *ldrShip) init() {
 	}
 
 	// add a blank no-op entry into log at the start of its term
-	nop := NewEntry{entry: &entry{typ: entryNop}}
-	if err := l.storeEntry(nop); err != nil {
-		// todo: dont do startElection ever
-		l.setState(Follower)
-		l.setLeader(0)
-	}
+	_ = l.storeEntry(NewEntry{entry: &entry{typ: entryNop}})
 }
 
 func (l *ldrShip) onTimeout() { l.checkQuorum(0) }
@@ -76,11 +71,9 @@ func (l *ldrShip) release() {
 	}
 
 	// respond to any pending user entries
-	var err error
+	var err error = NotLeaderError{l.leaderAddr(), true, l.appendErr}
 	if l.isClosed() {
 		err = ErrServerClosed
-	} else {
-		err = NotLeaderError{l.leaderAddr(), true}
 	}
 	for l.newEntries.Len() > 0 {
 		ne := l.newEntries.Remove(l.newEntries.Front()).(NewEntry)
@@ -112,7 +105,10 @@ func (l *ldrShip) storeEntry(ne NewEntry) error {
 		if l.trace.Error != nil {
 			l.trace.Error(err)
 		}
-		ne.reply(err)
+		// ne is replied in release
+		l.appendErr = err // to prevent startElection
+		l.setState(Follower)
+		l.setLeader(0)
 		return err
 	}
 	l.transferTgt = 0
