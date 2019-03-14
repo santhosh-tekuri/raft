@@ -16,10 +16,8 @@ type rpc struct {
 }
 
 type server struct {
-	mu       sync.RWMutex
-	listener net.Listener
-	conns    map[net.Conn]struct{}
-
+	mu         sync.RWMutex
+	lr         net.Listener
 	rpcCh      chan *rpc
 	wg         sync.WaitGroup
 	shutdownCh chan struct{}
@@ -29,56 +27,51 @@ func newServer() *server {
 	return &server{
 		rpcCh:      make(chan *rpc),
 		shutdownCh: make(chan struct{}),
-		conns:      make(map[net.Conn]struct{}),
 	}
 }
 
 // todo: note that we dont support multiple listeners
 func (s *server) serve(l net.Listener) {
-	defer func() {
-		s.mu.RLock()
-		for conn := range s.conns {
-			_ = conn.Close()
-		}
-		s.mu.RUnlock()
-		s.wg.Done()
-	}()
+	defer s.wg.Done()
 
 	s.mu.Lock()
 	if s.isClosed() {
 		_ = l.Close()
 	}
 	s.wg.Add(1) // The first increment must be synchronized with Wait
-	s.listener = l
+	s.lr = l
 	s.mu.Unlock()
 
+	conns := make(map[net.Conn]struct{})
 	for !s.isClosed() {
-		conn, err := s.listener.Accept()
+		conn, err := s.lr.Accept()
 		if err != nil {
 			continue
 		}
 		s.mu.Lock()
-		s.conns[conn] = struct{}{}
+		conns[conn] = struct{}{}
 		s.mu.Unlock()
 		s.wg.Add(1)
-		go s.handleClient(conn)
+		go func() {
+			r, w := bufio.NewReader(conn), bufio.NewWriter(conn)
+			for !s.isClosed() {
+				if err := s.handleRPC(conn, r, w); err != nil {
+					break
+				}
+			}
+			s.mu.Lock()
+			delete(conns, conn)
+			s.mu.Unlock()
+			_ = conn.Close()
+			s.wg.Done()
+		}()
 	}
-}
 
-func (s *server) handleClient(conn net.Conn) {
-	defer func() {
-		s.mu.Lock()
-		delete(s.conns, conn)
-		s.mu.Unlock()
+	s.mu.RLock()
+	for conn := range conns {
 		_ = conn.Close()
-		s.wg.Done()
-	}()
-	r, w := bufio.NewReader(conn), bufio.NewWriter(conn)
-	for !s.isClosed() {
-		if err := s.handleRPC(conn, r, w); err != nil {
-			return
-		}
 	}
+	s.mu.RUnlock()
 }
 
 // if shutdown signal received, returns ErrServerClosed immediately
@@ -131,8 +124,8 @@ func (s *server) isClosed() bool {
 func (s *server) shutdown() {
 	s.mu.RLock()
 	close(s.shutdownCh)
-	if s.listener != nil {
-		_ = s.listener.Close()
+	if s.lr != nil {
+		_ = s.lr.Close()
 	}
 	s.mu.RUnlock()
 	s.wg.Wait()
