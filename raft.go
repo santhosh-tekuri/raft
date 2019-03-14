@@ -10,10 +10,10 @@ import (
 )
 
 type Raft struct {
-	id     uint64
-	rtime  randTime
-	timer  *safeTimer
-	server *server
+	id    uint64
+	rtime randTime
+	timer *safeTimer
+	rpcCh chan *rpc
 
 	fsm           *stateMachine
 	snapTakenCh   chan snapTaken // non nil only when snapshot task is in progress
@@ -72,7 +72,7 @@ func New(id uint64, opt Options, fsm FSM, storage Storage) (*Raft, error) {
 		id:               id,
 		rtime:            newRandTime(),
 		timer:            newSafeTimer(),
-		server:           newServer(),
+		rpcCh:            make(chan *rpc),
 		fsm:              sm,
 		snapThreshold:    opt.SnapshotThreshold,
 		storage:          store,
@@ -118,10 +118,12 @@ func (r *Raft) Serve(l net.Listener) error {
 		r.trace.Starting(r.liveInfo())
 	}
 
+	server := newServer(l)
+
 	var wg sync.WaitGroup
 	defer func() {
 		debug(r, "stateLoop shutdown")
-		r.server.shutdown()
+		server.shutdown()
 		debug(r, "server shutdown")
 		close(r.fsm.taskCh)
 		wg.Wait()
@@ -146,7 +148,7 @@ func (r *Raft) Serve(l net.Listener) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		r.server.serve(l)
+		server.serve(r.rpcCh)
 		debug(r.id, "server shutdown")
 	}()
 
@@ -196,7 +198,7 @@ func (r *Raft) stateLoop() (err error) {
 			case <-r.shutdownCh:
 				return ErrServerClosed
 
-			case rpc := <-r.server.rpcCh:
+			case rpc := <-r.rpcCh:
 				resetTimer := r.replyRPC(rpc)
 				// on receiving AppendEntries from current leader or
 				// granting vote to candidate reset timer
@@ -275,12 +277,7 @@ func (r *Raft) Closed() <-chan struct{} {
 
 // tells whether shutdown was called
 func (r *Raft) isClosed() bool {
-	select {
-	case <-r.shutdownCh:
-		return true
-	default:
-		return false
-	}
+	return isClosed(r.shutdownCh)
 }
 
 // misc --------------------------------------------------------

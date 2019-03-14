@@ -16,65 +16,57 @@ type rpc struct {
 }
 
 type server struct {
-	mu         sync.RWMutex
-	lr         net.Listener
-	rpcCh      chan *rpc
-	shutdownCh chan struct{}
+	lr     net.Listener
+	stopCh chan struct{}
 }
 
-func newServer() *server {
+func newServer(lr net.Listener) *server {
 	return &server{
-		rpcCh:      make(chan *rpc),
-		shutdownCh: make(chan struct{}),
+		lr:     lr,
+		stopCh: make(chan struct{}),
 	}
 }
 
-// todo: note that we dont support multiple listeners
-func (s *server) serve(l net.Listener) {
-	s.mu.Lock()
-	if s.isClosed() {
-		_ = l.Close()
-	}
-	s.lr = l
-	s.mu.Unlock()
-
+func (s *server) serve(rpcCh chan<- *rpc) {
+	mu := new(sync.RWMutex)
 	conns := make(map[net.Conn]struct{})
 	var wg sync.WaitGroup
-	for !s.isClosed() {
+	for !isClosed(s.stopCh) {
 		conn, err := s.lr.Accept()
 		if err != nil {
 			continue
 		}
-		s.mu.Lock()
+
+		mu.Lock()
 		conns[conn] = struct{}{}
-		s.mu.Unlock()
+		mu.Unlock()
 		wg.Add(1)
 		go func() {
 			r, w := bufio.NewReader(conn), bufio.NewWriter(conn)
-			for !s.isClosed() {
-				if err := s.handleRPC(conn, r, w); err != nil {
+			for !isClosed(s.stopCh) {
+				if err := s.handleRPC(rpcCh, r, w); err != nil {
 					break
 				}
 			}
-			s.mu.Lock()
+			mu.Lock()
 			delete(conns, conn)
-			s.mu.Unlock()
+			mu.Unlock()
 			_ = conn.Close()
 			wg.Done()
 		}()
 	}
 
-	s.mu.RLock()
+	mu.RLock()
 	for conn := range conns {
 		_ = conn.Close()
 	}
-	s.mu.RUnlock()
+	mu.RUnlock()
 	wg.Wait()
-	close(s.rpcCh)
+	close(rpcCh)
 }
 
 // if shutdown signal received, returns ErrServerClosed immediately
-func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) error {
+func (s *server) handleRPC(ch chan<- *rpc, r *bufio.Reader, w *bufio.Writer) error {
 	b, err := r.ReadByte()
 	if err != nil {
 		return err
@@ -89,14 +81,14 @@ func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) erro
 
 	// send request for processing
 	select {
-	case <-s.shutdownCh:
+	case <-s.stopCh:
 		return ErrServerClosed
-	case s.rpcCh <- rpc:
+	case ch <- rpc:
 	}
 
 	// wait for response
 	select {
-	case <-s.shutdownCh:
+	case <-s.stopCh:
 		return ErrServerClosed
 	case <-rpc.done:
 	}
@@ -112,19 +104,7 @@ func (s *server) handleRPC(conn net.Conn, r *bufio.Reader, w *bufio.Writer) erro
 	return w.Flush()
 }
 
-func (s *server) isClosed() bool {
-	select {
-	case <-s.shutdownCh:
-		return true
-	default:
-		return false
-	}
-}
 func (s *server) shutdown() {
-	s.mu.RLock()
-	close(s.shutdownCh)
-	if s.lr != nil {
-		_ = s.lr.Close()
-	}
-	s.mu.RUnlock()
+	close(s.stopCh)
+	_ = s.lr.Close()
 }

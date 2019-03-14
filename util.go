@@ -23,6 +23,15 @@ func max(a, b uint64) uint64 {
 	return b
 }
 
+func isClosed(ch <-chan struct{}) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
+	}
+}
+
 // ------------------------------------------------------
 
 type safeTimer struct {

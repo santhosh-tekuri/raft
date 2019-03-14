@@ -40,22 +40,23 @@ func TestServer(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s := newServer()
-			l, err := earth.Listen("tcp", addr)
+			lr, err := earth.Listen("tcp", addr)
 			if err != nil {
 				t.Fatalf("server.listen failed: %v", err)
 			}
+			s := newServer(lr)
 
+			rpcCh := make(chan *rpc)
 			var wg sync.WaitGroup
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				s.serve(l)
+				s.serve(rpcCh)
 			}()
 			defer s.shutdown()
 
 			go func() {
-				for rpc := range s.rpcCh {
+				for rpc := range rpcCh {
 					if !reflect.DeepEqual(rpc.req, test.req) {
 						t.Errorf("request mismatch: got %#v, want %#v", rpc.req, test.req)
 					}
