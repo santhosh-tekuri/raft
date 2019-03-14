@@ -47,7 +47,7 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 		case *timeoutNowReq:
 			r.onTimeoutNowRequest()
 		default:
-			assert(false, "unexpected request: %T", req)
+			fatal("raft.replyRPC(%T)", req)
 		}
 	}
 

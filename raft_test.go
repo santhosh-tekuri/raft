@@ -795,7 +795,7 @@ func (ee *events) onFMSChanged(id uint64, len uint64) {
 
 func (ee *events) trace() (trace Trace) {
 	trace.Error = func(err error) {
-		assert(false, "unexpected error: %v", err)
+		fatal("unexpected error: %v", err)
 	}
 
 	trace.StateChanged = func(info Info) {

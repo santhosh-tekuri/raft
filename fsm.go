@@ -88,7 +88,7 @@ func (r *Raft) applyEntry(ne NewEntry) {
 		case r.fsmTaskCh <- ne:
 		}
 	default:
-		assert(false, "got unexpected entryType %d", ne.typ)
+		fatal("raft.applyEntry: type %d", ne.typ)
 	}
 }
 

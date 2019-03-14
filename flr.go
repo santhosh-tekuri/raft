@@ -71,7 +71,7 @@ func (f *flr) replicate(req *appendEntriesReq) {
 			if f.trace.Error != nil {
 				f.trace.Error(err)
 			}
-			assert(false, "unexpected error: %v", err) // todo
+			fatal("raft.replicate: %v", err) // todo
 			continue
 		}
 
