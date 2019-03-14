@@ -55,11 +55,15 @@ func (l *ldrShip) onTimeout() { l.checkQuorum(0) }
 
 func (l *ldrShip) release() {
 	if l.transferTimer.active {
+		var err error
 		if l.term > l.transferLdr.term {
-			l.replyTransferLeadership(nil)
+			err = nil
+		} else if l.isClosed() {
+			err = ErrServerClosed
 		} else {
-			l.replyTransferLeadership(ErrQuorumUnreachable)
+			err = ErrQuorumUnreachable
 		}
+		l.replyTransferLeadership(err)
 	}
 
 	for id, f := range l.flrs {

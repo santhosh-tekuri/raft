@@ -137,7 +137,7 @@ func newCluster(t *testing.T) *cluster {
 	tdebug(t.Name(), "--------------------------")
 	heartbeatTimeout := 50 * time.Millisecond
 	testTimeout := time.AfterFunc(time.Minute, func() {
-		tdebug("test timed out; failing...")
+		fmt.Println("test timed out; failing...")
 		buf := make([]byte, 1024)
 		for {
 			n := runtime.Stack(buf, true)
