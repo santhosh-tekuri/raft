@@ -2,6 +2,7 @@ package raft
 
 import (
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -44,7 +45,13 @@ func TestServer(t *testing.T) {
 			if err != nil {
 				t.Fatalf("server.listen failed: %v", err)
 			}
-			go s.serve(l)
+
+			var wg sync.WaitGroup
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				s.serve(l)
+			}()
 			defer s.shutdown()
 
 			go func() {

@@ -143,7 +143,13 @@ func (r *Raft) Serve(l net.Listener) error {
 		}
 	}
 
-	go r.server.serve(l)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		r.server.serve(l)
+		debug(r.id, "server shutdown")
+	}()
+
 	return r.stateLoop()
 }
 

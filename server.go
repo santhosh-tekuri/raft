@@ -19,7 +19,6 @@ type server struct {
 	mu         sync.RWMutex
 	lr         net.Listener
 	rpcCh      chan *rpc
-	wg         sync.WaitGroup
 	shutdownCh chan struct{}
 }
 
@@ -32,13 +31,10 @@ func newServer() *server {
 
 // todo: note that we dont support multiple listeners
 func (s *server) serve(l net.Listener) {
-	defer s.wg.Done()
-
 	s.mu.Lock()
 	if s.isClosed() {
 		_ = l.Close()
 	}
-	s.wg.Add(1) // The first increment must be synchronized with Wait
 	s.lr = l
 	s.mu.Unlock()
 
@@ -74,6 +70,7 @@ func (s *server) serve(l net.Listener) {
 	}
 	s.mu.RUnlock()
 	wg.Wait()
+	close(s.rpcCh)
 }
 
 // if shutdown signal received, returns ErrServerClosed immediately
@@ -130,6 +127,4 @@ func (s *server) shutdown() {
 		_ = s.lr.Close()
 	}
 	s.mu.RUnlock()
-	s.wg.Wait()
-	close(s.rpcCh)
 }
