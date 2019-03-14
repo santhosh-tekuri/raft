@@ -89,7 +89,7 @@ func (r *Raft) applyEntry(ne NewEntry) {
 	case entryUpdate:
 		debug(r, "fms <- {", ne.typ, ne.index, "}")
 		select {
-		case <-r.closing:
+		case <-r.close:
 			ne.reply(ErrServerClosed)
 		case r.fsm.taskCh <- ne:
 		}
@@ -116,7 +116,7 @@ func (r *Raft) takeSnapshot(t takeSnapshot) {
 	req := fsmSnapReq{task: newTask(), index: t.lastSnapIndex + t.threshold}
 	r.fsm.taskCh <- req
 	select {
-	case <-r.closing:
+	case <-r.close:
 		err = ErrServerClosed
 		return
 	case <-req.Done():

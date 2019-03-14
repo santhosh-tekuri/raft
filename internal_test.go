@@ -21,7 +21,7 @@ func RequestVote(from, to *Raft) (granted bool, err error) {
 		resp, errr := cand.requestVote(pool, req, time.Time{})
 		granted, err = resp.result == success, errr
 	}
-	if from.isClosed() {
+	if from.isClosing() {
 		fn(from)
 	} else {
 		ierr := from.inspect(fn)

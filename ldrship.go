@@ -58,7 +58,7 @@ func (l *ldrShip) release() {
 		var err error
 		if l.term > l.transferLdr.term {
 			err = nil
-		} else if l.isClosed() {
+		} else if l.isClosing() {
 			err = ErrServerClosed
 		} else {
 			err = ErrQuorumUnreachable
@@ -76,7 +76,7 @@ func (l *ldrShip) release() {
 
 	// respond to any pending user entries
 	var err error = NotLeaderError{l.leaderAddr(), true, l.appendErr}
-	if l.isClosed() {
+	if l.isClosing() {
 		err = ErrServerClosed
 	}
 	for l.newEntries.Len() > 0 {
@@ -233,7 +233,7 @@ func (l *ldrShip) checkReplUpdates(u interface{}) {
 
 		// get any waiting update
 		select {
-		case <-l.closing:
+		case <-l.close:
 			return
 		case u = <-l.fromReplsCh:
 			continue
@@ -339,7 +339,7 @@ func (l *ldrShip) applyCommitted() {
 				l.newEntries.Remove(elem)
 				debug(l, "fms <- {", ne.typ, ne.index, "}")
 				select {
-				case <-l.closing:
+				case <-l.close:
 					ne.reply(ErrServerClosed)
 					return
 				case l.fsm.taskCh <- ne:
