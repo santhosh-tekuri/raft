@@ -57,35 +57,44 @@ func (t *task) reply(result interface{}) {
 
 // ------------------------------------------------------------------------
 
-type NewEntry struct {
+type FSMTask interface {
+	Task
+	newEntry() newEntry
+}
+
+type newEntry struct {
 	*task
 	*entry
 }
 
-func (r *Raft) NewEntries() chan<- NewEntry {
-	return r.newEntryCh
+func (ne newEntry) newEntry() newEntry {
+	return ne
 }
 
-func newEntry(typ entryType, data []byte) NewEntry {
-	return NewEntry{
+func (r *Raft) FSMTasks() chan<- FSMTask {
+	return r.fsmTaskCh
+}
+
+func fsmTask(typ entryType, data []byte) FSMTask {
+	return newEntry{
 		task:  newTask(),
 		entry: &entry{typ: typ, data: data},
 	}
 }
 
-func UpdateFSM(data []byte) NewEntry {
-	return newEntry(entryUpdate, data)
+func UpdateFSM(data []byte) FSMTask {
+	return fsmTask(entryUpdate, data)
 }
 
-func ReadFSM(data []byte) NewEntry {
-	return newEntry(entryRead, data)
+func ReadFSM(data []byte) FSMTask {
+	return fsmTask(entryRead, data)
 }
 
 // BarrierFSM is used to issue a command that blocks until all preceding
 // commands have been applied to the FSM. It can be used to ensure the
 // FSM reflects all queued commands.
-func BarrierFSM() NewEntry {
-	return newEntry(entryBarrier, nil)
+func BarrierFSM() FSMTask {
+	return fsmTask(entryBarrier, nil)
 }
 
 // ------------------------------------------------------------------------
@@ -372,8 +381,8 @@ func (r *Raft) executeTask(t Task) {
 
 func (l *ldrShip) executeTask(t Task) {
 	switch t := t.(type) {
-	case NewEntry:
-		t.reply(errors.New("raft: use Raft.NewEntries() for NewEntry"))
+	case FSMTask:
+		t.reply(errors.New("raft: use Raft.FSMTasks() for FSMTask"))
 	case changeConfig:
 		l.changeConfig(t)
 	case transferLdr:

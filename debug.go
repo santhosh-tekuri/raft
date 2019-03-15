@@ -108,7 +108,7 @@ func (i *cachedInfo) String() string {
 	return fmt.Sprintf("M%d %d %s |", i.ID(), i.Term(), string(i.State()))
 }
 
-func (ne NewEntry) String() string {
+func (ne newEntry) String() string {
 	switch ne.typ {
 	case entryUpdate:
 		return fmt.Sprintf("update{%s}", string(ne.data))

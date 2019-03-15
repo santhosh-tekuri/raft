@@ -313,7 +313,7 @@ func (l *ldrShip) changeConfig(t changeConfig) {
 
 func (l *ldrShip) doChangeConfig(t *task, config Config) {
 	// store config, and update our latest config
-	err := l.storeEntry(NewEntry{
+	err := l.storeEntry(newEntry{
 		entry: config.encode(),
 		task:  t,
 	})

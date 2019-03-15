@@ -46,7 +46,7 @@ func (l *ldrShip) init() {
 	}
 
 	// add a blank no-op entry into log at the start of its term
-	_ = l.storeEntry(NewEntry{entry: &entry{typ: entryNop}})
+	_ = l.storeEntry(newEntry{entry: &entry{typ: entryNop}})
 }
 
 func (l *ldrShip) onTimeout() { l.checkQuorum(0) }
@@ -78,7 +78,7 @@ func (l *ldrShip) release() {
 		err = ErrServerClosed
 	}
 	for l.newEntries.Len() > 0 {
-		ne := l.newEntries.Remove(l.newEntries.Front()).(NewEntry)
+		ne := l.newEntries.Remove(l.newEntries.Front()).(newEntry)
 		ne.reply(err)
 	}
 
@@ -87,7 +87,7 @@ func (l *ldrShip) release() {
 	l.fromReplsCh = nil
 }
 
-func (l *ldrShip) storeEntry(ne NewEntry) error {
+func (l *ldrShip) storeEntry(ne newEntry) error {
 	ne.entry.index, ne.entry.term = l.lastLogIndex+1, l.term
 	elem := l.newEntries.PushBack(ne)
 
@@ -331,7 +331,7 @@ func (l *ldrShip) applyCommitted() {
 		// send query/barrier entries if any to fsm
 		for l.newEntries.Len() > 0 {
 			elem := l.newEntries.Front()
-			ne := elem.Value.(NewEntry)
+			ne := elem.Value.(newEntry)
 			if ne.index == l.lastApplied+1 && (ne.typ == entryRead || ne.typ == entryBarrier) {
 				l.newEntries.Remove(elem)
 				debug(l, "fms <- {", ne.typ, ne.index, "}")
@@ -351,11 +351,11 @@ func (l *ldrShip) applyCommitted() {
 		}
 
 		// get lastApplied+1 entry
-		var ne NewEntry
+		var ne newEntry
 		if l.newEntries.Len() > 0 {
 			elem := l.newEntries.Front()
-			if elem.Value.(NewEntry).index == l.lastApplied+1 {
-				ne = l.newEntries.Remove(elem).(NewEntry)
+			if elem.Value.(newEntry).index == l.lastApplied+1 {
+				ne = l.newEntries.Remove(elem).(newEntry)
 			}
 		}
 		if ne.entry == nil {

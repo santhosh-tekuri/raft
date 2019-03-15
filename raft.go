@@ -39,9 +39,9 @@ type Raft struct {
 	dialFn    dialFn // used for mocking in tests
 	connPools map[uint64]*connPool
 
-	ldr        *ldrShip
-	taskCh     chan Task
-	newEntryCh chan NewEntry
+	ldr       *ldrShip
+	taskCh    chan Task
+	fsmTaskCh chan FSMTask
 
 	appendErr error
 
@@ -84,7 +84,7 @@ func New(id uint64, opt Options, fsm FSM, storage Storage) (*Raft, error) {
 		dialFn:           net.DialTimeout,
 		connPools:        make(map[uint64]*connPool),
 		taskCh:           make(chan Task),
-		newEntryCh:       make(chan NewEntry),
+		fsmTaskCh:        make(chan FSMTask),
 		close:            make(chan struct{}),
 		closed:           make(chan struct{}),
 	}
@@ -199,7 +199,8 @@ func (r *Raft) stateLoop() (err error) {
 				r.timer.active = false
 				ships[r.state].onTimeout()
 
-			case ne := <-r.newEntryCh:
+			case t := <-r.fsmTaskCh:
+				ne := t.newEntry()
 				if r.state == Leader {
 					_ = l.storeEntry(ne)
 				} else {

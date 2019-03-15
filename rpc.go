@@ -204,7 +204,7 @@ func (r *Raft) applyCommitted(ne *entry) error {
 			}
 		}
 
-		r.applyEntry(NewEntry{entry: e})
+		r.applyEntry(newEntry{entry: e})
 		r.lastApplied++
 		debug(r, "lastApplied", r.lastApplied)
 	}

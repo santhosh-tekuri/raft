@@ -572,17 +572,17 @@ func (c *cluster) waitTaskDone(t Task, timeout time.Duration, want error) interf
 
 func (c *cluster) sendUpdates(r *Raft, from, to int) Task {
 	tdebug("sendUpdates:", host(r), from, "to", to)
-	var ne NewEntry
+	var t FSMTask
 	for i := from; i <= to; i++ {
-		ne = UpdateFSM([]byte(fmt.Sprintf("update:%d", i)))
-		r.NewEntries() <- ne
+		t = UpdateFSM([]byte(fmt.Sprintf("update:%d", i)))
+		r.FSMTasks() <- t
 	}
-	return ne
+	return t
 }
 
 func (c *cluster) waitBarrier(r *Raft, timeout time.Duration) {
 	c.Helper()
-	if _, err := waitNewEntry(r, BarrierFSM(), timeout); err != nil {
+	if _, err := waitFSMTask(r, BarrierFSM(), timeout); err != nil {
 		c.Fatalf("Barrer(M%d): timeout", r.ID())
 	}
 }
@@ -668,26 +668,26 @@ func waitAddNonvoter(ldr *Raft, id uint64, addr string, promote bool) error {
 }
 
 // use zero timeout, to wait till reply received
-func waitNewEntry(r *Raft, ne NewEntry, timeout time.Duration) (fsmReply, error) {
-	tdebug("waitNewEntry:", host(r), ne, timeout)
+func waitFSMTask(r *Raft, t FSMTask, timeout time.Duration) (fsmReply, error) {
+	tdebug("waitNewEntry:", host(r), t, timeout)
 	var timer <-chan time.Time
 	if timeout > 0 {
 		timer = time.After(timeout)
 	}
 	select {
-	case r.NewEntries() <- ne:
+	case r.FSMTasks() <- t:
 		break
 	case <-timer:
-		return fsmReply{}, errors.New("waitNewEntry: submit timedout")
+		return fsmReply{}, errors.New("waitFSMTask: submit timeout")
 	}
 	select {
-	case <-ne.Done():
-		if ne.Err() != nil {
-			return fsmReply{}, ne.Err()
+	case <-t.Done():
+		if t.Err() != nil {
+			return fsmReply{}, t.Err()
 		}
 		result := fsmReply{}
-		if ne.Result() != nil {
-			result = ne.Result().(fsmReply)
+		if t.Result() != nil {
+			result = t.Result().(fsmReply)
 		}
 		return result, nil
 	case <-timer:
@@ -696,11 +696,11 @@ func waitNewEntry(r *Raft, ne NewEntry, timeout time.Duration) (fsmReply, error)
 }
 
 func waitUpdate(r *Raft, cmd string, timeout time.Duration) (fsmReply, error) {
-	return waitNewEntry(r, UpdateFSM([]byte(cmd)), timeout)
+	return waitFSMTask(r, UpdateFSM([]byte(cmd)), timeout)
 }
 
 func waitRead(r *Raft, read string, timeout time.Duration) (fsmReply, error) {
-	return waitNewEntry(r, ReadFSM([]byte(read)), timeout)
+	return waitFSMTask(r, ReadFSM([]byte(read)), timeout)
 }
 
 // events ---------------------------------------------

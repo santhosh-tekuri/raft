@@ -223,7 +223,7 @@ func test_behindFollower(t *testing.T) {
 
 	// commit a lot of things
 	for i := 0; i < 100; i++ {
-		ldr.NewEntries() <- UpdateFSM([]byte(fmt.Sprintf("test%d", i)))
+		ldr.FSMTasks() <- UpdateFSM([]byte(fmt.Sprintf("test%d", i)))
 	}
 	if _, err := waitUpdate(ldr, "test100", c.longTimeout); err != nil {
 		t.Fatal(err)

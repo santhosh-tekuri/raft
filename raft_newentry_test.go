@@ -144,14 +144,14 @@ func test_read(t *testing.T) {
 	// send updates, in between do queries and check query reply
 	for i := 0; i < 101; i++ {
 		cmd := fmt.Sprintf("cmd%d", i)
-		ldr.NewEntries() <- UpdateFSM([]byte(cmd))
+		ldr.FSMTasks() <- UpdateFSM([]byte(cmd))
 		if i%10 == 0 {
-			qq := []NewEntry{
+			qq := []FSMTask{
 				ReadFSM([]byte("last")),
 				ReadFSM([]byte("last")),
 			}
 			for _, q := range qq {
-				ldr.NewEntries() <- q
+				ldr.FSMTasks() <- q
 			}
 			for _, q := range qq {
 				<-q.Done()

@@ -28,7 +28,7 @@ func (fsm *stateMachine) runLoop() {
 	var updateIndex, updateTerm uint64
 	for t := range fsm.taskCh {
 		switch t := t.(type) {
-		case NewEntry:
+		case newEntry:
 			debug(fsm.id, "fsm.execute", t.typ, t.index)
 			var resp interface{}
 			if t.typ == entryUpdate {
@@ -80,7 +80,7 @@ func (fsm *stateMachine) runLoop() {
 	}
 }
 
-func (r *Raft) applyEntry(ne NewEntry) {
+func (r *Raft) applyEntry(ne newEntry) {
 	switch ne.typ {
 	case entryNop:
 		// do nothing

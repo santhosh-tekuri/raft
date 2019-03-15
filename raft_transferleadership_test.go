@@ -65,7 +65,7 @@ func setupTransferLeadershipTimeout(t *testing.T, quorumWait, taskTimeout time.D
 	c.shutdown(flrs...)
 
 	// send an update, this makes sure that no transfer target is available
-	ldr.NewEntries() <- UpdateFSM([]byte("test"))
+	ldr.FSMTasks() <- UpdateFSM([]byte("test"))
 
 	// request leadership transfer, with given timeout,
 	// this will not complete within this timeout
