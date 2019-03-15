@@ -3,6 +3,7 @@ package raft
 import (
 	"container/list"
 	"errors"
+	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -163,7 +164,7 @@ func (r *Raft) stateLoop() (err error) {
 
 	defer func() {
 		if v := recover(); v != nil {
-			r.Shutdown() // to close r.closing
+			r.doClose(v)
 			if opErr, ok := v.(OpError); ok {
 				err = opErr
 			} else {
@@ -247,14 +248,24 @@ func (r *Raft) release() {
 	}
 }
 
-func (r *Raft) Shutdown() <-chan struct{} {
+func (r *Raft) doClose(reason interface{}) {
 	r.closeOnce.Do(func() {
-		debug(r.id, ">> shutdown()")
+		debug(r.id, ">> shutdown()", reason)
+		var err error
+		if _, ok := reason.(error); ok {
+			err = reason.(error)
+		} else {
+			err = fmt.Errorf("bug: %v", err)
+		}
 		if r.trace.ShuttingDown != nil {
-			r.trace.ShuttingDown(r.liveInfo())
+			r.trace.ShuttingDown(r.liveInfo(), err)
 		}
 		close(r.close)
 	})
+}
+
+func (r *Raft) Shutdown() <-chan struct{} {
+	r.doClose(ErrServerClosed)
 	return r.closed
 }
 

@@ -3,6 +3,7 @@ package raft
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -60,7 +61,7 @@ type Trace struct {
 	Promoting         func(info Info, id, numRounds uint64)
 	Unreachable       func(info Info, id uint64, since time.Time, err error)
 	QuorumUnreachable func(info Info, since time.Time)
-	ShuttingDown      func(info Info)
+	ShuttingDown      func(info Info, reason error)
 
 	sending  func(self, to uint64, state State, msg message)
 	received func(self, from uint64, state State, term uint64, msg message)
@@ -111,8 +112,8 @@ func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
 			warn("raft: node", id, "is unreachable since", since, ":", err)
 		}
 	}
-	trace.ShuttingDown = func(rinfo Info) {
-		info("raft: shutting down")
+	trace.ShuttingDown = func(rinfo Info, reason error) {
+		info("raft: shutting down, reason", strconv.Quote(reason.Error()))
 	}
 	return
 }
