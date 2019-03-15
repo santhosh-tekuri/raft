@@ -333,12 +333,21 @@ func test_leader_quorumWait_reachable(t *testing.T) {
 	}
 }
 
+func test_opError_getVote(t *testing.T) {
+	mockStorage := new(inmemStorage)
+	mockStorage.setStableErr(errors.New("abc"), nil)
+	storage := Storage{mockStorage, mockStorage, mockStorage}
+	_, err := New(1, DefaultOptions(), &fsmMock{id: 1}, storage)
+	if _, ok := err.(OpError); !ok {
+		t.Fatalf("got %v, want OpError", err)
+	}
+}
+
 func test_opError_setVote(t *testing.T) {
 	c, ldr, flrs := launchCluster(t, 3)
 	defer c.shutdown()
 
-	err := errors.New("xyz")
-	c.inmemStorage(ldr).setStableErr(nil, err)
+	c.inmemStorage(ldr).setStableErr(nil, errors.New("xyz"))
 	c.shutdown(flrs...)
 	select {
 	case <-ldr.Closing():

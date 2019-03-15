@@ -27,6 +27,7 @@ func TestRaft(t *testing.T) {
 		t.Run("twice", test_shutdown_twice)
 	})
 	t.Run("opError", func(t *testing.T) {
+		t.Run("getVote", test_opError_getVote)
 		t.Run("setVote", test_opError_setVote)
 	})
 	t.Run("bootstrap", test_bootstrap)
