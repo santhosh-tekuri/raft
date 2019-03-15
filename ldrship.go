@@ -28,8 +28,7 @@ type ldrShip struct {
 	// to receive updates from replicators
 	fromReplsCh chan interface{}
 
-	transferTimer *safeTimer // is active when transfer is in progress
-	transferLdr   transferLdr
+	transfer transfer
 }
 
 func (l *ldrShip) init() {
@@ -53,16 +52,16 @@ func (l *ldrShip) init() {
 func (l *ldrShip) onTimeout() { l.checkQuorum(0) }
 
 func (l *ldrShip) release() {
-	if l.transferTimer.active {
+	if l.transfer.inProgress() {
 		var err error
-		if l.term > l.transferLdr.term {
+		if l.term > l.transfer.term {
 			err = nil
 		} else if l.isClosing() {
 			err = ErrServerClosed
 		} else {
 			err = ErrQuorumUnreachable
 		}
-		l.replyTransfer(err)
+		l.transfer.reply(err)
 	}
 
 	for id, f := range l.flrs {
@@ -97,7 +96,7 @@ func (l *ldrShip) storeEntry(ne NewEntry) error {
 		return nil
 	}
 
-	if l.transferTimer.active {
+	if l.transfer.inProgress() {
 		l.newEntries.Remove(elem)
 		ne.reply(InProgressError("transferLeadership"))
 		return InProgressError("transferLeadership")
@@ -199,7 +198,7 @@ func (l *ldrShip) checkReplUpdates(u interface{}) {
 			} else {
 				debug(l, u.status.id, "is reminding promotion:", r)
 			}
-			if l.transferTimer.active {
+			if l.transfer.inProgress() {
 				debug(l, "cannot promote: transferLeadership in progress")
 				break
 			}
@@ -246,7 +245,7 @@ func (l *ldrShip) checkReplUpdates(u interface{}) {
 		l.checkQuorum(l.quorumWait)
 	}
 	if matchUpdated || noContactUpdated {
-		if l.transferTimer.active && l.transferLdr.rpcCh == nil {
+		if l.transfer.inProgress() && !l.transfer.targetChosen() {
 			if tgt := l.choseTransferTgt(); tgt != 0 {
 				l.doTransfer(tgt)
 			}

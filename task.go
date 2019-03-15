@@ -323,10 +323,6 @@ type transferLdr struct {
 	*task
 	target  uint64 // whom to transfer. 0 means not specified
 	timeout time.Duration
-
-	// used for execution
-	term  uint64
-	rpcCh <-chan timeoutNowResult // non-nil, when transfer in progress and timeoutNow request sent
 }
 
 type timeoutNowResult struct {

@@ -2,6 +2,32 @@ package raft
 
 import "time"
 
+type transfer struct {
+	timer *safeTimer
+	transferLdr
+	term  uint64
+	rpcCh <-chan timeoutNowResult
+}
+
+func (t transfer) inProgress() bool {
+	return t.timer.active
+}
+
+func (t transfer) targetChosen() bool {
+	return t.rpcCh != nil
+}
+
+func (t *transfer) reply(err error) {
+	if t.timer.active {
+		debug("reply leadership transfer:", err)
+		t.task.reply(err)
+	}
+	t.timer.stop()
+	t.rpcCh = nil
+}
+
+// ----------------------------------------------------
+
 func (l *ldrShip) onTransfer(t transferLdr) {
 	debug(l, "got", t)
 	if err := l.validateTransfer(t); err != nil {
@@ -10,16 +36,16 @@ func (l *ldrShip) onTransfer(t transferLdr) {
 		return
 	}
 
-	t.term = l.term
-	l.transferLdr = t
-	l.transferTimer.reset(t.timeout)
+	l.transfer.term = l.term
+	l.transfer.transferLdr = t
+	l.transfer.timer.reset(t.timeout)
 	if tgt := l.choseTransferTgt(); tgt != 0 {
 		l.doTransfer(tgt)
 	}
 }
 
 func (l *ldrShip) validateTransfer(t transferLdr) error {
-	if l.transferTimer.active {
+	if l.transfer.inProgress() {
 		return InProgressError("transferLeadership")
 	}
 	if l.configs.Latest.numVoters() == 1 {
@@ -41,10 +67,10 @@ func (l *ldrShip) validateTransfer(t transferLdr) error {
 }
 
 func (l *ldrShip) choseTransferTgt() uint64 {
-	if l.transferLdr.target != 0 {
-		f := l.flrs[l.transferLdr.target]
+	if l.transfer.target != 0 {
+		f := l.flrs[l.transfer.target]
 		if f.status.noContact.IsZero() && f.status.matchIndex == l.lastLogIndex {
-			return l.transferLdr.target
+			return l.transfer.target
 		}
 	} else {
 		for id, n := range l.configs.Latest.Nodes {
@@ -63,7 +89,7 @@ func (l *ldrShip) doTransfer(target uint64) {
 	debug(l, "transferring leadership:", target)
 	pool := l.getConnPool(target)
 	ch := make(chan timeoutNowResult, 1)
-	l.transferLdr.rpcCh = ch
+	l.transfer.rpcCh = ch
 	req := &timeoutNowReq{l.term, l.id}
 	go func() {
 		conn, err := pool.getConn()
@@ -92,29 +118,20 @@ func (l *ldrShip) doTransfer(target uint64) {
 }
 
 func (l *ldrShip) onTransferTimeout() {
-	l.replyTransfer(TimeoutError("transferLeadership"))
+	l.transfer.reply(TimeoutError("transferLeadership"))
 }
 
 func (l *ldrShip) onTimeoutNowResult(result timeoutNowResult) {
-	l.transferLdr.rpcCh = nil
+	l.transfer.rpcCh = nil
 	if result.err != nil {
 		f := l.flrs[result.target]
 		if f.status.noContact.IsZero() {
 			f.status.noContact = time.Now()
 		}
-		if l.transferLdr.target == 0 {
+		if l.transfer.target == 0 {
 			if tgt := l.choseTransferTgt(); tgt != 0 {
 				l.doTransfer(tgt)
 			}
 		}
 	}
-}
-
-func (l *ldrShip) replyTransfer(err error) {
-	if l.transferTimer.active {
-		debug(l, "reply leadership transfer:", err)
-		l.transferLdr.reply(err)
-	}
-	l.transferTimer.stop()
-	l.transferLdr.rpcCh = nil
 }
