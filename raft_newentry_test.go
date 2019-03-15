@@ -127,7 +127,7 @@ func test_read(t *testing.T) {
 
 	// send query
 	want := ldr.Info().LastLogIndex()
-	if _, err := waitRead(ldr, "query:last", 0); err != errNoCommands {
+	if _, err := waitRead(ldr, "last", 0); err != errNoCommands {
 		t.Fatalf("got %v, want %v", err, errNoCommands)
 	}
 
@@ -147,8 +147,8 @@ func test_read(t *testing.T) {
 		ldr.NewEntries() <- UpdateFSM([]byte(cmd))
 		if i%10 == 0 {
 			qq := []NewEntry{
-				ReadFSM([]byte("query:last")),
-				ReadFSM([]byte("query:last")),
+				ReadFSM([]byte("last")),
+				ReadFSM([]byte("last")),
 			}
 			for _, q := range qq {
 				ldr.NewEntries() <- q

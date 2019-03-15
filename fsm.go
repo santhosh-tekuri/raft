@@ -5,7 +5,8 @@ import (
 )
 
 type FSM interface {
-	Execute(cmd []byte) interface{}
+	Update(cmd []byte) interface{}
+	Read(cmd []byte) interface{}
 	Snapshot() (FSMState, error)
 	RestoreFrom(io.Reader) error
 }
@@ -30,11 +31,11 @@ func (fsm *stateMachine) runLoop() {
 		case NewEntry:
 			debug(fsm.id, "fsm.execute", t.typ, t.index)
 			var resp interface{}
-			if t.typ == entryUpdate || t.typ == entryRead {
-				resp = fsm.Execute(t.entry.data)
-				if t.typ == entryUpdate {
-					updateIndex, updateTerm = t.index, t.term
-				}
+			if t.typ == entryUpdate {
+				resp = fsm.Update(t.entry.data)
+				updateIndex, updateTerm = t.index, t.term
+			} else if t.typ == entryRead {
+				resp = fsm.Read(t.entry.data)
 			}
 			t.reply(resp)
 		case fsmSnapReq:

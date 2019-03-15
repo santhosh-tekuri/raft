@@ -11,7 +11,6 @@ import (
 	"reflect"
 	"runtime"
 	"strconv"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -981,38 +980,37 @@ type fsmReply struct {
 	index int
 }
 
-func (fsm *fsmMock) Execute(cmd []byte) interface{} {
+func (fsm *fsmMock) Update(cmd []byte) interface{} {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
 	s := string(cmd)
-
-	// query
-	if strings.HasPrefix(s, "query:") {
-		s = strings.TrimPrefix(s, "query:")
-		if s == "last" {
-			sz := len(fsm.cmds)
-			if sz == 0 {
-				return errNoCommands
-			}
-			return fsmReply{fsm.cmds[sz-1], sz - 1}
-		} else {
-			i, err := strconv.Atoi(s)
-			if err != nil {
-				return err
-			}
-			if i < 0 || i >= len(fsm.cmds) {
-				return errNoCommandAt
-			}
-			return fsmReply{fsm.cmds[i], i}
-		}
-	}
-
-	// update
 	fsm.cmds = append(fsm.cmds, s)
 	if fsm.changed != nil {
 		fsm.changed(fsm.id, uint64(len(fsm.cmds)))
 	}
 	return fsmReply{s, len(fsm.cmds)}
+}
+
+func (fsm *fsmMock) Read(cmd []byte) interface{} {
+	fsm.mu.Lock()
+	defer fsm.mu.Unlock()
+	s := string(cmd)
+	if s == "last" {
+		sz := len(fsm.cmds)
+		if sz == 0 {
+			return errNoCommands
+		}
+		return fsmReply{fsm.cmds[sz-1], sz - 1}
+	} else {
+		i, err := strconv.Atoi(s)
+		if err != nil {
+			return err
+		}
+		if i < 0 || i >= len(fsm.cmds) {
+			return errNoCommandAt
+		}
+		return fsmReply{fsm.cmds[i], i}
+	}
 }
 
 func (fsm *fsmMock) len() uint64 {
