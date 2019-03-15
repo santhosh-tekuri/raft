@@ -28,18 +28,18 @@ func newServer(lr net.Listener) *server {
 }
 
 func (s *server) serve(rpcCh chan<- *rpc) {
-	mu := new(sync.RWMutex)
-	conns := make(map[net.Conn]struct{})
 	var wg sync.WaitGroup
+	var mu sync.RWMutex
+	conns := make(map[net.Conn]struct{})
 	for !isClosed(s.stopCh) {
 		conn, err := s.lr.Accept()
 		if err != nil {
 			continue
 		}
-
 		mu.Lock()
 		conns[conn] = struct{}{}
 		mu.Unlock()
+
 		wg.Add(1)
 		go func() {
 			r, w := bufio.NewReader(conn), bufio.NewWriter(conn)
