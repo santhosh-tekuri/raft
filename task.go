@@ -323,14 +323,23 @@ func TakeSnapshot(threshold uint64) Task {
 
 type transferLdr struct {
 	*task
+	target  uint64 // whom to transfer. 0 means not specified
 	timeout time.Duration
-	term    uint64
-	rpcCh   <-chan error // non-nil, when transfer in progress and timeoutNow request sent
+
+	// used for execution
+	term  uint64
+	rpcCh <-chan timeoutNowResult // non-nil, when transfer in progress and timeoutNow request sent
 }
 
-func TransferLeadership(timeout time.Duration) Task {
+type timeoutNowResult struct {
+	target uint64
+	err    error
+}
+
+func TransferLeadership(target uint64, timeout time.Duration) Task {
 	return transferLdr{
 		task:    newTask(),
+		target:  target,
 		timeout: timeout,
 	}
 }

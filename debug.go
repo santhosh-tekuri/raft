@@ -134,5 +134,5 @@ func (t takeSnapshot) String() string {
 }
 
 func (t transferLdr) String() string {
-	return fmt.Sprintf("transferLdr{%s}", t.timeout)
+	return fmt.Sprintf("transferLdr{M%d %s}", t.target, t.timeout)
 }

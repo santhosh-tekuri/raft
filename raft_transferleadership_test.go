@@ -17,7 +17,7 @@ func test_transferLeadership_singleVoter(t *testing.T) {
 	c.ensure(waitAddNonvoter(ldr, 2, id2Addr(2), false))
 
 	// transfer leadership, must return ErrLeadershipTransferNoVoter
-	_, err := waitTask(ldr, TransferLeadership(c.longTimeout), c.longTimeout)
+	_, err := waitTask(ldr, TransferLeadership(0, c.longTimeout), c.longTimeout)
 	if err != ErrLeadershipTransferNoVoter {
 		c.Fatalf("err: got %v, want %v", err, ErrLeadershipTransferNoVoter)
 	}
@@ -37,7 +37,7 @@ func test_transferLeadership_fiveNodes(t *testing.T, targetReady bool) {
 	}
 
 	// transfer leadership, ensure no error
-	c.ensure(waitTask(ldr, TransferLeadership(c.longTimeout), c.longTimeout))
+	c.ensure(waitTask(ldr, TransferLeadership(0, c.longTimeout), c.longTimeout))
 
 	// wait for new leader
 	newLdr := c.waitForLeader()
@@ -69,7 +69,7 @@ func setupTransferLeadershipTimeout(t *testing.T, quorumWait, taskTimeout time.D
 
 	// request leadership transfer, with given timeout,
 	// this will not complete within this timeout
-	transfer = TransferLeadership(taskTimeout)
+	transfer = TransferLeadership(0, taskTimeout)
 	ldr.Tasks() <- transfer
 
 	return
@@ -82,7 +82,7 @@ func test_transferLeadership_rejectAnotherTransferRequest(t *testing.T) {
 	defer c.shutdown()
 
 	// request another leadership transfer
-	_, err := waitTask(ldr, TransferLeadership(5*time.Second), 5*time.Millisecond)
+	_, err := waitTask(ldr, TransferLeadership(0, 5*time.Second), 5*time.Millisecond)
 
 	// this new request must fail with InProgressError
 	if _, ok := err.(InProgressError); !ok {

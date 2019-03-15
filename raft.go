@@ -152,7 +152,7 @@ func (r *Raft) stateLoop() (err error) {
 			newEntries:    list.New(),
 			flrs:          make(map[uint64]*flr),
 			transferTimer: newSafeTimer(),
-			transferLdr:   TransferLeadership(0).(transferLdr),
+			transferLdr:   TransferLeadership(0, 0).(transferLdr),
 		}
 	)
 	r.ldr = l
@@ -168,7 +168,7 @@ func (r *Raft) stateLoop() (err error) {
 			if opErr, ok := v.(OpError); ok {
 				err = opErr
 			} else {
-				panic(r)
+				panic(v)
 			}
 		}
 		debug(r, "stateLoop shutdown")
@@ -230,8 +230,8 @@ func (r *Raft) stateLoop() (err error) {
 				l.transferTimer.active = false
 				l.onTransferTimeout()
 
-			case err := <-l.transferLdr.rpcCh:
-				l.onTimeoutNow(err)
+			case result := <-l.transferLdr.rpcCh:
+				l.onTimeoutNowResult(result)
 			}
 		}
 		r.timer.stop()
