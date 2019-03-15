@@ -312,9 +312,7 @@ func ChangeConfig(newConf Config) Task {
 // result is of type SnapshotMeta
 type takeSnapshot struct {
 	*task
-	lastSnapIndex uint64
-	threshold     uint64
-	config        Config
+	threshold uint64
 }
 
 func TakeSnapshot(threshold uint64) Task {
