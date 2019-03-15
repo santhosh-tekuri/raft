@@ -383,7 +383,7 @@ func (l *ldrShip) executeTask(t Task) {
 	case changeConfig:
 		l.changeConfig(t)
 	case transferLdr:
-		l.onTransferLeadership(t)
+		l.onTransfer(t)
 	default:
 		t.reply(errInvalidTask)
 	}
