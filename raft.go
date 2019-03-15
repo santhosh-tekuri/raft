@@ -162,8 +162,9 @@ func (r *Raft) stateLoop() (err error) {
 	}
 
 	defer func() {
-		if r := recover(); r != nil {
-			if opErr, ok := r.(OpError); ok {
+		if v := recover(); v != nil {
+			r.Shutdown() // to close r.closing
+			if opErr, ok := v.(OpError); ok {
 				err = opErr
 			} else {
 				panic(r)

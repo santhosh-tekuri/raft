@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -330,4 +331,19 @@ func test_leader_quorumWait_reachable(t *testing.T) {
 	if !e.since.IsZero() {
 		t.Fatal("quorum must be reachable")
 	}
+}
+
+func test_opError_setVote(t *testing.T) {
+	c, ldr, flrs := launchCluster(t, 3)
+	defer c.shutdown()
+
+	err := errors.New("xyz")
+	c.inmemStorage(ldr).setStableErr(nil, err)
+	c.shutdown(flrs...)
+	select {
+	case <-ldr.Closing():
+	case <-time.After(c.longTimeout):
+		t.Fatal("leader is expected to shutdown")
+	}
+	c.shutdownErr(false, ldr)
 }

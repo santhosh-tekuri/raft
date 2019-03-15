@@ -26,6 +26,9 @@ func TestRaft(t *testing.T) {
 		t.Run("once", test_shutdown_once)
 		t.Run("twice", test_shutdown_twice)
 	})
+	t.Run("opError", func(t *testing.T) {
+		t.Run("setVote", test_opError_setVote)
+	})
 	t.Run("bootstrap", test_bootstrap)
 	t.Run("singleNode", test_singleNode)
 	t.Run("tripleNode", test_tripleNode)
@@ -130,10 +133,10 @@ func (c *cluster) inmemStorage(r *Raft) *inmemStorage {
 	return r.storage.log.(*inmemStorage)
 }
 
-func launchCluster(t *testing.T, n int) (c *cluster, ldr *Raft, followers []*Raft) {
+func launchCluster(t *testing.T, n int) (c *cluster, ldr *Raft, flrs []*Raft) {
 	t.Helper()
 	c = newCluster(t)
-	ldr, followers = c.ensureLaunch(n)
+	ldr, flrs = c.ensureLaunch(n)
 	return
 }
 
@@ -160,6 +163,7 @@ func newCluster(t *testing.T) *cluster {
 		network:          fnet.New(),
 		rr:               make(map[uint64]*Raft),
 		storage:          make(map[uint64]Storage),
+		serveErr:         make(map[uint64]chan error),
 		heartbeatTimeout: heartbeatTimeout,
 		longTimeout:      5 * time.Second,
 		commitTimeout:    5 * time.Millisecond,
@@ -180,6 +184,8 @@ type cluster struct {
 	testTimeout      *time.Timer
 	rr               map[uint64]*Raft
 	storage          map[uint64]Storage
+	serverErrMu      sync.RWMutex
+	serveErr         map[uint64]chan error
 	network          *fnet.Network
 	heartbeatTimeout time.Duration
 	longTimeout      time.Duration
@@ -239,6 +245,9 @@ func (c *cluster) launch(n int, bootstrap bool) map[uint64]*Raft {
 		launched[r.ID()] = r
 		c.rr[node.ID] = r
 		c.storage[node.ID] = storage
+		c.serverErrMu.Lock()
+		c.serveErr[r.ID()] = make(chan error, 1)
+		c.serverErrMu.Unlock()
 		c.serve(r)
 	}
 	return launched
@@ -255,10 +264,10 @@ func (c *cluster) serve(r *Raft) {
 		c.Fatalf("raft.listen failed: %v", err)
 	}
 	go func() {
-		if err := r.Serve(l); err != ErrServerClosed {
-			c.Logf("raft.serve: %v", err)
-			c.Fail()
-		}
+		err := r.Serve(l)
+		c.serverErrMu.RLock()
+		c.serveErr[r.ID()] <- err
+		c.serverErrMu.RUnlock()
 	}()
 }
 
@@ -271,7 +280,7 @@ func (c *cluster) ensureLaunch(n int) (ldr *Raft, followers []*Raft) {
 	return
 }
 
-func (c *cluster) shutdown(rr ...*Raft) {
+func (c *cluster) shutdownErr(ok bool, rr ...*Raft) {
 	c.Helper()
 	checkLeak := false
 	if len(rr) == 0 {
@@ -282,13 +291,29 @@ func (c *cluster) shutdown(rr ...*Raft) {
 	for _, r := range rr {
 		tdebug("shutting down", host(r))
 		<-r.Shutdown()
-		tdebug(host(r), "is shutdown")
+		c.serverErrMu.RLock()
+		ch := c.serveErr[r.ID()]
+		c.serverErrMu.RUnlock()
+		got := <-ch
+		ch <- ErrServerClosed
+		tdebug(host(r), "is shutdown", got)
+		if ok != (got == ErrServerClosed) {
+			c.Errorf("M%d.shutdown: got %v, want ErrServerClosed=%v", r.ID(), got, ok)
+		}
+	}
+	if c.Failed() {
+		c.FailNow()
 	}
 	if checkLeak && c.checkLeak != nil {
 		c.testTimeout.Stop()
 		c.checkLeak()
 		c.checkLeak = nil
 	}
+}
+
+func (c *cluster) shutdown(rr ...*Raft) {
+	c.Helper()
+	c.shutdownErr(true, rr...)
 }
 
 func (c *cluster) restart(r *Raft) *Raft {
@@ -302,6 +327,9 @@ func (c *cluster) restart(r *Raft) *Raft {
 		c.Fatal(err)
 	}
 	c.rr[r.ID()] = newr
+	c.serverErrMu.Lock()
+	c.serveErr[r.ID()] = make(chan error, 1)
+	c.serverErrMu.Unlock()
 	tdebug("restarting", host(r))
 	c.serve(newr)
 	return newr
@@ -1048,11 +1076,11 @@ var (
 )
 
 type inmemStorage struct {
-	muStable      sync.RWMutex
-	term          uint64
-	vote          uint64
-	confCommitted uint64
-	confLatest    uint64
+	muStable   sync.RWMutex
+	term       uint64
+	vote       uint64
+	getVoteErr error
+	setVoteErr error
 
 	muLog   sync.RWMutex
 	entries [][]byte
@@ -1061,29 +1089,25 @@ type inmemStorage struct {
 	snapshot *bytes.Buffer
 }
 
+func (s *inmemStorage) setStableErr(get, set error) {
+	s.muStable.Lock()
+	s.getVoteErr, s.setVoteErr = get, set
+	s.muStable.Unlock()
+}
+
 func (s *inmemStorage) GetVote() (term, vote uint64, err error) {
 	s.muStable.RLock()
 	defer s.muStable.RUnlock()
-	return s.term, s.vote, nil
+	return s.term, s.vote, s.getVoteErr
 }
 
 func (s *inmemStorage) SetVote(term, vote uint64) error {
 	s.muStable.Lock()
 	defer s.muStable.Unlock()
+	if s.setVoteErr != nil {
+		return s.setVoteErr
+	}
 	s.term, s.vote = term, vote
-	return nil
-}
-
-func (s *inmemStorage) GetConfig() (committed, latest uint64, err error) {
-	s.muStable.RLock()
-	defer s.muStable.RUnlock()
-	return s.confCommitted, s.confLatest, nil
-}
-
-func (s *inmemStorage) SetConfig(committed, latest uint64) error {
-	s.muStable.Lock()
-	defer s.muStable.Unlock()
-	s.confCommitted, s.confLatest = committed, latest
 	return nil
 }
 
