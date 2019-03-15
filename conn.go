@@ -132,6 +132,15 @@ func (pool *connPool) returnConn(conn *netConn) {
 	}
 }
 
+func (pool *connPool) closeAll() {
+	pool.mu.Lock()
+	defer pool.mu.Unlock()
+	for _, conn := range pool.conns {
+		_ = conn.close()
+	}
+	pool.conns = nil
+}
+
 // -----------------------------------------------------
 
 func (r *Raft) getConnPool(id uint64) *connPool {

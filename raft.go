@@ -246,6 +246,11 @@ func (r *Raft) release() {
 	if r.snapTakenCh != nil {
 		r.onSnapshotTaken(<-r.snapTakenCh)
 	}
+
+	// close any open connections
+	for _, pool := range r.connPools {
+		pool.closeAll()
+	}
 }
 
 func (r *Raft) doClose(reason interface{}) {
