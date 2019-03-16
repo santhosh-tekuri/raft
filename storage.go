@@ -97,6 +97,9 @@ func (s *storage) init() error {
 	if count == 0 {
 		s.lastLogTerm = s.snapTerm
 	} else {
+		if _, err := s.getEntryTerm(s.snapIndex + 1); err != nil {
+			return err
+		}
 		s.lastLogTerm, err = s.getEntryTerm(s.lastLogIndex)
 		if err != nil {
 			return err
@@ -180,9 +183,11 @@ func (s *storage) getEntry(index uint64, e *entry) error {
 		return opError(err, "Log.Get(%d)", offset)
 	}
 	if err = e.decode(bytes.NewReader(b)); err != nil {
-		fatal("entry.decode(%d): %v", index, err)
+		return opError(err, "entry.decode(%d)", index)
 	}
-	assert(e.index == index, "log.Get(%d): index got %d, want %d", offset, e.index, index)
+	if e.index != index {
+		return opError(fmt.Errorf("index got %d, want %d", e.index, index), "log.Get(%d): ", offset)
+	}
 	return nil
 }
 
