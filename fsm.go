@@ -147,11 +147,15 @@ func (r *Raft) onSnapshotTaken(t snapTaken) {
 		return
 	}
 
+	r.snapMu.Lock()
+	r.snapIndex, r.snapTerm = t.meta.Index, t.meta.Term
+	r.snapMu.Unlock()
+
 	// compact log
 	// todo: we can check flr status and accordingly decide how much to delete
-	metaIndexExists := t.meta.Index > r.snapIndex && t.meta.Index <= r.lastLogIndex
+	metaIndexExists := t.meta.Index > r.prevLogIndex && t.meta.Index <= r.lastLogIndex
 	if metaIndexExists {
-		if err := r.storage.deleteLTE(t.meta); err != nil {
+		if err := r.storage.deleteLTE(t.meta.Index); err != nil {
 			if r.trace.Error != nil {
 				r.trace.Error(err) // todo: should we reply err to user ?
 			}

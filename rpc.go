@@ -232,9 +232,10 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq) (rpcResult, error) {
 	if err != nil {
 		return unexpectedErr, err
 	}
+	r.snapIndex, r.snapTerm = meta.Index, meta.Term
 
 	discardLog := true
-	metaIndexExists := meta.Index > r.snapIndex && meta.Index <= r.lastLogIndex
+	metaIndexExists := meta.Index > r.prevLogIndex && meta.Index <= r.lastLogIndex
 	if metaIndexExists {
 		metaTerm, err := r.storage.getEntryTerm(meta.Index)
 		if err != nil {
@@ -243,20 +244,16 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq) (rpcResult, error) {
 		termsMatched := metaTerm == meta.Term
 		if termsMatched {
 			// delete <=meta.index, but retain following it
-			if err = r.storage.deleteLTE(meta); err != nil {
+			if err = r.storage.deleteLTE(meta.Index); err != nil {
 				return unexpectedErr, err
 			}
 			discardLog = false
 		}
 	}
 	if discardLog {
-		count := r.lastLogIndex - r.snapIndex
-		if err = r.storage.log.DeleteFirst(count); err != nil {
+		if err = r.storage.clearLog(); err != nil {
 			return unexpectedErr, err
 		}
-		r.lastLogIndex, r.lastLogTerm = meta.Index, meta.Term
-		r.snapIndex, r.snapTerm = meta.Index, meta.Term
-
 		// reset fsm from this snapshot
 		if err = r.restoreFSM(); err != nil {
 			return unexpectedErr, err

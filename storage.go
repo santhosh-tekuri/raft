@@ -53,11 +53,13 @@ type storage struct {
 	votedFor uint64
 
 	log          Log
+	prevLogMu    sync.RWMutex
+	prevLogIndex uint64
 	lastLogIndex uint64
 	lastLogTerm  uint64
 
 	snapshots Snapshots
-	snapMu    sync.RWMutex // todo
+	snapMu    sync.RWMutex
 	snapIndex uint64
 	snapTerm  uint64
 
@@ -93,17 +95,20 @@ func (s *storage) init() error {
 	if err != nil {
 		return opError(err, "Log.Count")
 	}
-	s.lastLogIndex = s.snapIndex + count
 	if count == 0 {
-		s.lastLogTerm = s.snapTerm
+		s.lastLogIndex, s.lastLogTerm = s.snapIndex, s.snapTerm
+		s.prevLogIndex = s.snapIndex
 	} else {
-		if _, err := s.getEntryTerm(s.snapIndex + 1); err != nil {
-			return err
-		}
-		s.lastLogTerm, err = s.getEntryTerm(s.lastLogIndex)
+		data, err := s.log.Get(count - 1)
 		if err != nil {
-			return err
+			return opError(err, "Log.Get(%d)", count-1)
 		}
+		e := &entry{}
+		if err := e.decode(bytes.NewReader(data)); err != nil {
+			return opError(err, "Log.Get(%d).decode", count-1)
+		}
+		s.lastLogIndex, s.lastLogTerm = e.index, e.term
+		s.prevLogIndex = s.lastLogIndex - count
 	}
 
 	// load configs ----------------
@@ -173,21 +178,21 @@ func (s *storage) getEntryTerm(index uint64) (uint64, error) {
 // called by raft.runLoop and m.replicate. append call can be called during this
 // never called with invalid index
 func (s *storage) getEntry(index uint64, e *entry) error {
-	s.snapMu.RLock()
-	if index <= s.snapIndex {
+	s.prevLogMu.RLock()
+	if index <= s.prevLogIndex {
 		return errNoEntryFound
 	}
-	offset := index - s.snapIndex - 1
+	offset := index - s.prevLogIndex - 1
 	b, err := s.log.Get(offset)
-	s.snapMu.RUnlock()
+	s.prevLogMu.RUnlock()
 	if err != nil {
 		return opError(err, "Log.Get(%d)", offset)
 	}
 	if err = e.decode(bytes.NewReader(b)); err != nil {
-		return opError(err, "entry.decode(%d)", index)
+		return opError(err, "log.Get(%d).decode()", offset)
 	}
 	if e.index != index {
-		return opError(fmt.Errorf("index got %d, want %d", e.index, index), "log.Get(%d): ", offset)
+		return opError(fmt.Errorf("got %d, want %d", e.index, index), "log.Get(%d).index: ", offset)
 	}
 	return nil
 }
@@ -207,15 +212,26 @@ func (s *storage) appendEntry(e *entry) error {
 }
 
 // never called with invalid index
-func (s *storage) deleteLTE(meta SnapshotMeta) error {
-	s.snapMu.Lock()
-	defer s.snapMu.Unlock()
-	debug("deleteLTE meta.index:", meta.Index, "snapIndex:", s.snapIndex, "lastLogIndex:", s.lastLogIndex)
-	n := meta.Index - s.snapIndex
+func (s *storage) deleteLTE(index uint64) error {
+	s.prevLogMu.Lock()
+	defer s.prevLogMu.Unlock()
+	debug("deleteLTE index:", index, "prevLogIndex:", s.prevLogIndex, "lastLogIndex:", s.lastLogIndex)
+	n := index - s.prevLogIndex
 	if err := s.log.DeleteFirst(n); err != nil {
 		return opError(err, "Log.DeleteFirst(%d)", n)
 	}
-	s.snapIndex, s.snapTerm = meta.Index, meta.Term
+	s.prevLogIndex = index
+	return nil
+}
+
+// no flr.replicate is going on when this called
+func (s *storage) clearLog() error {
+	count := s.lastLogIndex - s.prevLogIndex
+	if err := s.log.DeleteFirst(count); err != nil {
+		return err
+	}
+	s.lastLogIndex, s.lastLogTerm = s.snapIndex, s.snapTerm
+	s.prevLogIndex = s.snapIndex
 	return nil
 }
 
