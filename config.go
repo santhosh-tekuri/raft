@@ -237,12 +237,11 @@ func (r *Raft) bootstrap(t bootstrap) {
 		t.reply(ErrAlreadyBootstrapped)
 		return
 	}
-	config := Config{Nodes: t.nodes, Index: 1, Term: 1}
-	if err := config.validate(); err != nil {
+	if err := t.config.validate(); err != nil {
 		t.reply(fmt.Errorf("raft.bootstrap: invalid config: %v", err))
 		return
 	}
-	self, ok := config.Nodes[r.id]
+	self, ok := t.config.Nodes[r.id]
 	if !ok {
 		t.reply(fmt.Errorf("raft.bootstrap: invalid config: self %d does not exist", r.id))
 		return
@@ -253,11 +252,11 @@ func (r *Raft) bootstrap(t bootstrap) {
 	}
 
 	debug(r, "bootstrapping....")
-	if err := r.storage.bootstrap(config); err != nil {
+	if err := r.storage.bootstrap(t.config); err != nil {
 		t.reply(err)
 		return
 	}
-	r.changeConfig(config)
+	r.changeConfig(t.config)
 	t.reply(nil)
 	r.setState(Candidate)
 }

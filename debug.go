@@ -122,7 +122,7 @@ func (ne newEntry) String() string {
 }
 
 func (t bootstrap) String() string {
-	return fmt.Sprintf("bootstrap{%s}", Config{Nodes: t.nodes})
+	return fmt.Sprintf("bootstrap{%s}", t.config)
 }
 
 func (t changeConfig) String() string {

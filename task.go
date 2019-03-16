@@ -101,11 +101,20 @@ func BarrierFSM() FSMTask {
 
 type bootstrap struct {
 	*task
-	nodes map[uint64]Node
+	config Config
+	//todo add clusterID
 }
 
 func Bootstrap(nodes map[uint64]Node) Task {
-	return bootstrap{task: newTask(), nodes: nodes}
+	config := Config{Nodes: nodes, Index: 1, Term: 1}
+	// promote if requested
+	for id, n := range config.Nodes {
+		if n.promote() {
+			n.Voter, n.Promote = true, false
+			config.Nodes[id] = n
+		}
+	}
+	return bootstrap{task: newTask(), config: config.clone()}
 }
 
 // ------------------------------------------------------------------------
