@@ -358,6 +358,7 @@ func TransferLeadership(target uint64, timeout time.Duration) Task {
 
 // ------------------------------------------------------------------------
 
+// todo: reply tasks even on panic
 func (r *Raft) executeTask(t Task) {
 	switch t := t.(type) {
 	case bootstrap:
@@ -383,7 +384,7 @@ func (r *Raft) executeTask(t Task) {
 		if r.state == Leader {
 			r.ldr.executeTask(t)
 		} else {
-			t.reply(NotLeaderError{r.leaderAddr(), false, nil})
+			t.reply(NotLeaderError{r.leaderAddr(), false})
 		}
 	}
 }

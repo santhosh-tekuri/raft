@@ -44,10 +44,6 @@ type NotLeaderError struct {
 	// Lost is true, if the node lost its leadership before
 	// completing the request.
 	Lost bool
-
-	// Err is error which triggered step down. possible value is
-	// storage related OpError.
-	Err error
 }
 
 func (e NotLeaderError) Error() string {
@@ -56,11 +52,7 @@ func (e NotLeaderError) Error() string {
 		contact = ", contact " + e.LeaderAddr
 	}
 	if e.Lost {
-		s := "raft: lost leadership " + contact
-		if e.Err != nil {
-			s += ": " + e.Err.Error()
-		}
-		return s
+		return "raft: lost leadership " + contact
 	}
 	return "raft: this node is not the leader" + contact
 }

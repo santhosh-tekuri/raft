@@ -102,9 +102,7 @@ func (r *Raft) onVoteRequest(req *voteReq) (rpcResult, error) {
 		return logNotUptodate, nil
 	}
 
-	if err := r.setVotedFor(req.src); err != nil {
-		return unexpectedErr, err
-	}
+	r.setVotedFor(req.src)
 	return success, nil
 }
 
@@ -123,8 +121,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) (rpcResult, error) 
 			var err error
 			prevEntry = &entry{}
 			if err = r.storage.getEntry(req.prevLogIndex, prevEntry); err != nil {
-				assert(err != errNoEntryFound, "unexpected error: %v", err)
-				return unexpectedErr, err
+				panic(err)
 			}
 			prevLogTerm = prevEntry.term
 			// we never get ErrnotFound here, because we are the goroutine who is compacting
@@ -136,10 +133,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) (rpcResult, error) 
 		// valid req: can we commit req.prevLogIndex ?
 		if r.canCommit(req, req.prevLogIndex, req.prevLogTerm) {
 			r.setCommitIndex(req.prevLogIndex)
-			if err := r.applyCommitted(prevEntry); err != nil {
-				assert(err != errNoEntryFound, "unexpected error: %v", err)
-				return unexpectedErr, err
-			}
+			r.applyCommitted(prevEntry)
 		}
 	}
 
@@ -153,10 +147,8 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) (rpcResult, error) 
 		}
 		if ne.index <= r.lastLogIndex {
 			me := &entry{}
-			err := r.storage.getEntry(ne.index, me)
-			assert(err != errNoEntryFound, "unexpected error: %v", err)
-			if err != nil {
-				return unexpectedErr, err
+			if err := r.storage.getEntry(ne.index, me); err != nil {
+				panic(err)
 			}
 			if me.term == ne.term {
 				continue
@@ -165,18 +157,13 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) (rpcResult, error) 
 			// new entry conflicts with our entry
 			// delete it and all that follow it
 			debug(r, "log.deleteGTE", ne.index)
-			err = r.storage.deleteGTE(ne.index, prevTerm)
-			if err != nil {
-				return unexpectedErr, err
-			}
+			r.storage.deleteGTE(ne.index, prevTerm)
 			if ne.index <= r.configs.Latest.Index {
 				r.revertConfig()
 			}
 		}
 		// new entry not in the log, append it
-		if err := r.storage.appendEntry(ne); err != nil {
-			return unexpectedErr, err
-		}
+		r.storage.appendEntry(ne)
 		if ne.typ == entryConfig {
 			var newConfig Config
 			if err := newConfig.decode(ne); err != nil {
@@ -188,10 +175,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) (rpcResult, error) 
 		_ = index
 		if r.canCommit(req, ne.index, ne.term) {
 			r.setCommitIndex(ne.index)
-			if err := r.applyCommitted(ne); err != nil {
-				assert(err != errNoEntryFound, "unexpected error: %v", err)
-				return unexpectedErr, err
-			}
+			r.applyCommitted(ne)
 		}
 	}
 	return success, nil
@@ -205,7 +189,7 @@ func (r *Raft) canCommit(req *appendEntriesReq, index, term uint64) bool {
 
 // if commitIndex > lastApplied: increment lastApplied, apply
 // log[lastApplied] to state machine
-func (r *Raft) applyCommitted(ne *entry) error {
+func (r *Raft) applyCommitted(ne *entry) {
 	for r.lastApplied < r.commitIndex {
 		// get lastApplied+1 entry
 		var e *entry
@@ -214,7 +198,7 @@ func (r *Raft) applyCommitted(ne *entry) error {
 		} else {
 			e = &entry{}
 			if err := r.storage.getEntry(r.lastApplied+1, e); err != nil {
-				return err
+				panic(err)
 			}
 		}
 
@@ -222,7 +206,6 @@ func (r *Raft) applyCommitted(ne *entry) error {
 		r.lastApplied++
 		debug(r, "lastApplied", r.lastApplied)
 	}
-	return nil
 }
 
 func (r *Raft) onInstallSnapRequest(req *installSnapReq) (rpcResult, error) {

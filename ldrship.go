@@ -73,7 +73,7 @@ func (l *ldrShip) release() {
 	}
 
 	// respond to any pending user entries
-	var err error = NotLeaderError{l.leaderAddr(), true, l.appendErr}
+	var err error = NotLeaderError{l.leaderAddr(), true}
 	if l.isClosing() {
 		err = ErrServerClosed
 	}
@@ -103,20 +103,12 @@ func (l *ldrShip) storeEntry(ne newEntry) error {
 	}
 
 	debug(l, "log.append", ne.typ, ne.index)
-	if err := l.storage.appendEntry(ne.entry); err != nil {
-		if l.trace.Error != nil {
-			l.trace.Error(err)
-		}
-		// ne is replied in release
-		l.appendErr = err // to prevent startElection
-		l.setState(Follower)
-		l.setLeader(0)
-		return err
-	}
+	l.storage.appendEntry(ne.entry)
 	if ne.typ == entryConfig {
 		config := Config{}
-		err := config.decode(ne.entry)
-		assert(err == nil, "BUG: %v", err)
+		if err := config.decode(ne.entry); err != nil {
+			panic(bug("config.decode: %v", err))
+		}
 		l.voter = config.isVoter(l.id)
 		l.Raft.changeConfig(config)
 	}

@@ -157,15 +157,14 @@ func (s *storage) setTerm(term uint64) {
 	}
 }
 
-func (s *storage) setVotedFor(id uint64) error {
+func (s *storage) setVotedFor(id uint64) {
 	if id == 0 {
-		panic("setVotedFor(0)")
+		panic(bug("setVotedFor(0)"))
 	}
 	if err := s.vars.SetVote(s.term, id); err != nil {
-		return opError(err, "Vars.SetVote(%d, %d)", s.term, id)
+		panic(opError(err, "Vars.SetVote(%d, %d)", s.term, id))
 	}
 	s.votedFor = id
-	return nil
 }
 
 // NOTE: this should not be called with snapIndex
@@ -186,29 +185,30 @@ func (s *storage) getEntry(index uint64, e *entry) error {
 	b, err := s.log.Get(offset)
 	s.prevLogMu.RUnlock()
 	if err != nil {
-		return opError(err, "Log.Get(%d)", offset)
+		panic(opError(err, "Log.Get(%d)", offset))
 	}
 	if err = e.decode(bytes.NewReader(b)); err != nil {
-		return opError(err, "log.Get(%d).decode()", offset)
+		panic(opError(err, "log.Get(%d).decode()", offset))
 	}
 	if e.index != index {
-		return opError(fmt.Errorf("got %d, want %d", e.index, index), "log.Get(%d).index: ", offset)
+		panic(opError(fmt.Errorf("got %d, want %d", e.index, index), "log.Get(%d).index: ", offset))
 	}
 	return nil
 }
 
 // called by raft.runLoop. getEntry call can be called during this
-func (s *storage) appendEntry(e *entry) error {
-	assert(e.index == s.lastLogIndex+1, "log.append: got %d, want %d", e.index, s.lastLogIndex+1)
+func (s *storage) appendEntry(e *entry) {
+	if e.index != s.lastLogIndex+1 {
+		panic(bug("storage.appendEntry.index: got %d, want %d", e.index, s.lastLogIndex+1))
+	}
 	w := new(bytes.Buffer)
 	if err := e.encode(w); err != nil {
-		fatal("entry.encode(%d): %v", e.index, err)
+		panic(bug("entry.encode(%d): %v", e.index, err))
 	}
 	if err := s.log.Append(w.Bytes()); err != nil {
-		return opError(err, "Log.Append")
+		panic(opError(err, "Log.Append"))
 	}
 	s.lastLogIndex, s.lastLogTerm = e.index, e.term
-	return nil
 }
 
 // never called with invalid index
@@ -237,19 +237,16 @@ func (s *storage) clearLog() error {
 
 // called by raft.runLoop. no other calls made during this
 // never called with invalid index
-func (s *storage) deleteGTE(index, prevTerm uint64) error {
+func (s *storage) deleteGTE(index, prevTerm uint64) {
 	n := s.lastLogIndex - index + 1
 	if err := s.log.DeleteLast(n); err != nil {
-		return opError(err, "Log.DeleteLast(%d)", n)
+		panic(opError(err, "Log.DeleteLast(%d)", n))
 	}
 	s.lastLogIndex, s.lastLogTerm = index-1, prevTerm
-	return nil
 }
 
 func (s *storage) bootstrap(config Config) error {
-	if err := s.appendEntry(config.encode()); err != nil {
-		return err
-	}
+	s.appendEntry(config.encode())
 	s.setTerm(1)
 	return nil
 }

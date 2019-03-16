@@ -43,8 +43,6 @@ type Raft struct {
 	taskCh    chan Task
 	fsmTaskCh chan FSMTask
 
-	appendErr error
-
 	closeOnce sync.Once
 	close     chan struct{}
 	closed    chan struct{}
@@ -204,7 +202,7 @@ func (r *Raft) stateLoop() (err error) {
 				if r.state == Leader {
 					_ = l.storeEntry(ne)
 				} else {
-					ne.reply(NotLeaderError{f.leaderAddr(), false, nil})
+					ne.reply(NotLeaderError{f.leaderAddr(), false})
 				}
 
 			case t := <-r.taskCh:

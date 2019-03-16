@@ -9,6 +9,10 @@ import (
 	"time"
 )
 
+func bug(format string, v ...interface{}) error {
+	return fmt.Errorf("[BUG] "+format, v...)
+}
+
 func min(a, b uint64) uint64 {
 	if a <= b {
 		return a
