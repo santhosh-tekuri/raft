@@ -87,6 +87,10 @@ const (
 	rpcTimeoutNow
 )
 
+func (t rpcType) fromLeader() bool {
+	return t != rpcVote
+}
+
 func (t rpcType) createReq() request {
 	switch t {
 	case rpcVote:

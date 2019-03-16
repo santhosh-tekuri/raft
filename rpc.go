@@ -25,8 +25,7 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 			r.setTerm(rpc.req.getTerm())
 		}
 
-		switch rpc.req.rpcType() {
-		case rpcAppendEntries, rpcInstallSnap:
+		if typ := rpc.req.rpcType(); typ.fromLeader() && typ != rpcTimeoutNow {
 			r.setState(Follower)
 			r.setLeader(rpc.req.from())
 			resetTimer = true
