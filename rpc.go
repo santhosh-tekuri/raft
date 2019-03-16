@@ -34,7 +34,7 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 		// do actual processing of request
 		switch req := rpc.req.(type) {
 		case *voteReq:
-			result = r.onVoteRequest(req)
+			result, err = r.onVoteRequest(req)
 			resetTimer = result == success
 		case *appendEntriesReq:
 			result, err = r.onAppendEntriesRequest(req)
@@ -72,25 +72,31 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 		r.trace.sending(r.id, rpc.req.from(), r.state, rpc.resp)
 	}
 	close(rpc.done)
+
+	if result == unexpectedErr {
+		panic(err)
+	}
 	return resetTimer
 }
 
-func (r *Raft) onVoteRequest(req *voteReq) rpcResult {
+func (r *Raft) onVoteRequest(req *voteReq) (rpcResult, error) {
 	// if we already voted
 	if r.votedFor != 0 {
 		if r.votedFor == req.src { // same candidate we votedFor
-			return success
+			return success, nil
 		}
-		return alreadyVoted
+		return alreadyVoted, nil
 	}
 
 	// reject if candidate’s log is not at least as up-to-date as ours
 	if r.lastLogTerm > req.lastLogTerm || (r.lastLogTerm == req.lastLogTerm && r.lastLogIndex > req.lastLogIndex) {
-		return logNotUptodate
+		return logNotUptodate, nil
 	}
 
-	r.setVotedFor(req.src)
-	return success
+	if err := r.setVotedFor(req.src); err != nil {
+		return unexpectedErr, err
+	}
+	return success, nil
 }
 
 func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) (rpcResult, error) {

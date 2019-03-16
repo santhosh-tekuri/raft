@@ -146,20 +146,21 @@ func (s *storage) setTerm(term uint64) {
 			panic(fmt.Sprintf("term cannot be changed from %d to %d", s.term, term))
 		}
 		if err := s.vars.SetVote(s.term, 0); err != nil {
-			panic(opError(err, "Vars.SetVote(%d, %q)", s.term, ""))
+			panic(opError(err, "Vars.SetVote(%d, %d)", term, 0))
 		}
 		s.term, s.votedFor = term, 0
 	}
 }
 
-func (s *storage) setVotedFor(id uint64) {
+func (s *storage) setVotedFor(id uint64) error {
 	if id == 0 {
 		panic("setVotedFor(0)")
 	}
 	if err := s.vars.SetVote(s.term, id); err != nil {
-		panic(opError(err, "Vars.SetVote(%d, %q)", s.term, string(id)))
+		return opError(err, "Vars.SetVote(%d, %d)", s.term, id)
 	}
 	s.votedFor = id
+	return nil
 }
 
 // NOTE: this should not be called with snapIndex

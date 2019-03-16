@@ -27,7 +27,7 @@ func TestRaft(t *testing.T) {
 	})
 	t.Run("opError", func(t *testing.T) {
 		t.Run("getVote", test_opError_getVote)
-		t.Run("setVote", test_opError_setVote)
+		t.Run("voteOther", test_opError_voteOther)
 	})
 	t.Run("bootstrap", test_bootstrap)
 	t.Run("singleNode", test_singleNode)
@@ -230,7 +230,7 @@ func (c *cluster) launch(n int, bootstrap bool) map[uint64]*Raft {
 
 	launched := make(map[uint64]*Raft)
 	for _, node := range nodes {
-		s := new(inmemStorage)
+		s := &inmemStorage{id: node.ID}
 		storage := Storage{Vars: s, Log: s, Snapshots: s}
 		if bootstrap {
 			if err := BootstrapStorage(storage, nodes); err != nil {
@@ -721,6 +721,7 @@ const (
 	promoting
 	sending
 	received
+	shuttingDown
 
 	configRelated
 )
@@ -844,10 +845,13 @@ func (ee *events) onFMSChanged(id uint64, len uint64) {
 }
 
 func (ee *events) trace() (trace Trace) {
-	trace.Error = func(err error) {
-		fatal("unexpected error: %v", err)
+	trace.ShuttingDown = func(info Info, reason error) {
+		ee.sendEvent(event{
+			src: info.ID(),
+			typ: shuttingDown,
+			err: reason,
+		})
 	}
-
 	trace.StateChanged = func(info Info) {
 		ee.sendEvent(event{
 			src:   info.ID(),
@@ -1075,23 +1079,20 @@ var (
 )
 
 type inmemStorage struct {
-	muStable   sync.RWMutex
-	term       uint64
-	vote       uint64
-	getVoteErr error
-	setVoteErr error
+	id           uint64
+	muStable     sync.RWMutex
+	term         uint64
+	vote         uint64
+	getVoteErr   error
+	setTermErr   error
+	voteSelfErr  error
+	voteOtherErr error
 
 	muLog   sync.RWMutex
 	entries [][]byte
 
 	snapMeta SnapshotMeta
 	snapshot *bytes.Buffer
-}
-
-func (s *inmemStorage) setStableErr(get, set error) {
-	s.muStable.Lock()
-	s.getVoteErr, s.setVoteErr = get, set
-	s.muStable.Unlock()
 }
 
 func (s *inmemStorage) GetVote() (term, vote uint64, err error) {
@@ -1103,8 +1104,15 @@ func (s *inmemStorage) GetVote() (term, vote uint64, err error) {
 func (s *inmemStorage) SetVote(term, vote uint64) error {
 	s.muStable.Lock()
 	defer s.muStable.Unlock()
-	if s.setVoteErr != nil {
-		return s.setVoteErr
+	if term != s.term && s.setTermErr != nil {
+		return s.setTermErr
+	}
+	if vote != 0 && vote != s.vote {
+		if vote == s.id && s.voteSelfErr != nil {
+			return s.voteSelfErr
+		} else if vote != s.id && s.voteOtherErr != nil {
+			return s.voteOtherErr
+		}
 	}
 	s.term, s.vote = term, vote
 	return nil
