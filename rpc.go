@@ -45,7 +45,7 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 		case *installSnapReq:
 			result, err = r.onInstallSnapRequest(req)
 		case *timeoutNowReq:
-			r.onTimeoutNowRequest()
+			result = r.onTimeoutNowRequest()
 		default:
 			fatal("raft.replyRPC(%T)", req)
 		}
@@ -264,7 +264,8 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq) (rpcResult, error) {
 	return success, nil
 }
 
-func (r *Raft) onTimeoutNowRequest() {
+func (r *Raft) onTimeoutNowRequest() rpcResult {
 	r.setState(Candidate)
 	r.setLeader(0)
+	return success
 }
