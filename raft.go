@@ -3,7 +3,6 @@ package raft
 import (
 	"container/list"
 	"errors"
-	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -161,12 +160,8 @@ func (r *Raft) stateLoop() (err error) {
 
 	defer func() {
 		if v := recover(); v != nil {
-			r.doClose(v)
-			if opErr, ok := v.(OpError); ok {
-				err = opErr
-			} else {
-				panic(v)
-			}
+			err = toErr(v)
+			r.doClose(err)
 		}
 		debug(r, "stateLoop shutdown")
 	}()
@@ -251,17 +246,11 @@ func (r *Raft) release() {
 	}
 }
 
-func (r *Raft) doClose(reason interface{}) {
+func (r *Raft) doClose(reason error) {
 	r.closeOnce.Do(func() {
 		debug(r.id, ">> shutdown()", reason)
-		var err error
-		if _, ok := reason.(error); ok {
-			err = reason.(error)
-		} else {
-			err = fmt.Errorf("bug: %v", err)
-		}
 		if r.trace.ShuttingDown != nil {
-			r.trace.ShuttingDown(r.liveInfo(), err)
+			r.trace.ShuttingDown(r.liveInfo(), reason)
 		}
 		close(r.close)
 	})

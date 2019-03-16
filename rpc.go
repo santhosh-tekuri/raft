@@ -65,12 +65,7 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 func (r *Raft) onRequest(req request) (result rpcResult, err error) {
 	defer func() {
 		if v := recover(); v != nil {
-			result = unexpectedErr
-			if _, ok := v.(error); ok {
-				err = v.(error)
-			} else {
-				err = fmt.Errorf("unexpected error: %v", v)
-			}
+			result, err = unexpectedErr, toErr(v)
 		}
 	}()
 

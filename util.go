@@ -9,10 +9,6 @@ import (
 	"time"
 )
 
-func bug(format string, v ...interface{}) error {
-	return fmt.Errorf("[BUG] "+format, v...)
-}
-
 func min(a, b uint64) uint64 {
 	if a <= b {
 		return a
@@ -124,3 +120,20 @@ type decrUint64Slice []uint64
 func (s decrUint64Slice) Len() int           { return len(s) }
 func (s decrUint64Slice) Less(i, j int) bool { return s[i] > s[j] }
 func (s decrUint64Slice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+
+// -------------------------------------------------------------------------
+
+func bug(format string, v ...interface{}) error {
+	return fmt.Errorf("[BUG] "+format, v...)
+}
+
+func toErr(v interface{}) error {
+	if v != nil {
+		if _, ok := v.(error); ok {
+			return v.(error)
+		} else {
+			return fmt.Errorf("unexpected error: %v", v)
+		}
+	}
+	return nil
+}

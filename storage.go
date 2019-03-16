@@ -245,7 +245,12 @@ func (s *storage) deleteGTE(index, prevTerm uint64) {
 	s.lastLogIndex, s.lastLogTerm = index-1, prevTerm
 }
 
-func (s *storage) bootstrap(config Config) error {
+func (s *storage) bootstrap(config Config) (err error) {
+	defer func() {
+		if v := recover(); v != nil {
+			err = toErr(v)
+		}
+	}()
 	s.appendEntry(config.encode())
 	s.setTerm(1)
 	return nil

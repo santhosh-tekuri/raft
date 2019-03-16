@@ -49,7 +49,7 @@ func (t *task) Result() interface{} {
 func (t *task) reply(result interface{}) {
 	if t != nil {
 		t.result = result
-		if t.done != nil {
+		if t.done != nil && !isClosed(t.done) {
 			close(t.done)
 		}
 	}
