@@ -20,7 +20,7 @@ func TestServer(t *testing.T) {
 		{
 			name: "requestVote",
 			req:  &voteReq{term: 5, candidate: 2, lastLogIndex: 3, lastLogTerm: 5},
-			resp: &voteResp{term: 5, result: success},
+			resp: &voteResp{resp{term: 5, result: success}},
 		},
 		{
 			name: "appendEntries",
@@ -31,7 +31,7 @@ func TestServer(t *testing.T) {
 					{index: 4, term: 5, typ: 3, data: []byte("wakeup")},
 				}, ldrCommitIndex: 7,
 			},
-			resp: &appendEntriesResp{term: 5, result: success},
+			resp: &appendEntriesResp{resp: resp{term: 5, result: success}, lastLogIndex: 10},
 		},
 	}
 

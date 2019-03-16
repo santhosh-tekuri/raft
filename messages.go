@@ -24,24 +24,23 @@ func (t rpcType) createReq() request {
 		return &installSnapReq{}
 	case rpcTimeoutNow:
 		return &timeoutNowReq{}
-	default:
-		panic(fmt.Errorf("unknown rpcType: %d", t))
 	}
+	panic(fmt.Errorf("raft.createReq: unknown rpcType %d", t))
 }
 
 func (t rpcType) createResp(r *Raft, result rpcResult) message {
+	resp := resp{r.term, result}
 	switch t {
 	case rpcVote:
-		return &voteResp{r.term, result}
+		return &voteResp{resp}
 	case rpcAppendEntries:
-		return &appendEntriesResp{r.term, result, r.lastLogIndex}
+		return &appendEntriesResp{resp, r.lastLogIndex}
 	case rpcInstallSnap:
-		return &installSnapResp{r.term, result}
+		return &installSnapResp{resp}
 	case rpcTimeoutNow:
-		return &timeoutNowResp{r.term, success}
-	default:
-		panic(fmt.Errorf("unknown rpcType: %d", t))
+		return &timeoutNowResp{resp}
 	}
+	panic(fmt.Errorf("raft.createResp: unknown rpcType %d", t))
 }
 
 type rpcResult uint8
@@ -78,9 +77,8 @@ func (r rpcResult) String() string {
 		return "readErr"
 	case unexpectedErr:
 		return "unexpectedErr"
-	default:
-		return fmt.Sprintf("unknown(%d)", r)
 	}
+	return fmt.Sprintf("rpcResult(%d)", r)
 }
 
 type message interface {
@@ -93,6 +91,38 @@ type request interface {
 	message
 	rpcType() rpcType
 	from() uint64
+}
+
+type resp struct {
+	term   uint64
+	result rpcResult
+}
+
+func (resp *resp) getTerm() uint64      { return resp.term }
+func (resp *resp) getResult() rpcResult { return resp.result }
+
+func (resp *resp) decode(r io.Reader) error {
+	var err error
+
+	if resp.term, err = readUint64(r); err != nil {
+		return err
+	}
+	if result, err := readUint8(r); err != nil {
+		return err
+	} else {
+		resp.result = rpcResult(result)
+	}
+	return nil
+}
+
+func (resp *resp) encode(w io.Writer) error {
+	if err := writeUint64(w, resp.term); err != nil {
+		return err
+	}
+	if err := writeUint8(w, uint8(resp.result)); err != nil {
+		return err
+	}
+	return nil
 }
 
 // ------------------------------------------------------
@@ -120,7 +150,7 @@ func (t entryType) String() string {
 	case entryConfig:
 		return "config"
 	}
-	return fmt.Sprintf("unknown(%d)", uint8(t))
+	return fmt.Sprintf("entryType(%d)", uint8(t))
 }
 
 type entry struct {
@@ -220,37 +250,11 @@ func (req *voteReq) encode(w io.Writer) error {
 // ------------------------------------------------------
 
 type voteResp struct {
-	term   uint64    // currentTerm, for candidate to update itself
-	result rpcResult // success means vote is granted
+	resp
 }
 
-func (resp *voteResp) getTerm() uint64 { return resp.term }
 func (resp *voteResp) String() string {
 	return fmt.Sprintf("voteResp{T%d %s}", resp.term, resp.result)
-}
-
-func (resp *voteResp) decode(r io.Reader) error {
-	var err error
-
-	if resp.term, err = readUint64(r); err != nil {
-		return err
-	}
-	if result, err := readUint8(r); err != nil {
-		return err
-	} else {
-		resp.result = rpcResult(result)
-	}
-	return nil
-}
-
-func (resp *voteResp) encode(w io.Writer) error {
-	if err := writeUint64(w, resp.term); err != nil {
-		return err
-	}
-	if err := writeUint8(w, uint8(resp.result)); err != nil {
-		return err
-	}
-	return nil
 }
 
 // ------------------------------------------------------
@@ -338,13 +342,10 @@ func (req *appendEntriesReq) encode(w io.Writer) error {
 // ------------------------------------------------------
 
 type appendEntriesResp struct {
-	term         uint64
-	result       rpcResult
+	resp
 	lastLogIndex uint64
-	// todo: what abt additional field NoRetryBackoff
 }
 
-func (resp *appendEntriesResp) getTerm() uint64 { return resp.term }
 func (resp *appendEntriesResp) String() string {
 	format := "appendEntriesResp{T%d %s last:%d}"
 	return fmt.Sprintf(format, resp.term, resp.result, resp.lastLogIndex)
@@ -352,14 +353,8 @@ func (resp *appendEntriesResp) String() string {
 
 func (resp *appendEntriesResp) decode(r io.Reader) error {
 	var err error
-
-	if resp.term, err = readUint64(r); err != nil {
+	if err = resp.resp.decode(r); err != nil {
 		return err
-	}
-	if result, err := readUint8(r); err != nil {
-		return err
-	} else {
-		resp.result = rpcResult(result)
 	}
 	if resp.lastLogIndex, err = readUint64(r); err != nil {
 		return err
@@ -368,10 +363,7 @@ func (resp *appendEntriesResp) decode(r io.Reader) error {
 }
 
 func (resp *appendEntriesResp) encode(w io.Writer) error {
-	if err := writeUint64(w, resp.term); err != nil {
-		return err
-	}
-	if err := writeUint8(w, uint8(resp.result)); err != nil {
+	if err := resp.resp.encode(w); err != nil {
 		return err
 	}
 	if err := writeUint64(w, resp.lastLogIndex); err != nil {
@@ -462,37 +454,11 @@ func (req *installSnapReq) encode(w io.Writer) error {
 // ------------------------------------------------------
 
 type installSnapResp struct {
-	term   uint64
-	result rpcResult
+	resp
 }
 
-func (resp *installSnapResp) getTerm() uint64 { return resp.term }
 func (resp *installSnapResp) String() string {
 	return fmt.Sprintf("installSnapResp{T%d %s}", resp.term, resp.result)
-}
-
-func (resp *installSnapResp) decode(r io.Reader) error {
-	var err error
-
-	if resp.term, err = readUint64(r); err != nil {
-		return err
-	}
-	if result, err := readUint8(r); err != nil {
-		return err
-	} else {
-		resp.result = rpcResult(result)
-	}
-	return nil
-}
-
-func (resp *installSnapResp) encode(w io.Writer) error {
-	if err := writeUint64(w, resp.term); err != nil {
-		return err
-	}
-	if err := writeUint8(w, uint8(resp.result)); err != nil {
-		return err
-	}
-	return nil
 }
 
 // ------------------------------------------------------
@@ -531,35 +497,9 @@ func (req *timeoutNowReq) encode(w io.Writer) error {
 // ------------------------------------------------------
 
 type timeoutNowResp struct {
-	term   uint64
-	result rpcResult
+	resp
 }
 
-func (resp *timeoutNowResp) getTerm() uint64 { return resp.term }
 func (resp *timeoutNowResp) String() string {
 	return fmt.Sprintf("timeoutNowResp{T%d %s}", resp.term, resp.result)
-}
-
-func (resp *timeoutNowResp) decode(r io.Reader) error {
-	var err error
-
-	if resp.term, err = readUint64(r); err != nil {
-		return err
-	}
-	if result, err := readUint8(r); err != nil {
-		return err
-	} else {
-		resp.result = rpcResult(result)
-	}
-	return nil
-}
-
-func (resp *timeoutNowResp) encode(w io.Writer) error {
-	if err := writeUint64(w, resp.term); err != nil {
-		return err
-	}
-	if err := writeUint8(w, uint8(resp.result)); err != nil {
-		return err
-	}
-	return nil
 }
