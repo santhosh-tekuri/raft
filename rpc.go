@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"fmt"
 	"io"
 	"io/ioutil"
 )
@@ -28,35 +29,19 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 		if typ := rpc.req.rpcType(); typ.fromLeader() && typ != rpcTimeoutNow {
 			r.setState(Follower)
 			r.setLeader(rpc.req.from())
-			resetTimer = true
 		}
 
-		// do actual processing of request
-		switch req := rpc.req.(type) {
-		case *voteReq:
-			result, err = r.onVoteRequest(req)
-			resetTimer = result == success
-		case *appendEntriesReq:
-			result, err = r.onAppendEntriesRequest(req)
-			if result == unexpectedErr {
-				r.appendErr = err
-			}
-		case *installSnapReq:
-			result, err = r.onInstallSnapRequest(req)
-		case *timeoutNowReq:
-			result = r.onTimeoutNowRequest()
-		default:
-			fatal("raft.replyRPC(%T)", req)
-		}
+		result, err = r.onRequest(rpc.req)
 	}
 
-	// construct response
-	rpc.resp = rpc.req.rpcType().createResp(r, result)
+	if result == unexpectedErr && r.trace.Error != nil {
+		r.trace.Error(err)
+	}
 
 	// if possible, drain any partially read requests
 	if result == readErr {
 		rpc.readErr = err
-	} else {
+	} else if result != unexpectedErr {
 		switch req := rpc.req.(type) {
 		case *installSnapReq:
 			if req.size > 0 {
@@ -65,9 +50,7 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 		}
 	}
 
-	if result == unexpectedErr && r.trace.Error != nil {
-		r.trace.Error(err)
-	}
+	rpc.resp = rpc.req.rpcType().createResp(r, result)
 	if r.trace.sending != nil {
 		r.trace.sending(r.id, rpc.req.from(), r.state, rpc.resp)
 	}
@@ -76,7 +59,33 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 	if result == unexpectedErr {
 		panic(err)
 	}
-	return resetTimer
+	return rpc.req.rpcType() != rpcVote || result == success
+}
+
+func (r *Raft) onRequest(req request) (result rpcResult, err error) {
+	defer func() {
+		if v := recover(); v != nil {
+			result = unexpectedErr
+			if _, ok := v.(error); ok {
+				err = v.(error)
+			} else {
+				err = fmt.Errorf("unexpected error: %v", v)
+			}
+		}
+	}()
+
+	switch req := req.(type) {
+	case *voteReq:
+		return r.onVoteRequest(req)
+	case *appendEntriesReq:
+		return r.onAppendEntriesRequest(req)
+	case *installSnapReq:
+		return r.onInstallSnapRequest(req)
+	case *timeoutNowReq:
+		return r.onTimeoutNowRequest()
+	default:
+		panic(fmt.Errorf("[BUG] raft.onRequest(%T)", req))
+	}
 }
 
 func (r *Raft) onVoteRequest(req *voteReq) (rpcResult, error) {
@@ -266,8 +275,8 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq) (rpcResult, error) {
 	return success, nil
 }
 
-func (r *Raft) onTimeoutNowRequest() rpcResult {
+func (r *Raft) onTimeoutNowRequest() (rpcResult, error) {
 	r.setState(Candidate)
 	r.setLeader(0)
-	return success
+	return success, nil
 }
