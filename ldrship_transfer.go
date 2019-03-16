@@ -3,10 +3,11 @@ package raft
 import "time"
 
 type transfer struct {
-	timer *safeTimer
 	transferLdr
-	term  uint64
-	rpcCh <-chan timeoutNowResult
+	timer    *safeTimer
+	deadline time.Time
+	term     uint64
+	rpcCh    <-chan timeoutNowResult
 }
 
 func (t transfer) inProgress() bool {
@@ -38,6 +39,7 @@ func (l *ldrShip) onTransfer(t transferLdr) {
 
 	l.transfer.term = l.term
 	l.transfer.transferLdr = t
+	l.transfer.deadline = time.Now().Add(t.timeout)
 	l.transfer.timer.reset(t.timeout)
 	if tgt := l.choseTransferTgt(); tgt != 0 {
 		l.doTransfer(tgt)
@@ -92,28 +94,29 @@ func (l *ldrShip) doTransfer(target uint64) {
 	l.transfer.rpcCh = ch
 	req := &timeoutNowReq{req{l.term, l.id}}
 	go func() {
+		var err error
+		defer func() { ch <- timeoutNowResult{target: pool.id, err: err} }()
 		conn, err := pool.getConn()
 		if err != nil {
-			ch <- timeoutNowResult{target: pool.id, err: err}
 			return
 		}
-		resp := new(timeoutNowResp)
 		debug(l.id, ">>", req)
 		if l.trace.sending != nil {
 			l.trace.sending(l.id, pool.id, Leader, req)
 		}
-		_ = conn.conn.SetDeadline(time.Now().Add(5 * l.hbTimeout)) // todo
-		if err = conn.doRPC(req, resp); err != nil {
-			_ = conn.close()
-			ch <- timeoutNowResult{target: pool.id, err: err}
+		if err = conn.conn.SetDeadline(l.transfer.deadline); err != nil {
 			return
 		}
-		pool.returnConn(conn)
+		resp := new(timeoutNowResp)
+		if err = conn.doRPC(req, resp); err != nil {
+			_ = conn.close()
+			return
+		}
 		debug(l.id, "<<", resp)
 		if l.trace.received != nil {
 			l.trace.received(l.id, pool.id, Leader, req.term, resp)
 		}
-		ch <- timeoutNowResult{target: pool.id, err: nil}
+		pool.returnConn(conn)
 	}()
 }
 
