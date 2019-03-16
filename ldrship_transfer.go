@@ -90,7 +90,7 @@ func (l *ldrShip) doTransfer(target uint64) {
 	pool := l.getConnPool(target)
 	ch := make(chan timeoutNowResult, 1)
 	l.transfer.rpcCh = ch
-	req := &timeoutNowReq{l.term, l.id}
+	req := &timeoutNowReq{req{l.term, l.id}}
 	go func() {
 		conn, err := pool.getConn()
 		if err != nil {

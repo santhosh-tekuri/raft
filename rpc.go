@@ -79,7 +79,7 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 func (r *Raft) onVoteRequest(req *voteReq) rpcResult {
 	// if we already voted
 	if r.votedFor != 0 {
-		if r.votedFor == req.candidate { // same candidate we votedFor
+		if r.votedFor == req.src { // same candidate we votedFor
 			return success
 		}
 		return alreadyVoted
@@ -90,7 +90,7 @@ func (r *Raft) onVoteRequest(req *voteReq) rpcResult {
 		return logNotUptodate
 	}
 
-	r.setVotedFor(req.candidate)
+	r.setVotedFor(req.src)
 	return success
 }
 

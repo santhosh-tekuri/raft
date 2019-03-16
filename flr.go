@@ -207,11 +207,8 @@ func (f *flr) sendAppEntriesReq(req *appendEntriesReq) error {
 
 func (f *flr) sendInstallSnapReq(appReq *appendEntriesReq) error {
 	req := &installLatestSnapReq{
-		installSnapReq: installSnapReq{
-			term:   appReq.term,
-			leader: appReq.leader,
-		},
-		snapshots: f.storage.snapshots,
+		installSnapReq: installSnapReq{req: appReq.req},
+		snapshots:      f.storage.snapshots,
 	}
 
 	debug(f, "sending installReq")

@@ -31,8 +31,7 @@ func (c *candShip) startElection() {
 
 	// send RequestVote RPCs to all other servers
 	req := &voteReq{
-		term:         c.term,
-		candidate:    c.id,
+		req:          req{c.term, c.id},
 		lastLogIndex: c.lastLogIndex,
 		lastLogTerm:  c.lastLogTerm,
 	}

@@ -147,8 +147,7 @@ func (l *ldrShip) addFlr(node Node) {
 
 	// send initial empty AppendEntries RPCs (heartbeat) to each follower
 	req := &appendEntriesReq{
-		term:           l.term,
-		leader:         l.id,
+		req:            req{l.term, l.id},
 		ldrCommitIndex: l.commitIndex,
 		prevLogIndex:   l.lastLogIndex,
 		prevLogTerm:    l.lastLogTerm,

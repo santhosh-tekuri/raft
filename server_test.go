@@ -19,13 +19,13 @@ func TestServer(t *testing.T) {
 	}{
 		{
 			name: "requestVote",
-			req:  &voteReq{term: 5, candidate: 2, lastLogIndex: 3, lastLogTerm: 5},
+			req:  &voteReq{req: req{term: 5, src: 2}, lastLogIndex: 3, lastLogTerm: 5},
 			resp: &voteResp{resp{term: 5, result: success}},
 		},
 		{
 			name: "appendEntries",
 			req: &appendEntriesReq{
-				term: 5, leader: 3, prevLogIndex: 3, prevLogTerm: 5,
+				req: req{term: 5, src: 3}, prevLogIndex: 3, prevLogTerm: 5,
 				entries: []*entry{
 					{index: 3, term: 5, typ: 2, data: []byte("sleep")},
 					{index: 4, term: 5, typ: 3, data: []byte("wakeup")},

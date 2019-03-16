@@ -5,6 +5,79 @@ import (
 	"io"
 )
 
+// ------------------------------------------------------
+
+type entryType uint8
+
+const (
+	entryBarrier entryType = iota + 1 // note: don't use zero value
+	entryUpdate
+	entryRead
+	entryNop
+	entryConfig
+)
+
+func (t entryType) String() string {
+	switch t {
+	case entryBarrier:
+		return "barrier"
+	case entryUpdate:
+		return "update"
+	case entryRead:
+		return "read"
+	case entryNop:
+		return "nop"
+	case entryConfig:
+		return "config"
+	}
+	return fmt.Sprintf("entryType(%d)", uint8(t))
+}
+
+type entry struct {
+	index uint64
+	term  uint64
+	typ   entryType
+	data  []byte
+}
+
+func (e *entry) decode(r io.Reader) error {
+	var err error
+
+	if e.index, err = readUint64(r); err != nil {
+		return err
+	}
+	if e.term, err = readUint64(r); err != nil {
+		return err
+	}
+	typ, err := readUint8(r)
+	if err != nil {
+		return err
+	}
+	e.typ = entryType(typ)
+	if e.data, err = readBytes(r); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (e *entry) encode(w io.Writer) error {
+	if err := writeUint64(w, e.index); err != nil {
+		return err
+	}
+	if err := writeUint64(w, e.term); err != nil {
+		return err
+	}
+	if err := writeUint8(w, uint8(e.typ)); err != nil {
+		return err
+	}
+	if err := writeBytes(w, e.data); err != nil {
+		return err
+	}
+	return nil
+}
+
+// ------------------------------------------------------
+
 type rpcType int
 
 const (
@@ -88,9 +161,37 @@ type message interface {
 }
 
 type request interface {
-	message
 	rpcType() rpcType
+	message
 	from() uint64
+}
+
+type req struct {
+	term uint64
+	src  uint64
+}
+
+func (req *req) getTerm() uint64 { return req.term }
+func (req *req) from() uint64    { return req.src }
+func (req *req) decode(r io.Reader) error {
+	var err error
+	if req.term, err = readUint64(r); err != nil {
+		return err
+	}
+	if req.src, err = readUint64(r); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (req *req) encode(w io.Writer) error {
+	if err := writeUint64(w, req.term); err != nil {
+		return err
+	}
+	if err := writeUint64(w, req.src); err != nil {
+		return err
+	}
+	return nil
 }
 
 type resp struct {
@@ -127,99 +228,21 @@ func (resp *resp) encode(w io.Writer) error {
 
 // ------------------------------------------------------
 
-type entryType uint8
-
-const (
-	entryBarrier entryType = iota + 1 // note: don't use zero value
-	entryUpdate
-	entryRead
-	entryNop
-	entryConfig
-)
-
-func (t entryType) String() string {
-	switch t {
-	case entryBarrier:
-		return "barrier"
-	case entryUpdate:
-		return "update"
-	case entryRead:
-		return "read"
-	case entryNop:
-		return "nop"
-	case entryConfig:
-		return "config"
-	}
-	return fmt.Sprintf("entryType(%d)", uint8(t))
-}
-
-type entry struct {
-	index uint64
-	term  uint64
-	typ   entryType
-	data  []byte
-}
-
-func (e *entry) decode(r io.Reader) error {
-	var err error
-
-	if e.index, err = readUint64(r); err != nil {
-		return err
-	}
-	if e.term, err = readUint64(r); err != nil {
-		return err
-	}
-	typ, err := readUint8(r)
-	if err != nil {
-		return err
-	}
-	e.typ = entryType(typ)
-	if e.data, err = readBytes(r); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (e *entry) encode(w io.Writer) error {
-	if err := writeUint64(w, e.index); err != nil {
-		return err
-	}
-	if err := writeUint64(w, e.term); err != nil {
-		return err
-	}
-	if err := writeUint8(w, uint8(e.typ)); err != nil {
-		return err
-	}
-	if err := writeBytes(w, e.data); err != nil {
-		return err
-	}
-	return nil
-}
-
-// ------------------------------------------------------
-
 type voteReq struct {
-	term         uint64 // candidate's term
-	candidate    uint64 // candidate requesting vote
+	req
 	lastLogIndex uint64 // index of candidate's last log entry
 	lastLogTerm  uint64 // term of candidate's last log entry
 }
 
-func (req *voteReq) getTerm() uint64  { return req.term }
 func (req *voteReq) rpcType() rpcType { return rpcVote }
-func (req *voteReq) from() uint64     { return req.candidate }
 func (req *voteReq) String() string {
 	format := "voteReq{T%d M%d last:(%d,%d)}"
-	return fmt.Sprintf(format, req.term, req.candidate, req.lastLogIndex, req.lastLogTerm)
+	return fmt.Sprintf(format, req.term, req.src, req.lastLogIndex, req.lastLogTerm)
 }
 
 func (req *voteReq) decode(r io.Reader) error {
 	var err error
-
-	if req.term, err = readUint64(r); err != nil {
-		return err
-	}
-	if req.candidate, err = readUint64(r); err != nil {
+	if err = req.req.decode(r); err != nil {
 		return err
 	}
 	if req.lastLogIndex, err = readUint64(r); err != nil {
@@ -232,10 +255,7 @@ func (req *voteReq) decode(r io.Reader) error {
 }
 
 func (req *voteReq) encode(w io.Writer) error {
-	if err := writeUint64(w, req.term); err != nil {
-		return err
-	}
-	if err := writeUint64(w, req.candidate); err != nil {
+	if err := req.req.encode(w); err != nil {
 		return err
 	}
 	if err := writeUint64(w, req.lastLogIndex); err != nil {
@@ -260,29 +280,22 @@ func (resp *voteResp) String() string {
 // ------------------------------------------------------
 
 type appendEntriesReq struct {
-	term           uint64 // leader's term
-	leader         uint64 // so followers can redirect clients
+	req
 	prevLogIndex   uint64
 	prevLogTerm    uint64
 	entries        []*entry
 	ldrCommitIndex uint64
 }
 
-func (req *appendEntriesReq) getTerm() uint64  { return req.term }
 func (req *appendEntriesReq) rpcType() rpcType { return rpcAppendEntries }
-func (req *appendEntriesReq) from() uint64     { return req.leader }
 func (req *appendEntriesReq) String() string {
 	format := "appendEntriesReq{T%d M%d prev:(%d,%d), #entries:%d, commit:%d}"
-	return fmt.Sprintf(format, req.term, req.leader, req.prevLogIndex, req.prevLogTerm, len(req.entries), req.ldrCommitIndex)
+	return fmt.Sprintf(format, req.term, req.src, req.prevLogIndex, req.prevLogTerm, len(req.entries), req.ldrCommitIndex)
 }
 
 func (req *appendEntriesReq) decode(r io.Reader) error {
 	var err error
-
-	if req.term, err = readUint64(r); err != nil {
-		return err
-	}
-	if req.leader, err = readUint64(r); err != nil {
+	if err = req.req.decode(r); err != nil {
 		return err
 	}
 	if req.prevLogIndex, err = readUint64(r); err != nil {
@@ -311,10 +324,7 @@ func (req *appendEntriesReq) decode(r io.Reader) error {
 }
 
 func (req *appendEntriesReq) encode(w io.Writer) error {
-	if err := writeUint64(w, req.term); err != nil {
-		return err
-	}
-	if err := writeUint64(w, req.leader); err != nil {
+	if err := req.req.encode(w); err != nil {
 		return err
 	}
 	if err := writeUint64(w, req.prevLogIndex); err != nil {
@@ -375,8 +385,7 @@ func (resp *appendEntriesResp) encode(w io.Writer) error {
 // ------------------------------------------------------
 
 type installSnapReq struct {
-	term       uint64 // leader's term
-	leader     uint64 // so followers can redirect clients
+	req
 	lastIndex  uint64 // last index in the snapshot
 	lastTerm   uint64 // term of lastIndex
 	lastConfig Config // last config in the snapshot
@@ -384,21 +393,15 @@ type installSnapReq struct {
 	snapshot   io.Reader
 }
 
-func (req *installSnapReq) getTerm() uint64  { return req.term }
 func (req *installSnapReq) rpcType() rpcType { return rpcInstallSnap }
-func (req *installSnapReq) from() uint64     { return req.leader }
 func (req *installSnapReq) String() string {
 	format := "installSnapReq{T%d M%d last:(%d,%d), size:%d}"
-	return fmt.Sprintf(format, req.term, req.leader, req.lastIndex, req.lastIndex, req.size)
+	return fmt.Sprintf(format, req.term, req.src, req.lastIndex, req.lastIndex, req.size)
 }
 
 func (req *installSnapReq) decode(r io.Reader) error {
 	var err error
-
-	if req.term, err = readUint64(r); err != nil {
-		return err
-	}
-	if req.leader, err = readUint64(r); err != nil {
+	if err = req.req.decode(r); err != nil {
 		return err
 	}
 	if req.lastIndex, err = readUint64(r); err != nil {
@@ -426,10 +429,7 @@ func (req *installSnapReq) decode(r io.Reader) error {
 }
 
 func (req *installSnapReq) encode(w io.Writer) error {
-	if err := writeUint64(w, req.term); err != nil {
-		return err
-	}
-	if err := writeUint64(w, req.leader); err != nil {
+	if err := req.req.encode(w); err != nil {
 		return err
 	}
 	if err := writeUint64(w, req.lastIndex); err != nil {
@@ -464,34 +464,12 @@ func (resp *installSnapResp) String() string {
 // ------------------------------------------------------
 
 type timeoutNowReq struct {
-	term   uint64 // leader's term
-	leader uint64 // so followers can redirect clients
+	req
 }
 
-func (req *timeoutNowReq) getTerm() uint64  { return req.term }
 func (req *timeoutNowReq) rpcType() rpcType { return rpcTimeoutNow }
-func (req *timeoutNowReq) from() uint64     { return req.leader }
 func (req *timeoutNowReq) String() string {
-	return fmt.Sprintf("timeoutNowReq{T%d M%d}", req.term, req.leader)
-}
-
-func (req *timeoutNowReq) decode(r io.Reader) error {
-	var err error
-
-	if req.term, err = readUint64(r); err != nil {
-		return err
-	}
-	if req.leader, err = readUint64(r); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (req *timeoutNowReq) encode(w io.Writer) error {
-	if err := writeUint64(w, req.term); err != nil {
-		return err
-	}
-	return writeUint64(w, req.leader)
+	return fmt.Sprintf("timeoutNowReq{T%d M%d}", req.term, req.src)
 }
 
 // ------------------------------------------------------

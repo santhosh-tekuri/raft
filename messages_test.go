@@ -23,11 +23,11 @@ func TestMessages(t *testing.T) {
 	snapshot := "helloworld"
 	tests := []message{
 		&entry{index: 3, term: 5, typ: 2, data: []byte("sleep")},
-		&voteReq{term: 5, candidate: 2, lastLogIndex: 3, lastLogTerm: 5},
+		&voteReq{req: req{term: 5, src: 2}, lastLogIndex: 3, lastLogTerm: 5},
 		&voteResp{resp{term: 5, result: success}},
 		&voteResp{resp{term: 5, result: alreadyVoted}},
 		&appendEntriesReq{
-			term: 5, leader: 2, prevLogIndex: 3, prevLogTerm: 5,
+			req: req{term: 5, src: 2}, prevLogIndex: 3, prevLogTerm: 5,
 			entries: []*entry{
 				{index: 3, term: 5, typ: 2, data: []byte("sleep")},
 				{index: 4, term: 5, typ: 3, data: []byte("wakeup")},
@@ -35,7 +35,7 @@ func TestMessages(t *testing.T) {
 		},
 		&appendEntriesResp{resp: resp{term: 5, result: success}, lastLogIndex: 9},
 		&installSnapReq{
-			term: 5, leader: 1, lastIndex: 3, lastTerm: 5,
+			req: req{term: 5, src: 1}, lastIndex: 3, lastTerm: 5,
 			lastConfig: Config{
 				Nodes: nodes,
 				Index: 1, Term: 2,
@@ -44,7 +44,7 @@ func TestMessages(t *testing.T) {
 		},
 		&installSnapResp{resp{term: 5, result: success}},
 		&installSnapResp{resp{term: 5, result: unexpectedErr}},
-		&timeoutNowReq{term: 5, leader: 3},
+		&timeoutNowReq{req{term: 5, src: 3}},
 		&timeoutNowResp{resp{term: 5, result: success}},
 	}
 	for _, test := range tests {
