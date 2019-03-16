@@ -15,7 +15,7 @@ func TestServer(t *testing.T) {
 	tests := []struct {
 		name string
 		req  request
-		resp message
+		resp response
 	}{
 		{
 			name: "requestVote",

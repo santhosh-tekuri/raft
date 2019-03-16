@@ -101,7 +101,7 @@ func (t rpcType) createReq() request {
 	panic(fmt.Errorf("raft.createReq: unknown rpcType %d", t))
 }
 
-func (t rpcType) createResp(r *Raft, result rpcResult) message {
+func (t rpcType) createResp(r *Raft, result rpcResult) response {
 	resp := resp{r.term, result}
 	switch t {
 	case rpcVote:
@@ -192,6 +192,13 @@ func (req *req) encode(w io.Writer) error {
 		return err
 	}
 	return nil
+}
+
+// ------------------------------------------------------
+
+type response interface {
+	message
+	getResult() rpcResult
 }
 
 type resp struct {
