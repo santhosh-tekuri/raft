@@ -5,12 +5,10 @@ import (
 	"io"
 )
 
-// ------------------------------------------------------
-
 type entryType uint8
 
 const (
-	entryBarrier entryType = iota + 1 // note: don't use zero value
+	entryBarrier entryType = iota + 1
 	entryUpdate
 	entryRead
 	entryNop
@@ -54,10 +52,8 @@ func (e *entry) decode(r io.Reader) error {
 		return err
 	}
 	e.typ = entryType(typ)
-	if e.data, err = readBytes(r); err != nil {
-		return err
-	}
-	return nil
+	e.data, err = readBytes(r)
+	return err
 }
 
 func (e *entry) encode(w io.Writer) error {
@@ -70,10 +66,7 @@ func (e *entry) encode(w io.Writer) error {
 	if err := writeUint8(w, uint8(e.typ)); err != nil {
 		return err
 	}
-	if err := writeBytes(w, e.data); err != nil {
-		return err
-	}
-	return nil
+	return writeBytes(w, e.data)
 }
 
 // ------------------------------------------------------
@@ -164,6 +157,8 @@ type message interface {
 	encode(w io.Writer) error
 }
 
+// ------------------------------------------------------
+
 type request interface {
 	rpcType() rpcType
 	message
@@ -182,20 +177,15 @@ func (req *req) decode(r io.Reader) error {
 	if req.term, err = readUint64(r); err != nil {
 		return err
 	}
-	if req.src, err = readUint64(r); err != nil {
-		return err
-	}
-	return nil
+	req.src, err = readUint64(r)
+	return err
 }
 
 func (req *req) encode(w io.Writer) error {
 	if err := writeUint64(w, req.term); err != nil {
 		return err
 	}
-	if err := writeUint64(w, req.src); err != nil {
-		return err
-	}
-	return nil
+	return writeUint64(w, req.src)
 }
 
 // ------------------------------------------------------
@@ -231,10 +221,7 @@ func (resp *resp) encode(w io.Writer) error {
 	if err := writeUint64(w, resp.term); err != nil {
 		return err
 	}
-	if err := writeUint8(w, uint8(resp.result)); err != nil {
-		return err
-	}
-	return nil
+	return writeUint8(w, uint8(resp.result))
 }
 
 // ------------------------------------------------------
@@ -259,10 +246,8 @@ func (req *voteReq) decode(r io.Reader) error {
 	if req.lastLogIndex, err = readUint64(r); err != nil {
 		return err
 	}
-	if req.lastLogTerm, err = readUint64(r); err != nil {
-		return err
-	}
-	return nil
+	req.lastLogTerm, err = readUint64(r)
+	return err
 }
 
 func (req *voteReq) encode(w io.Writer) error {
@@ -272,10 +257,7 @@ func (req *voteReq) encode(w io.Writer) error {
 	if err := writeUint64(w, req.lastLogIndex); err != nil {
 		return err
 	}
-	if err := writeUint64(w, req.lastLogTerm); err != nil {
-		return err
-	}
-	return nil
+	return writeUint64(w, req.lastLogTerm)
 }
 
 // ------------------------------------------------------
@@ -328,10 +310,8 @@ func (req *appendEntriesReq) decode(r io.Reader) error {
 		}
 	}
 
-	if req.ldrCommitIndex, err = readUint64(r); err != nil {
-		return err
-	}
-	return nil
+	req.ldrCommitIndex, err = readUint64(r)
+	return err
 }
 
 func (req *appendEntriesReq) encode(w io.Writer) error {
@@ -354,10 +334,7 @@ func (req *appendEntriesReq) encode(w io.Writer) error {
 		}
 	}
 
-	if err := writeUint64(w, req.ldrCommitIndex); err != nil {
-		return err
-	}
-	return nil
+	return writeUint64(w, req.ldrCommitIndex)
 }
 
 // ------------------------------------------------------
@@ -377,20 +354,15 @@ func (resp *appendEntriesResp) decode(r io.Reader) error {
 	if err = resp.resp.decode(r); err != nil {
 		return err
 	}
-	if resp.lastLogIndex, err = readUint64(r); err != nil {
-		return err
-	}
-	return nil
+	resp.lastLogIndex, err = readUint64(r)
+	return err
 }
 
 func (resp *appendEntriesResp) encode(w io.Writer) error {
 	if err := resp.resp.encode(w); err != nil {
 		return err
 	}
-	if err := writeUint64(w, resp.lastLogIndex); err != nil {
-		return err
-	}
-	return nil
+	return writeUint64(w, resp.lastLogIndex)
 }
 
 // ------------------------------------------------------
