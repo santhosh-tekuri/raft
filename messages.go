@@ -74,18 +74,25 @@ func (e *entry) encode(w io.Writer) error {
 type rpcType int
 
 const (
-	rpcVote rpcType = iota
+	rpcIdentity rpcType = iota
+	rpcVote
 	rpcAppendEntries
 	rpcInstallSnap
 	rpcTimeoutNow
 )
 
 func (t rpcType) fromLeader() bool {
-	return t != rpcVote
+	switch t {
+	case rpcAppendEntries, rpcInstallSnap, rpcTimeoutNow:
+		return true
+	}
+	return false
 }
 
 func (t rpcType) createReq() request {
 	switch t {
+	case rpcIdentity:
+		return &identityReq{}
 	case rpcVote:
 		return &voteReq{}
 	case rpcAppendEntries:
@@ -95,12 +102,14 @@ func (t rpcType) createReq() request {
 	case rpcTimeoutNow:
 		return &timeoutNowReq{}
 	}
-	panic(fmt.Errorf("raft.createReq: unknown rpcType %d", t))
+	panic(fmt.Errorf("raft.createReq(%d)", t))
 }
 
 func (t rpcType) createResp(r *Raft, result rpcResult) response {
 	resp := resp{r.term, result}
 	switch t {
+	case rpcIdentity:
+		return &identityResp{resp}
 	case rpcVote:
 		return &voteResp{resp}
 	case rpcAppendEntries:
@@ -110,13 +119,14 @@ func (t rpcType) createResp(r *Raft, result rpcResult) response {
 	case rpcTimeoutNow:
 		return &timeoutNowResp{resp}
 	}
-	panic(fmt.Errorf("raft.createResp: unknown rpcType %d", t))
+	panic(fmt.Errorf("raft.createResp(%d)", t))
 }
 
 type rpcResult uint8
 
 const (
 	success rpcResult = iota + 1
+	idMismatch
 	staleTerm
 	alreadyVoted
 	leaderKnown
@@ -222,6 +232,39 @@ func (resp *resp) encode(w io.Writer) error {
 		return err
 	}
 	return writeUint8(w, uint8(resp.result))
+}
+
+// ------------------------------------------------------
+
+type identityReq struct {
+	req // not used
+	tgt uint64
+}
+
+func (req *identityReq) rpcType() rpcType { return rpcIdentity }
+func (req *identityReq) String() string {
+	format := "identityReq{T%d M%d M%d}"
+	return fmt.Sprintf(format, req.term, req.src, req.tgt)
+}
+
+func (req *identityReq) decode(r io.Reader) error {
+	var err error
+	req.tgt, err = readUint64(r)
+	return err
+}
+
+func (req *identityReq) encode(w io.Writer) error {
+	return writeUint64(w, req.tgt)
+}
+
+// ------------------------------------------------------
+
+type identityResp struct {
+	resp
+}
+
+func (resp *identityResp) String() string {
+	return fmt.Sprintf("identityResp{T%d %s}", resp.term, resp.result)
 }
 
 // ------------------------------------------------------

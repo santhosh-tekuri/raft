@@ -113,7 +113,20 @@ func (pool *connPool) getConn() (*netConn, error) {
 		if err != nil {
 			return nil, err
 		}
-		return dial(pool.dialFn, addr, pool.timeout)
+		conn, err := dial(pool.dialFn, addr, pool.timeout)
+		if err != nil {
+			return nil, err
+		}
+
+		// check identity
+		resp := &identityResp{}
+		err = conn.doRPC(&identityReq{tgt: pool.id}, resp)
+		if err != nil || resp.result != success {
+			_ = conn.close()
+			return nil, IdentityError{pool.id, addr}
+		}
+
+		return conn, nil
 	}
 	var conn *netConn
 	conn, pool.conns[num-1] = pool.conns[num-1], nil

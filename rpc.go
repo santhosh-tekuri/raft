@@ -13,6 +13,17 @@ import (
 //   RPC from current leader or granting vote to candidate:
 //   convert to candidate.
 func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
+	// handle identity req
+	if req, ok := rpc.req.(*identityReq); ok {
+		if r.id != req.tgt {
+			rpc.resp = rpcIdentity.createResp(r, idMismatch)
+		} else {
+			rpc.resp = rpcIdentity.createResp(r, success)
+		}
+		close(rpc.done)
+		return
+	}
+
 	if r.trace.received != nil {
 		r.trace.received(r.id, rpc.req.from(), r.state, r.term, rpc.req)
 	}

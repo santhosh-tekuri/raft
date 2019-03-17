@@ -95,3 +95,14 @@ func opError(err error, format string, v ...interface{}) OpError {
 		Err: err,
 	}
 }
+
+// -----------------------------------------------------------
+
+type IdentityError struct {
+	id   uint64
+	addr string
+}
+
+func (e IdentityError) Error() string {
+	return fmt.Sprintf("raft: server at %s does not has id %d", e.addr, e.id)
+}
