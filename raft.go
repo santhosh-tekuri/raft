@@ -2,14 +2,12 @@ package raft
 
 import (
 	"container/list"
-	"errors"
 	"net"
 	"sync"
 	"time"
 )
 
 type Raft struct {
-	id    uint64
 	rtime randTime
 	timer *safeTimer
 	rpcCh chan *rpc
@@ -47,10 +45,7 @@ type Raft struct {
 	closed    chan struct{}
 }
 
-func New(id uint64, opt Options, fsm FSM, storage Storage) (*Raft, error) {
-	if id == 0 {
-		return nil, errors.New("raft: id must be greater than zero")
-	}
+func New(opt Options, fsm FSM, storage Storage) (*Raft, error) {
 	if err := opt.validate(); err != nil {
 		return nil, err
 	}
@@ -60,13 +55,12 @@ func New(id uint64, opt Options, fsm FSM, storage Storage) (*Raft, error) {
 	}
 	sm := &stateMachine{
 		FSM:       fsm,
-		id:        id,
+		id:        store.id,
 		taskCh:    make(chan Task, 128), // todo configurable capacity
 		snapshots: storage.Snapshots,
 	}
 
 	r := &Raft{
-		id:               id,
 		rtime:            newRandTime(),
 		timer:            newSafeTimer(),
 		rpcCh:            make(chan *rpc),
@@ -128,14 +122,14 @@ func (r *Raft) Serve(l net.Listener) error {
 		}
 	}
 
-	server := newServer(l)
+	s := newServer(l)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		server.serve(r.rpcCh)
+		s.serve(r.rpcCh)
 		debug(r.id, "server shutdown")
 	}()
-	defer server.shutdown()
+	defer s.shutdown()
 
 	return r.stateLoop()
 }

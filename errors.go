@@ -10,6 +10,9 @@ var (
 	// methods after a call to Shutdown
 	ErrServerClosed = errors.New("raft: server closed")
 
+	ErrIdentityAlreadySet = errors.New("raft: identity already set")
+	ErrIdentityNotSet     = errors.New("raft: identity not set")
+
 	// ErrAlreadyBootstrapped is returned when bootstrap task received
 	// by already bootstrapped server
 	ErrAlreadyBootstrapped              = errors.New("raft.bootstrap: already bootstrapped")

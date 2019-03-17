@@ -8,6 +8,8 @@ import (
 )
 
 type Vars interface {
+	GetIdentity() (node uint64, err error)
+	SetIdentity(node uint64) error
 	GetVote() (term, vote uint64, err error)
 	SetVote(term, vote uint64) error
 }
@@ -46,9 +48,36 @@ type Storage struct {
 	Snapshots Snapshots
 }
 
+func (s Storage) GetIdentity() (node uint64, err error) {
+	node, err = s.Vars.GetIdentity()
+	if err != nil {
+		err = opError(err, "Vars.GetIdentity")
+	}
+	return
+}
+
+func (s Storage) SetIdentity(node uint64) error {
+	id, err := s.GetIdentity()
+	if err != nil {
+		return err
+	}
+	if id == node {
+		return nil
+	}
+	if id != 0 {
+		return ErrIdentityAlreadySet
+	}
+	err = s.Vars.SetIdentity(node)
+	if err != nil {
+		err = opError(err, "Vars.SetIdentity")
+	}
+	return nil
+}
+
 // todo: can we avoid panics on storage error
 type storage struct {
 	vars     Vars
+	id       uint64
 	term     uint64
 	votedFor uint64
 
@@ -76,6 +105,15 @@ func newStorage(s Storage) *storage {
 
 func (s *storage) init() error {
 	var err error
+
+	// init identity
+	s.id, err = s.vars.GetIdentity()
+	if err != nil {
+		return opError(err, "Vars.GetIdentity")
+	}
+	if s.id == 0 {
+		return ErrIdentityNotSet
+	}
 
 	// init vars ---------------------
 	s.term, s.votedFor, err = s.vars.GetVote()

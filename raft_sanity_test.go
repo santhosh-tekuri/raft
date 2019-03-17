@@ -338,7 +338,7 @@ func test_opError_getVote(t *testing.T) {
 	mockStorage := &inmemStorage{id: 1}
 	mockStorage.getVoteErr = errors.New("abc")
 	storage := Storage{mockStorage, mockStorage, mockStorage}
-	_, err := New(1, DefaultOptions(), &fsmMock{id: 1}, storage)
+	_, err := New(DefaultOptions(), &fsmMock{id: 1}, storage)
 	if _, ok := err.(OpError); !ok {
 		t.Fatalf("got %v, want OpError", err)
 	}

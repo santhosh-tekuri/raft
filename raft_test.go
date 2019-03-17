@@ -238,7 +238,7 @@ func (c *cluster) launch(n int, bootstrap bool) map[uint64]*Raft {
 			}
 		}
 		fsm := &fsmMock{id: node.ID, changed: c.events.onFMSChanged}
-		r, err := New(node.ID, c.opt, fsm, storage)
+		r, err := New(c.opt, fsm, storage)
 		if err != nil {
 			c.Fatal(err)
 		}
@@ -322,7 +322,7 @@ func (c *cluster) restart(r *Raft) *Raft {
 
 	newFSM := &fsmMock{id: r.ID(), changed: c.events.onFMSChanged}
 	storage := c.storage[r.ID()]
-	newr, err := New(r.ID(), c.opt, newFSM, storage)
+	newr, err := New(c.opt, newFSM, storage)
 	if err != nil {
 		c.Fatal(err)
 	}
@@ -1093,6 +1093,15 @@ type inmemStorage struct {
 
 	snapMeta SnapshotMeta
 	snapshot *bytes.Buffer
+}
+
+func (s *inmemStorage) GetIdentity() (node uint64, err error) {
+	return s.id, nil
+}
+
+func (s *inmemStorage) SetIdentity(node uint64) error {
+	s.id = node
+	return nil
 }
 
 func (s *inmemStorage) GetVote() (term, vote uint64, err error) {
