@@ -7,50 +7,42 @@ import (
 	"time"
 )
 
-type netConn struct {
-	conn net.Conn
-	r    *bufio.Reader
-	w    *bufio.Writer
-
+type conn struct {
+	rwc     net.Conn
+	bufr    *bufio.Reader
+	bufw    *bufio.Writer
 	timeout time.Duration
 }
 
 type dialFn func(network, address string, timeout time.Duration) (net.Conn, error)
 
-func dial(dialFn dialFn, address string, timeout time.Duration) (*netConn, error) {
-	conn, err := dialFn("tcp", address, timeout)
+func dial(dialFn dialFn, address string, timeout time.Duration) (*conn, error) {
+	rwc, err := dialFn("tcp", address, timeout)
 	if err != nil {
 		return nil, err
 	}
-	return &netConn{
-		conn:    conn,
-		r:       bufio.NewReader(conn),
-		w:       bufio.NewWriter(conn),
+	return &conn{
+		rwc:     rwc,
+		bufr:    bufio.NewReader(rwc),
+		bufw:    bufio.NewWriter(rwc),
 		timeout: timeout,
 	}, nil
 }
 
-func (n *netConn) doRPC(req request, resp message) error {
-	if err := n.conn.SetDeadline(time.Now().Add(n.timeout)); err != nil {
+func (c *conn) doRPC(req request, resp message) error {
+	if err := c.rwc.SetDeadline(time.Now().Add(c.timeout)); err != nil {
 		return err
 	}
-	if err := writeUint8(n.w, uint8(req.rpcType())); err != nil {
+	if err := writeUint8(c.bufw, uint8(req.rpcType())); err != nil {
 		return err
 	}
-	if err := req.encode(n.w); err != nil {
+	if err := req.encode(c.bufw); err != nil {
 		return err
 	}
-	if err := n.w.Flush(); err != nil {
+	if err := c.bufw.Flush(); err != nil {
 		return err
 	}
-	if err := resp.decode(n.r); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (n *netConn) close() error {
-	return n.conn.Close()
+	return resp.decode(c.bufr)
 }
 
 // --------------------------------------------------------------------
@@ -100,10 +92,10 @@ type connPool struct {
 	max      int
 
 	mu    sync.Mutex
-	conns []*netConn
+	conns []*conn
 }
 
-func (pool *connPool) getConn() (*netConn, error) {
+func (pool *connPool) getConn() (*conn, error) {
 	pool.mu.Lock()
 	defer pool.mu.Unlock()
 
@@ -113,43 +105,43 @@ func (pool *connPool) getConn() (*netConn, error) {
 		if err != nil {
 			return nil, err
 		}
-		conn, err := dial(pool.dialFn, addr, pool.timeout)
+		c, err := dial(pool.dialFn, addr, pool.timeout)
 		if err != nil {
 			return nil, err
 		}
 
 		// check identity
 		resp := &identityResp{}
-		err = conn.doRPC(&identityReq{tgt: pool.id}, resp)
+		err = c.doRPC(&identityReq{tgt: pool.id}, resp)
 		if err != nil || resp.result != success {
-			_ = conn.close()
+			_ = c.rwc.Close()
 			return nil, IdentityError{pool.id, addr}
 		}
 
-		return conn, nil
+		return c, nil
 	}
-	var conn *netConn
-	conn, pool.conns[num-1] = pool.conns[num-1], nil
+	var c *conn
+	c, pool.conns[num-1] = pool.conns[num-1], nil
 	pool.conns = pool.conns[:num-1]
-	return conn, nil
+	return c, nil
 }
 
-func (pool *connPool) returnConn(conn *netConn) {
+func (pool *connPool) returnConn(c *conn) {
 	pool.mu.Lock()
 	defer pool.mu.Unlock()
 
 	if len(pool.conns) < pool.max {
-		pool.conns = append(pool.conns, conn)
+		pool.conns = append(pool.conns, c)
 	} else {
-		_ = conn.close()
+		_ = c.rwc.Close()
 	}
 }
 
 func (pool *connPool) closeAll() {
 	pool.mu.Lock()
 	defer pool.mu.Unlock()
-	for _, conn := range pool.conns {
-		_ = conn.close()
+	for _, c := range pool.conns {
+		_ = c.rwc.Close()
 	}
 	pool.conns = nil
 }

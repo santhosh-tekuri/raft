@@ -96,7 +96,7 @@ func (l *ldrShip) doTransfer(target uint64) {
 	go func() {
 		var err error
 		defer func() { ch <- timeoutNowResult{target: pool.id, err: err} }()
-		conn, err := pool.getConn()
+		c, err := pool.getConn()
 		if err != nil {
 			return
 		}
@@ -104,19 +104,19 @@ func (l *ldrShip) doTransfer(target uint64) {
 		if l.trace.sending != nil {
 			l.trace.sending(l.id, pool.id, Leader, req)
 		}
-		if err = conn.conn.SetDeadline(l.transfer.deadline); err != nil {
+		if err = c.rwc.SetDeadline(l.transfer.deadline); err != nil {
 			return
 		}
 		resp := new(timeoutNowResp)
-		if err = conn.doRPC(req, resp); err != nil {
-			_ = conn.close()
+		if err = c.doRPC(req, resp); err != nil {
+			_ = c.rwc.Close()
 			return
 		}
 		debug(l.id, "<<", resp)
 		if l.trace.received != nil {
 			l.trace.received(l.id, pool.id, Leader, req.term, resp)
 		}
-		pool.returnConn(conn)
+		pool.returnConn(c)
 	}()
 }
 

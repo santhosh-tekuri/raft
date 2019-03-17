@@ -65,9 +65,9 @@ func (c *candShip) requestVote(pool *connPool, req *voteReq, deadline time.Time)
 	if c.trace.sending != nil {
 		c.trace.sending(c.id, pool.id, Candidate, req)
 	}
-	_ = conn.conn.SetDeadline(deadline)
+	_ = conn.rwc.SetDeadline(deadline)
 	if err = conn.doRPC(req, resp); err != nil {
-		_ = conn.close()
+		_ = conn.rwc.Close()
 		return nil, err
 	}
 	pool.returnConn(conn)

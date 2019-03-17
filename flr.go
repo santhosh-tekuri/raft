@@ -16,7 +16,7 @@ type flr struct {
 	connPool  *connPool
 	storage   *storage
 	hbTimeout time.Duration
-	conn      *netConn
+	conn      *conn
 
 	ldrStartIndex uint64
 	ldrLastIndex  uint64
@@ -279,7 +279,7 @@ func (f *flr) doRPC(req request, resp message) error {
 	}
 	err := f.conn.doRPC(req, resp)
 	if err != nil {
-		_ = f.conn.close()
+		_ = f.conn.rwc.Close()
 		f.conn = nil
 	}
 	if f.trace.received != nil && err == nil {
