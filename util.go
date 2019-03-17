@@ -32,17 +32,18 @@ func isClosed(ch <-chan struct{}) bool {
 	}
 }
 
-// ------------------------------------------------------
+// safeTimer ------------------------------------------------------
 
 type safeTimer struct {
 	timer *time.Timer
 	C     <-chan time.Time
 
-	// true if timer is started, but not yet received from channel
+	// active is true if timer is started, but not yet received from channel.
 	// NOTE: must be set to false, after receiving from channel
 	active bool
 }
 
+// newSafeTimer creates stopped timer
 func newSafeTimer() *safeTimer {
 	t := time.NewTimer(0)
 	if !t.Stop() {
@@ -69,9 +70,8 @@ func (t *safeTimer) reset(d time.Duration) {
 // backOff ------------------------------------------------
 
 const (
-	maxAppendEntries = 64 // todo: should be configurable
-	maxFailureScale  = 12
-	failureWait      = 10 * time.Millisecond
+	maxFailureScale = 12
+	failureWait     = 10 * time.Millisecond
 )
 
 // backOff is used to compute an exponential backOff
@@ -95,9 +95,7 @@ type randTime struct {
 
 func newRandTime() randTime {
 	var seed int64
-	r, err := crand.Int(crand.Reader, big.NewInt(math.MaxInt64))
-	if err != nil {
-		fmt.Printf("failed to read random bytes: %v\n", err)
+	if r, err := crand.Int(crand.Reader, big.NewInt(math.MaxInt64)); err != nil {
 		seed = time.Now().UnixNano()
 	} else {
 		seed = r.Int64()

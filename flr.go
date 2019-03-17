@@ -129,6 +129,8 @@ func (f *flr) onLeaderUpdate(u leaderUpdate, req *appendEntriesReq) {
 	}
 }
 
+const maxAppendEntries = 64 // todo: should be configurable
+
 func (f *flr) sendAppEntriesReq(req *appendEntriesReq) error {
 	req.prevLogIndex = f.nextIndex - 1
 
