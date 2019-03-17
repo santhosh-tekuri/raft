@@ -3,7 +3,6 @@ package raft
 import (
 	"errors"
 	"fmt"
-	"io"
 	"time"
 )
 
@@ -14,9 +13,9 @@ type flr struct {
 	status flrStatus
 
 	connPool  *connPool
+	conn      *conn
 	storage   *storage
 	hbTimeout time.Duration
-	conn      *conn
 
 	ldrStartIndex uint64
 	ldrLastIndex  uint64
@@ -56,24 +55,42 @@ func (f *flr) replicate(req *appendEntriesReq) {
 		debug(f, "started:", f.round)
 	}
 
-	timer := newSafeTimer()
+	timer, failures := newSafeTimer(), uint64(0)
+	sendReq, err := f.sendAppEntriesReq, error(nil)
 	for {
 		assert(f.matchIndex < f.nextIndex, "%v assert %d<%d", f, f.matchIndex, f.nextIndex)
 
-		err := f.sendAppEntriesReq(req)
-		if err == errNoEntryFound {
-			err = f.sendInstallSnapReq(req)
+		// note: we are sure that sendInstallSnapReq never returns errNoEntryFound
+		if err = sendReq(req); err == errNoEntryFound {
+			sendReq = f.sendInstallSnapReq
+			err = sendReq(req)
 		}
 
 		if err == errStop {
 			return
 		} else if err != nil {
-			if f.trace.Error != nil {
-				f.trace.Error(err)
+			// todo: we need to distinguish between local/remote opErr
+			//       only local opErr to be sent to trace
+			if _, ok := err.(OpError); ok {
+				if f.trace.Error != nil {
+					f.trace.Error(err)
+				}
 			}
-			fatal("raft.replicate: %v", err) // todo
-			continue
+			if f.noContact.IsZero() {
+				f.noContact = time.Now()
+				debug(f, "noContact", err)
+				f.notifyLdr(noContact{&f.status, f.noContact, err})
+			}
+			failures++
+			select {
+			case <-f.stopCh:
+				return
+			case <-time.After(backOff(failures)):
+				continue
+			}
 		}
+		failures = 0
+		sendReq = f.sendAppEntriesReq
 
 		if f.sendEntries && f.matchIndex == f.ldrLastIndex {
 			timer.reset(f.hbTimeout / 10)
@@ -179,11 +196,15 @@ func (f *flr) sendAppEntriesReq(req *appendEntriesReq) error {
 		debug(f, ">> heartbeat")
 	}
 	resp := &appendEntriesResp{}
-	if err := f.retryRPC(req, resp); err != nil {
+	if err := f.doRPC(req, resp); err != nil {
 		return err
 	}
 	if req.entries != nil || !f.sendEntries {
 		debug(f, "<<", resp)
+	}
+	if resp.getTerm() > req.getTerm() {
+		f.notifyLdr(newTerm{resp.getTerm()})
+		return errStop
 	}
 
 	f.sendEntries = resp.result == success
@@ -208,19 +229,32 @@ func (f *flr) sendAppEntriesReq(req *appendEntriesReq) error {
 }
 
 func (f *flr) sendInstallSnapReq(appReq *appendEntriesReq) error {
-	req := &installLatestSnapReq{
-		installSnapReq: installSnapReq{req: appReq.req},
-		snapshots:      f.storage.snapshots,
+	meta, snapshot, err := f.storage.snapshots.Open()
+	if err != nil {
+		return opError(err, "Snapshots.Open")
 	}
+	defer snapshot.Close()
 
-	debug(f, "sending installReq")
+	req := &installSnapReq{
+		req:        appReq.req,
+		lastIndex:  meta.Index,
+		lastTerm:   meta.Term,
+		lastConfig: meta.Config,
+		size:       meta.Size,
+		snapshot:   snapshot,
+	}
 	resp := &installSnapResp{}
-	if err := f.retryRPC(req, resp); err != nil {
+	debug(f, "sending installReq")
+	if err := f.doRPC(req, resp); err != nil {
 		return err
+	}
+	if resp.getTerm() > req.getTerm() {
+		f.notifyLdr(newTerm{resp.getTerm()})
+		return errStop
 	}
 
 	// we have to still send one appEntries, to update his commit index
-	// so we should not update sendEntries=true, beacuse if we have
+	// so we should not update sendEntries=true, because if we have
 	// no entries beyond snapshot, we sleep for hbTimeout
 	//f.sendEntries = resp.success // NOTE: dont do this
 	if resp.result == success {
@@ -232,35 +266,6 @@ func (f *flr) sendInstallSnapReq(appReq *appendEntriesReq) error {
 	} else {
 		return errors.New("installSnap.success is false")
 	}
-}
-
-func (f *flr) retryRPC(req request, resp message) error {
-	var failures uint64
-	for {
-		err := f.doRPC(req, resp)
-		if _, ok := err.(OpError); ok {
-			return err
-		} else if err != nil {
-			if f.noContact.IsZero() {
-				f.noContact = time.Now()
-				debug(f, "noContact", err)
-				f.notifyLdr(noContact{&f.status, f.noContact, err})
-			}
-			failures++
-			select {
-			case <-f.stopCh:
-				return errStop
-			case <-time.After(backOff(failures)):
-				continue
-			}
-		}
-		break
-	}
-	if resp.getTerm() > req.getTerm() {
-		f.notifyLdr(newTerm{resp.getTerm()})
-		return errStop
-	}
-	return nil
 }
 
 func (f *flr) doRPC(req request, resp message) error {
@@ -283,11 +288,12 @@ func (f *flr) doRPC(req request, resp message) error {
 	if err != nil {
 		_ = f.conn.rwc.Close()
 		f.conn = nil
+		return err
 	}
 	if f.trace.received != nil && err == nil {
 		f.trace.received(req.from(), f.connPool.nid, Leader, req.getTerm(), resp)
 	}
-	return err
+	return nil
 }
 
 func (f *flr) notifyLdr(u interface{}) {
@@ -361,25 +367,6 @@ func (r Round) String() string {
 }
 
 // ------------------------------------------------
-
-type installLatestSnapReq struct {
-	installSnapReq
-	snapshots Snapshots
-}
-
-func (req *installLatestSnapReq) encode(w io.Writer) error {
-	meta, snapshot, err := req.snapshots.Open()
-	if err != nil {
-		return opError(err, "Snapshots.Open")
-	}
-	req.lastIndex = meta.Index
-	req.lastTerm = meta.Term
-	req.lastConfig = meta.Config
-	req.size = meta.Size
-	req.snapshot = snapshot
-	defer snapshot.Close()
-	return req.installSnapReq.encode(w)
-}
 
 type leaderUpdate struct {
 	lastIndex   uint64
