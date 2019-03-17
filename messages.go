@@ -238,22 +238,29 @@ func (resp *resp) encode(w io.Writer) error {
 
 type identityReq struct {
 	req // not used
+	cid uint64
 	tgt uint64
 }
 
 func (req *identityReq) rpcType() rpcType { return rpcIdentity }
 func (req *identityReq) String() string {
-	format := "identityReq{T%d M%d M%d}"
-	return fmt.Sprintf(format, req.term, req.src, req.tgt)
+	format := "identityReq{T%d M%d C%d M%d}"
+	return fmt.Sprintf(format, req.term, req.src, req.cid, req.tgt)
 }
 
 func (req *identityReq) decode(r io.Reader) error {
 	var err error
+	if req.cid, err = readUint64(r); err != nil {
+		return err
+	}
 	req.tgt, err = readUint64(r)
 	return err
 }
 
 func (req *identityReq) encode(w io.Writer) error {
+	if err := writeUint64(w, req.cid); err != nil {
+		return nil
+	}
 	return writeUint64(w, req.tgt)
 }
 

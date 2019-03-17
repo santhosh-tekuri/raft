@@ -102,10 +102,11 @@ func opError(err error, format string, v ...interface{}) OpError {
 // -----------------------------------------------------------
 
 type IdentityError struct {
-	id   uint64
-	addr string
+	Cluster uint64
+	Node    uint64
+	Addr    string
 }
 
 func (e IdentityError) Error() string {
-	return fmt.Sprintf("raft: server at %s does not has id %d", e.addr, e.id)
+	return fmt.Sprintf("raft: server at %s does not has cluster %d node %d", e.Addr, e.Cluster, e.Node)
 }

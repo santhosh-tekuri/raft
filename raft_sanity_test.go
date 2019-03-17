@@ -3,6 +3,7 @@ package raft
 import (
 	"errors"
 	"fmt"
+	"math/rand"
 	"testing"
 	"time"
 )
@@ -335,7 +336,7 @@ func test_leader_quorumWait_reachable(t *testing.T) {
 
 // if Vars.getVote fails, then raft.New should return OpError
 func test_opError_getVote(t *testing.T) {
-	mockStorage := &inmemStorage{id: 1}
+	mockStorage := &inmemStorage{cid: rand.Uint64(), nid: 1}
 	mockStorage.getVoteErr = errors.New("abc")
 	storage := Storage{mockStorage, mockStorage, mockStorage}
 	_, err := New(DefaultOptions(), &fsmMock{id: 1}, storage)

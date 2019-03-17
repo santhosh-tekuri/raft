@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"reflect"
 	"runtime"
@@ -158,6 +159,7 @@ func newCluster(t *testing.T) *cluster {
 	})
 	c := &cluster{
 		T:                t,
+		id:               rand.Uint64(),
 		checkLeak:        leaktest.Check(t),
 		testTimeout:      testTimeout,
 		network:          fnet.New(),
@@ -180,6 +182,7 @@ func newCluster(t *testing.T) *cluster {
 
 type cluster struct {
 	*testing.T
+	id               uint64
 	checkLeak        func()
 	testTimeout      *time.Timer
 	rr               map[uint64]*Raft
@@ -230,7 +233,7 @@ func (c *cluster) launch(n int, bootstrap bool) map[uint64]*Raft {
 
 	launched := make(map[uint64]*Raft)
 	for _, node := range nodes {
-		s := &inmemStorage{id: node.ID}
+		s := &inmemStorage{cid: c.id, nid: node.ID}
 		storage := Storage{Vars: s, Log: s, Snapshots: s}
 		if bootstrap {
 			if err := BootstrapStorage(storage, nodes); err != nil {
@@ -1079,7 +1082,8 @@ var (
 )
 
 type inmemStorage struct {
-	id           uint64
+	cid          uint64
+	nid          uint64
 	muStable     sync.RWMutex
 	term         uint64
 	vote         uint64
@@ -1095,12 +1099,12 @@ type inmemStorage struct {
 	snapshot *bytes.Buffer
 }
 
-func (s *inmemStorage) GetIdentity() (node uint64, err error) {
-	return s.id, nil
+func (s *inmemStorage) GetIdentity() (cluster, node uint64, err error) {
+	return s.cid, s.nid, nil
 }
 
-func (s *inmemStorage) SetIdentity(node uint64) error {
-	s.id = node
+func (s *inmemStorage) SetIdentity(cluster, node uint64) error {
+	s.cid, s.nid = cluster, node
 	return nil
 }
 
@@ -1117,9 +1121,9 @@ func (s *inmemStorage) SetVote(term, vote uint64) error {
 		return s.setTermErr
 	}
 	if vote != 0 && vote != s.vote {
-		if vote == s.id && s.voteSelfErr != nil {
+		if vote == s.nid && s.voteSelfErr != nil {
 			return s.voteSelfErr
-		} else if vote != s.id && s.voteOtherErr != nil {
+		} else if vote != s.nid && s.voteOtherErr != nil {
 			return s.voteOtherErr
 		}
 	}

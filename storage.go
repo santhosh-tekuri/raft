@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"io"
 	"sync"
+
+	"github.com/pkg/errors"
 )
 
 type Vars interface {
-	GetIdentity() (node uint64, err error)
-	SetIdentity(node uint64) error
+	GetIdentity() (cluster, node uint64, err error)
+	SetIdentity(cluster, node uint64) error
 	GetVote() (term, vote uint64, err error)
 	SetVote(term, vote uint64) error
 }
@@ -48,26 +50,32 @@ type Storage struct {
 	Snapshots Snapshots
 }
 
-func (s Storage) GetIdentity() (node uint64, err error) {
-	node, err = s.Vars.GetIdentity()
+func (s Storage) GetIdentity() (cluster, node uint64, err error) {
+	cluster, node, err = s.Vars.GetIdentity()
 	if err != nil {
 		err = opError(err, "Vars.GetIdentity")
 	}
 	return
 }
 
-func (s Storage) SetIdentity(node uint64) error {
-	id, err := s.GetIdentity()
+func (s Storage) SetIdentity(cluster, node uint64) error {
+	if cluster == 0 {
+		return errors.New("raft: cluster is zero")
+	}
+	if node == 0 {
+		return errors.New("raft: node is zero")
+	}
+	cid, nid, err := s.GetIdentity()
 	if err != nil {
 		return err
 	}
-	if id == node {
+	if cid == cluster && nid == node {
 		return nil
 	}
-	if id != 0 {
+	if cid != 0 || nid != 0 {
 		return ErrIdentityAlreadySet
 	}
-	err = s.Vars.SetIdentity(node)
+	err = s.Vars.SetIdentity(cluster, node)
 	if err != nil {
 		err = opError(err, "Vars.SetIdentity")
 	}
@@ -77,6 +85,7 @@ func (s Storage) SetIdentity(node uint64) error {
 // todo: can we avoid panics on storage error
 type storage struct {
 	vars     Vars
+	cid      uint64
 	id       uint64
 	term     uint64
 	votedFor uint64
@@ -107,11 +116,11 @@ func (s *storage) init() error {
 	var err error
 
 	// init identity
-	s.id, err = s.vars.GetIdentity()
+	s.cid, s.id, err = s.vars.GetIdentity()
 	if err != nil {
 		return opError(err, "Vars.GetIdentity")
 	}
-	if s.id == 0 {
+	if s.cid == 0 || s.id == 0 {
 		return ErrIdentityNotSet
 	}
 

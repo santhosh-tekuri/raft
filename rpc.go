@@ -15,7 +15,7 @@ import (
 func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 	// handle identity req
 	if req, ok := rpc.req.(*identityReq); ok {
-		if r.id != req.tgt {
+		if r.cid != req.cid || r.id != req.tgt {
 			rpc.resp = rpcIdentity.createResp(r, idMismatch)
 		} else {
 			rpc.resp = rpcIdentity.createResp(r, success)
