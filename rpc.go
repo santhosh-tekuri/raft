@@ -15,7 +15,7 @@ import (
 func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 	// handle identity req
 	if req, ok := rpc.req.(*identityReq); ok {
-		if r.cid != req.cid || r.id != req.tgt {
+		if r.cid != req.cid || r.nid != req.nid {
 			rpc.resp = rpcIdentity.createResp(r, idMismatch)
 		} else {
 			rpc.resp = rpcIdentity.createResp(r, success)
@@ -25,7 +25,7 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 	}
 
 	if r.trace.received != nil {
-		r.trace.received(r.id, rpc.req.from(), r.state, r.term, rpc.req)
+		r.trace.received(r.nid, rpc.req.from(), r.state, r.term, rpc.req)
 	}
 
 	result, err := rpcResult(0), error(nil)
@@ -63,7 +63,7 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 
 	rpc.resp = rpc.req.rpcType().createResp(r, result)
 	if r.trace.sending != nil {
-		r.trace.sending(r.id, rpc.req.from(), r.state, rpc.resp)
+		r.trace.sending(r.nid, rpc.req.from(), r.state, rpc.resp)
 	}
 	close(rpc.done)
 

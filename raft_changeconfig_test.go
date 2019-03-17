@@ -57,13 +57,13 @@ func test_changeConfig_committedByAll(t *testing.T) {
 	defer c.unregister(configRelated)
 
 	// add M4 as nonvoter, wait for success reply
-	c.ensure(waitAddNonvoter(ldr, m4.ID(), id2Addr(m4.ID()), false))
+	c.ensure(waitAddNonvoter(ldr, m4.NID(), id2Addr(m4.NID()), false))
 
 	// ensure that leader raised configChange
 	select {
 	case e := <-configRelated.ch:
-		if e.src != ldr.ID() {
-			t.Fatalf("got M%d, want M%d", e.src, ldr.ID())
+		if e.src != ldr.NID() {
+			t.Fatalf("got M%d, want M%d", e.src, ldr.NID())
 		}
 		if e.typ != configChanged {
 			t.Fatalf("got %d, want %d", e.typ, configChanged)
@@ -77,7 +77,7 @@ func test_changeConfig_committedByAll(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		select {
 		case e := <-configRelated.ch:
-			if e.src == ldr.ID() || e.src == m4.ID() {
+			if e.src == ldr.NID() || e.src == m4.NID() {
 				t.Fatalf("got M%d", e.src)
 			}
 			if e.typ != configChanged {
@@ -94,8 +94,8 @@ func test_changeConfig_committedByAll(t *testing.T) {
 	// ensure that leader raised configCommitted
 	select {
 	case e := <-configRelated.ch:
-		if e.src != ldr.ID() {
-			t.Fatalf("got M%d, want M%d", e.src, ldr.ID())
+		if e.src != ldr.NID() {
+			t.Fatalf("got M%d, want M%d", e.src, ldr.NID())
 		}
 		if e.typ != configCommitted {
 			t.Fatalf("got %d, want %d", e.typ, configCommitted)
@@ -111,7 +111,7 @@ func test_changeConfig_committedByAll(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		select {
 		case e := <-configRelated.ch:
-			if e.src == ldr.ID() || e.src == m4.ID() {
+			if e.src == ldr.NID() || e.src == m4.NID() {
 				t.Fatalf("got M%d", e.src)
 			}
 			if e.typ != configCommitted {
@@ -130,14 +130,14 @@ func test_changeConfig_committedByAll(t *testing.T) {
 	for _, r := range c.rr {
 		info := r.Info()
 		if !info.Configs().IsCommitted() {
-			t.Fatalf("config is not committed by M%d %s", info.ID(), info.State())
+			t.Fatalf("config is not committed by M%d %s", info.NID(), info.State())
 		}
 		m4, ok := info.Configs().Committed.Nodes[4]
 		if !ok {
-			t.Fatalf("m4 is not present in M%d %s", info.ID(), info.State())
+			t.Fatalf("m4 is not present in M%d %s", info.NID(), info.State())
 		}
 		if m4.Voter {
-			t.Fatalf("m4 must be nonvoter in M%d %s", info.ID(), info.State())
+			t.Fatalf("m4 must be nonvoter in M%d %s", info.NID(), info.State())
 		}
 	}
 }
@@ -157,7 +157,7 @@ func test_nonvoter_catchesUp_followsLeader(t *testing.T) {
 	m4 := c.launch(1, false)[4]
 
 	// add M4 as nonvoter, wait for success reply
-	c.ensure(waitAddNonvoter(ldr, m4.ID(), id2Addr(m4.ID()), false))
+	c.ensure(waitAddNonvoter(ldr, m4.NID(), id2Addr(m4.NID()), false))
 
 	// ensure that M4 got its FSM replicated
 	c.waitFSMLen(10, m4)
@@ -176,7 +176,7 @@ func test_nonvoter_reconnects_catchesUp(t *testing.T) {
 	m4 := c.launch(1, false)[4]
 
 	// add M4 as nonvoter, wait for success reply
-	c.ensure(waitAddNonvoter(ldr, m4.ID(), id2Addr(m4.ID()), false))
+	c.ensure(waitAddNonvoter(ldr, m4.NID(), id2Addr(m4.NID()), false))
 
 	// now disconnect nonvoter m4
 	m4StateChanged := c.registerFor(stateChanged, m4)
@@ -226,7 +226,7 @@ func test_nonvoter_leaderChanged_followsNewLeader(t *testing.T) {
 	m4 := c.launch(1, false)[4]
 
 	// add M4 as nonvoter, wait for success reply
-	c.ensure(waitAddNonvoter(ldr, m4.ID(), id2Addr(m4.ID()), false))
+	c.ensure(waitAddNonvoter(ldr, m4.NID(), id2Addr(m4.NID()), false))
 
 	// now shutdown the leader
 	<-ldr.Shutdown()

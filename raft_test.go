@@ -119,7 +119,7 @@ func TestMain(m *testing.M) {
 // ---------------------------------------------
 
 func host(r *Raft) string {
-	return id2Host(r.ID())
+	return id2Host(r.NID())
 }
 
 func id2Host(id uint64) string {
@@ -245,11 +245,11 @@ func (c *cluster) launch(n int, bootstrap bool) map[uint64]*Raft {
 		if err != nil {
 			c.Fatal(err)
 		}
-		launched[r.ID()] = r
+		launched[r.NID()] = r
 		c.rr[node.ID] = r
 		c.storage[node.ID] = storage
 		c.serverErrMu.Lock()
-		c.serveErr[r.ID()] = make(chan error, 1)
+		c.serveErr[r.NID()] = make(chan error, 1)
 		c.serverErrMu.Unlock()
 		c.serve(r)
 	}
@@ -259,17 +259,17 @@ func (c *cluster) launch(n int, bootstrap bool) map[uint64]*Raft {
 func (c *cluster) serve(r *Raft) {
 	c.Helper()
 	// switch to fake transport
-	host := c.network.Host(id2Host(r.ID()))
+	host := c.network.Host(id2Host(r.NID()))
 	r.dialFn = host.DialTimeout
 
-	l, err := host.Listen("tcp", id2Addr(r.ID()))
+	l, err := host.Listen("tcp", id2Addr(r.NID()))
 	if err != nil {
 		c.Fatalf("raft.listen failed: %v", err)
 	}
 	go func() {
 		err := r.Serve(l)
 		c.serverErrMu.RLock()
-		c.serveErr[r.ID()] <- err
+		c.serveErr[r.NID()] <- err
 		c.serverErrMu.RUnlock()
 	}()
 }
@@ -278,7 +278,7 @@ func (c *cluster) ensureLaunch(n int) (ldr *Raft, followers []*Raft) {
 	c.Helper()
 	c.launch(n, true)
 	ldr = c.waitForHealthy()
-	c.ensureLeader(ldr.ID())
+	c.ensureLeader(ldr.NID())
 	followers = c.followers()
 	return
 }
@@ -295,13 +295,13 @@ func (c *cluster) shutdownErr(ok bool, rr ...*Raft) {
 		tdebug("shutting down", host(r))
 		<-r.Shutdown()
 		c.serverErrMu.RLock()
-		ch := c.serveErr[r.ID()]
+		ch := c.serveErr[r.NID()]
 		c.serverErrMu.RUnlock()
 		got := <-ch
 		ch <- ErrServerClosed
 		tdebug(host(r), "is shutdown", got)
 		if ok != (got == ErrServerClosed) {
-			c.Errorf("M%d.shutdown: got %v, want ErrServerClosed=%v", r.ID(), got, ok)
+			c.Errorf("M%d.shutdown: got %v, want ErrServerClosed=%v", r.NID(), got, ok)
 		}
 	}
 	if c.Failed() {
@@ -323,15 +323,15 @@ func (c *cluster) restart(r *Raft) *Raft {
 	c.Helper()
 	c.shutdown(r)
 
-	newFSM := &fsmMock{id: r.ID(), changed: c.events.onFMSChanged}
-	storage := c.storage[r.ID()]
+	newFSM := &fsmMock{id: r.NID(), changed: c.events.onFMSChanged}
+	storage := c.storage[r.NID()]
 	newr, err := New(c.opt, newFSM, storage)
 	if err != nil {
 		c.Fatal(err)
 	}
-	c.rr[r.ID()] = newr
+	c.rr[r.NID()] = newr
 	c.serverErrMu.Lock()
-	c.serveErr[r.ID()] = make(chan error, 1)
+	c.serveErr[r.NID()] = make(chan error, 1)
 	c.serverErrMu.Unlock()
 	tdebug("restarting", host(r))
 	c.serve(newr)
@@ -405,7 +405,7 @@ func (c *cluster) ensureLeader(leader uint64) {
 	c.Helper()
 	for _, r := range c.rr {
 		if got := r.Info().Leader(); got != leader {
-			c.Fatalf("leader of M%d: got M%d, want M%d", r.ID(), got, leader)
+			c.Fatalf("leader of M%d: got M%d, want M%d", r.NID(), got, leader)
 		}
 	}
 }
@@ -426,7 +426,7 @@ func (c *cluster) waitForState(r *Raft, timeout time.Duration, states ...State) 
 	stateChanged := c.registerFor(stateChanged)
 	defer c.unregister(stateChanged)
 	if !stateChanged.waitFor(condition, timeout) {
-		c.Fatalf("waitForState(M%d, %v) timeout", r.ID(), states)
+		c.Fatalf("waitForState(M%d, %v) timeout", r.NID(), states)
 	}
 }
 
@@ -471,7 +471,7 @@ func (c *cluster) waitFSMLen(fsmLen uint64, rr ...*Raft) {
 	if !fsmChanged.waitFor(condition, c.longTimeout) {
 		c.Logf("fsmLen: want %d", fsmLen)
 		for _, r := range rr {
-			c.Logf("M%d got %d", r.ID(), fsm(r).len())
+			c.Logf("M%d got %d", r.NID(), fsm(r).len())
 		}
 		c.Fatalf("waitFSMLen(%d) timeout", fsmLen)
 	}
@@ -485,7 +485,7 @@ func (c *cluster) ensureFSMLen(fsmLen uint64, rr ...*Raft) {
 	}
 	for _, r := range rr {
 		if got := fsm(r).len(); got != fsmLen {
-			c.Fatalf("ensureFSMLen(M%d): got %d, want %d", r.ID(), got, fsmLen)
+			c.Fatalf("ensureFSMLen(M%d): got %d, want %d", r.NID(), got, fsmLen)
 		}
 	}
 }
@@ -528,7 +528,7 @@ func (c *cluster) waitCatchup(rr ...*Raft) {
 			if info.LastLogIndex() < ldr.LastLogIndex() ||
 				info.Committed() < ldr.Committed() {
 				if log {
-					c.Logf("waitCatchup: M%d lastLogIndex:%d committed:%d", r.ID(), info.LastLogIndex(), info.Committed())
+					c.Logf("waitCatchup: M%d lastLogIndex:%d committed:%d", r.NID(), info.LastLogIndex(), info.Committed())
 				}
 				return false
 			}
@@ -536,7 +536,7 @@ func (c *cluster) waitCatchup(rr ...*Raft) {
 		return true
 	}
 	if !waitForCondition(condition, c.commitTimeout, c.longTimeout) {
-		c.Logf("waitCatchup: ldr M%d lastLogIndex:%d committed:%d", ldr.ID(), ldr.LastLogIndex(), ldr.Committed())
+		c.Logf("waitCatchup: ldr M%d lastLogIndex:%d committed:%d", ldr.NID(), ldr.LastLogIndex(), ldr.Committed())
 		log = true
 		condition()
 		c.Fatal("waitCatchup: timeout")
@@ -547,12 +547,12 @@ func (c *cluster) waitUnreachableDetected(ldr, failed *Raft) {
 	c.Helper()
 	tdebug("waitUnreachableDetected: ldr:", host(ldr), "failed:", host(failed))
 	condition := func() bool {
-		return !ldr.Info().Followers()[failed.ID()].Unreachable.IsZero()
+		return !ldr.Info().Followers()[failed.NID()].Unreachable.IsZero()
 	}
 	unreachable := c.registerFor(unreachable, ldr)
 	defer c.unregister(unreachable)
 	if !unreachable.waitFor(condition, c.longTimeout) {
-		c.Fatalf("waitUnreachableDetected: ldr M%d failed to detect M%d is unreachable", ldr.ID(), failed.ID())
+		c.Fatalf("waitUnreachableDetected: ldr M%d failed to detect M%d is unreachable", ldr.NID(), failed.NID())
 	}
 }
 
@@ -586,7 +586,7 @@ func (c *cluster) sendUpdates(r *Raft, from, to int) Task {
 func (c *cluster) waitBarrier(r *Raft, timeout time.Duration) {
 	c.Helper()
 	if _, err := waitFSMTask(r, BarrierFSM(), timeout); err != nil {
-		c.Fatalf("Barrer(M%d): timeout", r.ID())
+		c.Fatalf("Barrer(M%d): timeout", r.NID())
 	}
 }
 
@@ -597,7 +597,7 @@ func (c *cluster) takeSnapshot(r *Raft, threshold uint64, want error) {
 	r.Tasks() <- takeSnap
 	<-takeSnap.Done()
 	if takeSnap.Err() != want {
-		c.Fatalf("takeSnapshot(M%d).err: got %s, want %v", r.id, takeSnap.Err(), want)
+		c.Fatalf("takeSnapshot(M%d).err: got %s, want %v", r.nid, takeSnap.Err(), want)
 	}
 }
 
@@ -609,7 +609,7 @@ func (c *cluster) disconnect(rr ...*Raft) {
 	}
 	var hosts []string
 	for _, r := range rr {
-		hosts = append(hosts, id2Host(r.ID()))
+		hosts = append(hosts, id2Host(r.NID()))
 	}
 	c.network.SetFirewall(fnet.Split(hosts, fnet.AllowAll))
 }
@@ -757,7 +757,7 @@ func (e event) matches(typ eventType, rr ...*Raft) bool {
 
 	if len(rr) > 0 {
 		for _, r := range rr {
-			if e.src == r.ID() {
+			if e.src == r.NID() {
 				return true
 			}
 		}
@@ -850,34 +850,34 @@ func (ee *events) onFMSChanged(id uint64, len uint64) {
 func (ee *events) trace() (trace Trace) {
 	trace.ShuttingDown = func(info Info, reason error) {
 		ee.sendEvent(event{
-			src: info.ID(),
+			src: info.NID(),
 			typ: shuttingDown,
 			err: reason,
 		})
 	}
 	trace.StateChanged = func(info Info) {
 		ee.sendEvent(event{
-			src:   info.ID(),
+			src:   info.NID(),
 			typ:   stateChanged,
 			state: info.State(),
 		})
 	}
 	trace.ElectionStarted = func(info Info) {
 		ee.sendEvent(event{
-			src: info.ID(),
+			src: info.NID(),
 			typ: electionStarted,
 		})
 	}
 	trace.ElectionAborted = func(info Info, reason string) {
 		ee.sendEvent(event{
-			src: info.ID(),
+			src: info.NID(),
 			typ: electionAborted,
 		})
 	}
 
 	trace.ConfigChanged = func(info Info) {
 		ee.sendEvent(event{
-			src:     info.ID(),
+			src:     info.NID(),
 			typ:     configChanged,
 			configs: info.Configs(),
 		})
@@ -885,7 +885,7 @@ func (ee *events) trace() (trace Trace) {
 
 	trace.ConfigCommitted = func(info Info) {
 		ee.sendEvent(event{
-			src:     info.ID(),
+			src:     info.NID(),
 			typ:     configCommitted,
 			configs: info.Configs(),
 		})
@@ -893,7 +893,7 @@ func (ee *events) trace() (trace Trace) {
 
 	trace.ConfigReverted = func(info Info) {
 		ee.sendEvent(event{
-			src:     info.ID(),
+			src:     info.NID(),
 			typ:     configReverted,
 			configs: info.Configs(),
 		})
@@ -901,7 +901,7 @@ func (ee *events) trace() (trace Trace) {
 
 	trace.Unreachable = func(info Info, id uint64, since time.Time, err error) {
 		ee.sendEvent(event{
-			src:    info.ID(),
+			src:    info.NID(),
 			typ:    unreachable,
 			target: id,
 			since:  since,
@@ -911,7 +911,7 @@ func (ee *events) trace() (trace Trace) {
 
 	trace.QuorumUnreachable = func(info Info, since time.Time) {
 		ee.sendEvent(event{
-			src:   info.ID(),
+			src:   info.NID(),
 			typ:   quorumUnreachable,
 			since: since,
 		})
@@ -919,7 +919,7 @@ func (ee *events) trace() (trace Trace) {
 
 	trace.RoundCompleted = func(info Info, id uint64, r Round) {
 		ee.sendEvent(event{
-			src:    info.ID(),
+			src:    info.NID(),
 			typ:    roundFinished,
 			target: id,
 			round:  r,
@@ -928,7 +928,7 @@ func (ee *events) trace() (trace Trace) {
 
 	trace.Promoting = func(info Info, id, numRounds uint64) {
 		ee.sendEvent(event{
-			src:       info.ID(),
+			src:       info.NID(),
 			typ:       promoting,
 			target:    id,
 			numRounds: numRounds,
@@ -1265,7 +1265,7 @@ func hosts(rr []*Raft) string {
 		if i != 0 {
 			buf.WriteString(" ")
 		}
-		buf.WriteString(id2Host(r.ID()))
+		buf.WriteString(id2Host(r.NID()))
 	}
 	return buf.String()
 }

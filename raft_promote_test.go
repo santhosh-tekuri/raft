@@ -97,8 +97,8 @@ func test_promote_newNode_uptodateButConfigChangeInProgress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("waitForRoundComplete: %v", err)
 	}
-	if e.target != m3.id {
-		t.Fatalf("roundCompleted: got M%d, want M%d", e.target, m3.id)
+	if e.target != m3.nid {
+		t.Fatalf("roundCompleted: got M%d, want M%d", e.target, m3.nid)
 	}
 
 	// sleep a sec, to ensure that leader does not promote m3
@@ -109,7 +109,7 @@ func test_promote_newNode_uptodateButConfigChangeInProgress(t *testing.T) {
 	if configs.IsCommitted() {
 		t.Fatal("config should not be committed")
 	}
-	if configs.Latest.Nodes[m3.id].Voter {
+	if configs.Latest.Nodes[m3.nid].Voter {
 		t.Fatal("m3 must still be nonvoter")
 	}
 
@@ -123,19 +123,19 @@ func test_promote_newNode_uptodateButConfigChangeInProgress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("waitForPromoting: %v", err)
 	}
-	if e.src != ldr.id {
-		t.Fatalf("promoted.src: got M%d, want M%d", e.src, ldr.id)
+	if e.src != ldr.nid {
+		t.Fatalf("promoted.src: got M%d, want M%d", e.src, ldr.nid)
 	}
-	if e.target != m3.id {
-		t.Fatalf("promoted.target: got M%d, want M%d", e.target, m3.id)
+	if e.target != m3.nid {
+		t.Fatalf("promoted.target: got M%d, want M%d", e.target, m3.nid)
 	}
 	if e.numRounds != 1 {
-		t.Fatalf("M%d round: got %d, want %d", m3.id, e.numRounds, 1)
+		t.Fatalf("M%d round: got %d, want %d", m3.nid, e.numRounds, 1)
 	}
 
 	// wait for config commit, with m3 as voter
 	isVoter := func() bool {
-		n, ok := ldr.Info().Configs().Committed.Nodes[m3.id]
+		n, ok := ldr.Info().Configs().Committed.Nodes[m3.nid]
 		return ok && n.Voter
 	}
 	waitForCondition(isVoter, c.commitTimeout, c.longTimeout)

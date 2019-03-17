@@ -55,7 +55,7 @@ func New(opt Options, fsm FSM, storage Storage) (*Raft, error) {
 	}
 	sm := &stateMachine{
 		FSM:       fsm,
-		id:        store.id,
+		id:        store.nid,
 		taskCh:    make(chan Task, 128), // todo configurable capacity
 		snapshots: storage.Snapshots,
 	}
@@ -110,7 +110,7 @@ func (r *Raft) Serve(l net.Listener) error {
 	go func() {
 		defer wg.Done()
 		r.fsm.runLoop()
-		debug(r.id, "fsmLoop shutdown")
+		debug(r.nid, "fsmLoop shutdown")
 	}()
 	defer close(r.fsm.taskCh)
 
@@ -127,7 +127,7 @@ func (r *Raft) Serve(l net.Listener) error {
 	go func() {
 		defer wg.Done()
 		s.serve(r.rpcCh)
-		debug(r.id, "server shutdown")
+		debug(r.nid, "server shutdown")
 	}()
 	defer s.shutdown()
 
@@ -205,12 +205,12 @@ func (r *Raft) stateLoop() (err error) {
 
 			// candidate --------------
 			case v := <-c.voteCh:
-				assert(r.state == Candidate, "M%d BUG: %v", r.id, r.state)
+				assert(r.state == Candidate, "M%d BUG: %v", r.nid, r.state)
 				c.onVoteResult(v)
 
 			// leader --------------
 			case u := <-l.fromReplsCh:
-				assert(r.state == Leader, "M%d BUG: %v", r.id, r.state)
+				assert(r.state == Leader, "M%d BUG: %v", r.nid, r.state)
 				l.checkReplUpdates(u)
 
 			case <-l.transfer.timer.C:
@@ -242,7 +242,7 @@ func (r *Raft) release() {
 
 func (r *Raft) doClose(reason error) {
 	r.closeOnce.Do(func() {
-		debug(r.id, ">> shutdown()", reason)
+		debug(r.nid, ">> shutdown()", reason)
 		if r.trace.ShuttingDown != nil {
 			r.trace.ShuttingDown(r.liveInfo(), reason)
 		}
@@ -286,8 +286,12 @@ func (r *Raft) setLeader(id uint64) {
 	r.leader = id
 }
 
-func (r *Raft) ID() uint64 {
-	return r.id
+func (r *Raft) CID() uint64 {
+	return r.cid
+}
+
+func (r *Raft) NID() uint64 {
+	return r.nid
 }
 
 func (r *Raft) FSM() FSM {
@@ -295,7 +299,7 @@ func (r *Raft) FSM() FSM {
 }
 
 func (r *Raft) addr() string {
-	if self, ok := r.configs.Latest.Nodes[r.id]; ok {
+	if self, ok := r.configs.Latest.Nodes[r.nid]; ok {
 		return self.Addr
 	}
 	return ""

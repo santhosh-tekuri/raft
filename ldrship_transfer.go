@@ -54,7 +54,7 @@ func (l *ldrShip) validateTransfer(t transferLdr) error {
 		return ErrLeadershipTransferNoVoter
 	}
 	if t.target != 0 {
-		if t.target == l.id {
+		if t.target == l.nid {
 			return ErrLeadershipTransferSelf
 		}
 		if n, ok := l.configs.Latest.Nodes[t.target]; ok {
@@ -76,7 +76,7 @@ func (l *ldrShip) choseTransferTgt() uint64 {
 		}
 	} else {
 		for id, n := range l.configs.Latest.Nodes {
-			if id != l.id && n.Voter {
+			if id != l.nid && n.Voter {
 				f := l.flrs[id]
 				if f.status.noContact.IsZero() && f.status.matchIndex == l.lastLogIndex {
 					return id
@@ -92,17 +92,17 @@ func (l *ldrShip) doTransfer(target uint64) {
 	pool := l.getConnPool(target)
 	ch := make(chan timeoutNowResult, 1)
 	l.transfer.rpcCh = ch
-	req := &timeoutNowReq{req{l.term, l.id}}
+	req := &timeoutNowReq{req{l.term, l.nid}}
 	go func() {
 		var err error
-		defer func() { ch <- timeoutNowResult{target: pool.id, err: err} }()
+		defer func() { ch <- timeoutNowResult{target: pool.nid, err: err} }()
 		c, err := pool.getConn()
 		if err != nil {
 			return
 		}
-		debug(l.id, ">>", req)
+		debug(l.nid, ">>", req)
 		if l.trace.sending != nil {
-			l.trace.sending(l.id, pool.id, Leader, req)
+			l.trace.sending(l.nid, pool.nid, Leader, req)
 		}
 		if err = c.rwc.SetDeadline(l.transfer.deadline); err != nil {
 			return
@@ -112,9 +112,9 @@ func (l *ldrShip) doTransfer(target uint64) {
 			_ = c.rwc.Close()
 			return
 		}
-		debug(l.id, "<<", resp)
+		debug(l.nid, "<<", resp)
 		if l.trace.received != nil {
-			l.trace.received(l.id, pool.id, Leader, req.term, resp)
+			l.trace.received(l.nid, pool.nid, Leader, req.term, resp)
 		}
 		pool.returnConn(c)
 	}()

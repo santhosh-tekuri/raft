@@ -275,7 +275,7 @@ func (f *flr) doRPC(req request, resp message) error {
 		}
 	}
 	if f.trace.sending != nil {
-		f.trace.sending(req.from(), f.connPool.id, Leader, req)
+		f.trace.sending(req.from(), f.connPool.nid, Leader, req)
 	}
 	err := f.conn.doRPC(req, resp)
 	if err != nil {
@@ -283,7 +283,7 @@ func (f *flr) doRPC(req request, resp message) error {
 		f.conn = nil
 	}
 	if f.trace.received != nil && err == nil {
-		f.trace.received(req.from(), f.connPool.id, Leader, req.getTerm(), resp)
+		f.trace.received(req.from(), f.connPool.nid, Leader, req.getTerm(), resp)
 	}
 	return err
 }

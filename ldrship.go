@@ -32,7 +32,7 @@ type ldrShip struct {
 }
 
 func (l *ldrShip) init() {
-	assert(l.leader == l.id, "%v ldr.leader: got %d, want %d", l, l.leader, l.id)
+	assert(l.leader == l.nid, "%v ldr.leader: got %d, want %d", l, l.leader, l.nid)
 
 	l.voter = true
 	l.startIndex = l.lastLogIndex + 1
@@ -40,7 +40,7 @@ func (l *ldrShip) init() {
 
 	// start replication routine for each follower
 	for id, node := range l.configs.Latest.Nodes {
-		if id != l.id {
+		if id != l.nid {
 			l.addFlr(node)
 		}
 	}
@@ -68,7 +68,7 @@ func (l *ldrShip) release() {
 		close(f.stopCh)
 		delete(l.flrs, id)
 	}
-	if l.leader == l.id {
+	if l.leader == l.nid {
 		l.setLeader(0)
 	}
 
@@ -109,7 +109,7 @@ func (l *ldrShip) storeEntry(ne newEntry) error {
 		if err := config.decode(ne.entry); err != nil {
 			panic(bug("config.decode: %v", err))
 		}
-		l.voter = config.isVoter(l.id)
+		l.voter = config.isVoter(l.nid)
 		l.Raft.changeConfig(config)
 	}
 	l.notifyFlr(ne.typ == entryConfig)
@@ -117,7 +117,7 @@ func (l *ldrShip) storeEntry(ne newEntry) error {
 }
 
 func (l *ldrShip) addFlr(node Node) {
-	assert(node.ID != l.id, "adding leader as follower")
+	assert(node.ID != l.nid, "adding leader as follower")
 	f := &flr{
 		node:          node,
 		rtime:         newRandTime(),
@@ -139,7 +139,7 @@ func (l *ldrShip) addFlr(node Node) {
 
 	// send initial empty AppendEntries RPCs (heartbeat) to each follower
 	req := &appendEntriesReq{
-		req:            req{l.term, l.id},
+		req:            req{l.term, l.nid},
 		ldrCommitIndex: l.commitIndex,
 		prevLogIndex:   l.lastLogIndex,
 		prevLogTerm:    l.lastLogTerm,
@@ -249,7 +249,7 @@ func (l *ldrShip) checkQuorum(wait time.Duration) {
 	for id, n := range l.configs.Latest.Nodes {
 		if n.Voter {
 			voters++
-			if id == l.id || l.flrs[id].status.noContact.IsZero() {
+			if id == l.nid || l.flrs[id].status.noContact.IsZero() {
 				reachable++
 			}
 		}
@@ -287,7 +287,7 @@ func (l *ldrShip) majorityMatchIndex() uint64 {
 	i := 0
 	for _, n := range l.configs.Latest.Nodes {
 		if n.Voter {
-			if n.ID == l.id {
+			if n.ID == l.nid {
 				matched[i] = l.lastLogIndex
 			} else {
 				matched[i] = l.flrs[n.ID].status.matchIndex

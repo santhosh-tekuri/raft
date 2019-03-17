@@ -85,7 +85,7 @@ func fatal(format string, args ...interface{}) {
 // ----------------------------------------------------------
 
 func (r *Raft) String() string {
-	return fmt.Sprintf("M%d %d %s |", r.id, r.term, string(r.state))
+	return fmt.Sprintf("M%d %d %s |", r.nid, r.term, string(r.state))
 }
 
 func (f *flr) String() string {
@@ -101,11 +101,11 @@ func (u leaderUpdate) String() string {
 }
 
 func (i *liveInfo) String() string {
-	return fmt.Sprintf("M%d %d %s |", i.ID(), i.Term(), string(i.State()))
+	return fmt.Sprintf("M%d %d %s |", i.NID(), i.Term(), string(i.State()))
 }
 
 func (i *cachedInfo) String() string {
-	return fmt.Sprintf("M%d %d %s |", i.ID(), i.Term(), string(i.State()))
+	return fmt.Sprintf("M%d %d %s |", i.NID(), i.Term(), string(i.State()))
 }
 
 func (ne newEntry) String() string {

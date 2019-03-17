@@ -241,13 +241,13 @@ func (r *Raft) bootstrap(t bootstrap) {
 		t.reply(fmt.Errorf("raft.bootstrap: invalid config: %v", err))
 		return
 	}
-	self, ok := t.config.Nodes[r.id]
+	self, ok := t.config.Nodes[r.nid]
 	if !ok {
-		t.reply(fmt.Errorf("raft.bootstrap: invalid config: self %d does not exist", r.id))
+		t.reply(fmt.Errorf("raft.bootstrap: invalid config: self %d does not exist", r.nid))
 		return
 	}
 	if !self.Voter {
-		t.reply(fmt.Errorf("raft.bootstrap: invalid config: self %d must be voter", r.id))
+		t.reply(fmt.Errorf("raft.bootstrap: invalid config: self %d must be voter", r.nid))
 		return
 	}
 
@@ -330,7 +330,7 @@ func (l *ldrShip) doChangeConfig(t *task, config Config) {
 
 	// add new flrs
 	for id, node := range config.Nodes {
-		if id == l.id {
+		if id == l.nid {
 			continue
 		}
 		if _, ok := l.flrs[id]; !ok {
@@ -346,7 +346,7 @@ func (r *Raft) setCommitIndex(index uint64) {
 	debug(r, "commitIndex", r.commitIndex)
 	if !r.configs.IsCommitted() && r.configs.Latest.Index <= r.commitIndex {
 		r.commitConfig()
-		if r.state == Leader && !r.configs.Latest.isVoter(r.id) {
+		if r.state == Leader && !r.configs.Latest.isVoter(r.nid) {
 			// if we are no longer voter after this config is committed,
 			// then what is the point of accepting fsm entries from user ????
 			debug(r, "leader -> follower notVoter")

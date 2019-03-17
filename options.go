@@ -72,7 +72,8 @@ func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
 		warn(err)
 	}
 	trace.Starting = func(rinfo Info) {
-		info("raft: starting with Config", rinfo.Configs().Latest)
+		info("raft: starting with cid:", rinfo.CID(), "nid:", rinfo.NID())
+		info("raft: config", rinfo.Configs().Latest)
 	}
 	trace.StateChanged = func(rinfo Info) {
 		info("raft: state changed to", rinfo.State())
@@ -80,7 +81,7 @@ func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
 	trace.LeaderChanged = func(rinfo Info) {
 		if rinfo.Leader() == 0 {
 			info("raft: no known leader")
-		} else if rinfo.Leader() == rinfo.ID() {
+		} else if rinfo.Leader() == rinfo.NID() {
 			info("raft: cluster leadership acquired")
 		} else {
 			info("raft: cluster leadership acquired by node", rinfo.Leader())

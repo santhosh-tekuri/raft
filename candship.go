@@ -31,7 +31,7 @@ func (c *candShip) startElection() {
 
 	// send RequestVote RPCs to all other servers
 	req := &voteReq{
-		req:          req{c.term, c.id},
+		req:          req{c.term, c.nid},
 		lastLogIndex: c.lastLogIndex,
 		lastLogTerm:  c.lastLogTerm,
 	}
@@ -39,19 +39,19 @@ func (c *candShip) startElection() {
 		if !n.Voter {
 			continue
 		}
-		if n.ID == c.id {
+		if n.ID == c.nid {
 			// vote for self
-			c.setVotedFor(c.id)
+			c.setVotedFor(c.nid)
 			c.voteCh <- voteResult{
 				voteResp: rpcVote.createResp(c.Raft, success).(*voteResp),
-				from:     c.id,
+				from:     c.nid,
 			}
 			continue
 		}
 		pool := c.getConnPool(n.ID)
 		go func(ch chan<- voteResult) {
 			resp, err := c.requestVote(pool, req, deadline)
-			ch <- voteResult{voteResp: resp, from: pool.id, err: err}
+			ch <- voteResult{voteResp: resp, from: pool.nid, err: err}
 		}(c.voteCh)
 	}
 }
@@ -63,7 +63,7 @@ func (c *candShip) requestVote(pool *connPool, req *voteReq, deadline time.Time)
 	}
 	resp := new(voteResp)
 	if c.trace.sending != nil {
-		c.trace.sending(c.id, pool.id, Candidate, req)
+		c.trace.sending(c.nid, pool.nid, Candidate, req)
 	}
 	_ = conn.rwc.SetDeadline(deadline)
 	if err = conn.doRPC(req, resp); err != nil {
@@ -72,7 +72,7 @@ func (c *candShip) requestVote(pool *connPool, req *voteReq, deadline time.Time)
 	}
 	pool.returnConn(conn)
 	if c.trace.received != nil {
-		c.trace.received(c.id, pool.id, Candidate, req.term, resp)
+		c.trace.received(c.nid, pool.nid, Candidate, req.term, resp)
 	}
 	return resp, nil
 }
@@ -97,7 +97,7 @@ func (c *candShip) onVoteResult(v voteResult) {
 		c.votesNeeded--
 		if c.votesNeeded == 0 {
 			c.setState(Leader)
-			c.setLeader(c.id)
+			c.setLeader(c.nid)
 		}
 	}
 }

@@ -72,7 +72,7 @@ func test_bootstrap(t *testing.T) {
 	ldr := c.rr[1]
 	nodes := make(map[uint64]Node, 3)
 	for _, r := range c.rr {
-		nodes[r.ID()] = Node{ID: r.ID(), Addr: id2Addr(r.ID()), Voter: true}
+		nodes[r.NID()] = Node{ID: r.NID(), Addr: id2Addr(r.NID()), Voter: true}
 	}
 	if err := waitBootstrap(ldr, nodes, c.longTimeout); err != nil {
 		t.Fatal(err)
@@ -80,7 +80,7 @@ func test_bootstrap(t *testing.T) {
 
 	// the bootstrapped node should be the leader
 	c.waitForLeader(ldr)
-	c.ensureLeader(ldr.ID())
+	c.ensureLeader(ldr.NID())
 
 	// should be able to apply
 	if _, err := waitUpdate(ldr, "hello", 0); err != nil {
@@ -239,7 +239,7 @@ func test_behindFollower(t *testing.T) {
 	c.ensureFSMSame(nil)
 
 	// Ensure one leader
-	c.ensureLeader(c.leader().ID())
+	c.ensureLeader(c.leader().NID())
 }
 
 func test_leader_quorumWait_unreachable(t *testing.T) {

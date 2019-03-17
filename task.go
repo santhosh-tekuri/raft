@@ -127,7 +127,8 @@ type FlrStatus struct {
 }
 
 type json struct {
-	ID           uint64               `json:"id"`
+	CID          uint64               `json:"cid"`
+	NID          uint64               `json:"nid"`
 	Addr         string               `json:"addr"`
 	Term         uint64               `json:"term"`
 	State        State                `json:"state"`
@@ -141,7 +142,8 @@ type json struct {
 }
 
 type Info interface {
-	ID() uint64
+	CID() uint64
+	NID() uint64
 	Addr() string
 	Term() uint64
 	State() State
@@ -159,7 +161,8 @@ type liveInfo struct {
 	r *Raft
 }
 
-func (info liveInfo) ID() uint64           { return info.r.id }
+func (info liveInfo) CID() uint64          { return info.r.cid }
+func (info liveInfo) NID() uint64          { return info.r.nid }
 func (info liveInfo) Addr() string         { return info.r.addr() }
 func (info liveInfo) Term() uint64         { return info.r.term }
 func (info liveInfo) State() State         { return info.r.state }
@@ -187,7 +190,8 @@ func (info liveInfo) Followers() map[uint64]FlrStatus {
 
 func (info liveInfo) JSON() interface{} {
 	return json{
-		ID:           info.ID(),
+		CID:          info.CID(),
+		NID:          info.NID(),
 		Addr:         info.Addr(),
 		Term:         info.Term(),
 		State:        info.State(),
@@ -205,7 +209,8 @@ type cachedInfo struct {
 	json json
 }
 
-func (info cachedInfo) ID() uint64                      { return info.json.ID }
+func (info cachedInfo) CID() uint64                     { return info.json.CID }
+func (info cachedInfo) NID() uint64                     { return info.json.NID }
 func (info cachedInfo) Addr() string                    { return info.json.Addr }
 func (info cachedInfo) Term() uint64                    { return info.json.Term }
 func (info cachedInfo) State() State                    { return info.json.State }

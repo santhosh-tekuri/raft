@@ -86,7 +86,7 @@ func (r *resolver) lookupID(id uint64) (string, error) {
 
 type connPool struct {
 	cid      uint64
-	id       uint64
+	nid      uint64
 	resolver *resolver
 	dialFn   dialFn
 	timeout  time.Duration
@@ -102,7 +102,7 @@ func (pool *connPool) getConn() (*conn, error) {
 
 	num := len(pool.conns)
 	if num == 0 {
-		addr, err := pool.resolver.lookupID(pool.id)
+		addr, err := pool.resolver.lookupID(pool.nid)
 		if err != nil {
 			return nil, err
 		}
@@ -113,10 +113,10 @@ func (pool *connPool) getConn() (*conn, error) {
 
 		// check identity
 		resp := &identityResp{}
-		err = c.doRPC(&identityReq{cid: pool.cid, tgt: pool.id}, resp)
+		err = c.doRPC(&identityReq{cid: pool.cid, nid: pool.nid}, resp)
 		if err != nil || resp.result != success {
 			_ = c.rwc.Close()
-			return nil, IdentityError{pool.cid, pool.id, addr}
+			return nil, IdentityError{pool.cid, pool.nid, addr}
 		}
 
 		return c, nil
@@ -154,7 +154,7 @@ func (r *Raft) getConnPool(nid uint64) *connPool {
 	if !ok {
 		pool = &connPool{
 			cid:      r.cid,
-			id:       nid,
+			nid:      nid,
 			resolver: r.resolver,
 			dialFn:   r.dialFn,
 			timeout:  10 * time.Second, // todo

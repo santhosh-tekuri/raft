@@ -43,7 +43,7 @@ func test_transferLeadership_fiveNodes(t *testing.T, targetReady bool) {
 	newLdr := c.waitForLeader()
 
 	// check leader is changed
-	if ldr.ID() == newLdr.ID() {
+	if ldr.NID() == newLdr.NID() {
 		c.Fatal("no change in leader")
 	}
 

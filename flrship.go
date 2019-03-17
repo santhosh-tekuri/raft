@@ -37,7 +37,7 @@ func (f *flrShip) canStartElection() (can bool, reason string) {
 	if f.configs.IsBootstrap() {
 		return false, "no known peers"
 	}
-	n, ok := f.configs.Latest.Nodes[f.id]
+	n, ok := f.configs.Latest.Nodes[f.nid]
 	if !ok {
 		return false, "not part of cluster"
 	}

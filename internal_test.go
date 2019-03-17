@@ -11,11 +11,11 @@ func Debug(args ...interface{}) {
 func RequestVote(from, to *Raft) (granted bool, err error) {
 	fn := func(r *Raft) {
 		req := &voteReq{
-			req:          req{r.term, r.id},
+			req:          req{r.term, r.nid},
 			lastLogIndex: r.lastLogIndex,
 			lastLogTerm:  r.lastLogTerm,
 		}
-		pool := from.getConnPool(to.id)
+		pool := from.getConnPool(to.nid)
 		cand := candShip{Raft: from}
 		resp, errr := cand.requestVote(pool, req, time.Time{})
 		granted, err = resp.result == success, errr
