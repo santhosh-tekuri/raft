@@ -254,11 +254,6 @@ func (f *flr) retryRPC(req request, resp message) error {
 		}
 		break
 	}
-	if !f.noContact.IsZero() {
-		f.noContact = time.Time{} // zeroing
-		debug(f, "yesContact")
-		f.notifyLdr(noContact{&f.status, f.noContact, nil})
-	}
 	if resp.getTerm() > req.getTerm() {
 		f.notifyLdr(newTerm{resp.getTerm()})
 		return errStop
@@ -273,6 +268,11 @@ func (f *flr) doRPC(req request, resp message) error {
 			return err
 		}
 		f.conn = conn
+		if !f.noContact.IsZero() {
+			f.noContact = time.Time{} // zeroing
+			debug(f, "yesContact")
+			f.notifyLdr(noContact{&f.status, f.noContact, nil})
+		}
 	}
 	if f.trace.sending != nil {
 		f.trace.sending(req.from(), f.connPool.id, Leader, req)
