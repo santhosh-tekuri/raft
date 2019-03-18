@@ -410,6 +410,29 @@ func (c *cluster) ensureLeader(leader uint64) {
 	}
 }
 
+// wait until all followers follow the leader
+func (c *cluster) waitForFollowers(ldr *Raft) {
+	c.Helper()
+	tdebug("waitForFollowers:", host(ldr))
+	log := false
+	condition := func() bool {
+		for _, r := range c.rr {
+			if got := r.Info().Leader(); got != ldr.NID() {
+				if log {
+					c.Logf("leader of M%d: got M%d, want M%d", r.NID(), got, ldr.NID())
+				}
+				return false
+			}
+		}
+		return true
+	}
+	if !waitForCondition(condition, c.heartbeatTimeout, c.longTimeout) {
+		log = true
+		condition()
+		c.Fatalf("waitForFollowers(M%d) timeout", ldr.NID())
+	}
+}
+
 // wait until state is one of given states
 func (c *cluster) waitForState(r *Raft, timeout time.Duration, states ...State) {
 	c.Helper()
