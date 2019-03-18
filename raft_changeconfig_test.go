@@ -51,7 +51,7 @@ func test_changeConfig_committedByAll(t *testing.T) {
 	defer c.shutdown()
 
 	// wait for bootstrap config committed by all
-	c.waitCatchup()
+	c.waitForCommitted(ldr.Info().LastLogIndex())
 
 	// launch new raft instance M4, without bootstrap
 	m4 := c.launch(1, false)[4]

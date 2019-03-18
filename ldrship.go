@@ -145,10 +145,6 @@ func (l *ldrShip) addFlr(node Node) {
 		prevLogTerm:    l.lastLogTerm,
 	}
 
-	// don't retry on failure. so that we can respond to apply/inspect
-	debug(f, ">> firstHeartbeat")
-	_ = f.doRPC(req, &appendEntriesResp{})
-
 	l.wg.Add(1)
 	go func() {
 		defer l.wg.Done()

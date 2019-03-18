@@ -533,6 +533,32 @@ func (c *cluster) ensureFSMSame(want []string, rr ...*Raft) {
 	}
 }
 
+func (c *cluster) waitForCommitted(index uint64, rr ...*Raft) {
+	c.Helper()
+	tdebug("waitForCommitted: index:", index, hosts(rr))
+	if len(rr) == 0 {
+		rr = c.exclude()
+	}
+	log := false
+	condition := func() bool {
+		for _, r := range rr {
+			info := r.Info()
+			if info.Committed() < index {
+				if log {
+					c.Logf("waitForCommitted: M%d lastLogIndex:%d committed:%d", r.NID(), info.LastLogIndex(), info.Committed())
+				}
+				return false
+			}
+		}
+		return true
+	}
+	if !waitForCondition(condition, c.commitTimeout, c.longTimeout) {
+		log = true
+		condition()
+		c.Fatalf("waitForCommitted(%d): timeout", index)
+	}
+}
+
 func (c *cluster) waitCatchup(rr ...*Raft) {
 	c.Helper()
 	tdebug("waitCatchup:", hosts(rr))
