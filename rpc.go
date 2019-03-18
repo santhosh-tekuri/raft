@@ -247,6 +247,11 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq) (rpcResult, error) {
 		if err = r.storage.clearLog(); err != nil {
 			return unexpectedErr, err
 		}
+
+		// todo: dont wait for restoreFSM to complete
+		//       if restoreFSM fails panic and exit
+		//       if takeSnap req came meanwhile, reply inProgress(restoreFSM)
+
 		// reset fsm from this snapshot
 		if err = r.restoreFSM(); err != nil {
 			return unexpectedErr, err
