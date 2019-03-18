@@ -46,21 +46,18 @@ func test_changeConfig_validations(t *testing.T) {
 }
 
 func test_changeConfig_committedByAll(t *testing.T) {
-	// launch 3 node cluster M1, M2, M3
-	c, ldr, followers := launchCluster(t, 3)
+	// launch 2 node cluster M1, M2
+	c, ldr, followers := launchCluster(t, 2)
 	defer c.shutdown()
 
 	// wait for bootstrap config committed by all
 	c.waitForCommitted(ldr.Info().LastLogIndex())
 
-	// launch new raft instance M4, without bootstrap
-	m4 := c.launch(1, false)[4]
-
-	configRelated := c.registerFor(configRelated, c.exclude(m4)...)
+	configRelated := c.registerFor(configRelated)
 	defer c.unregister(configRelated)
 
-	// add M4 as nonvoter, wait for success reply
-	c.ensure(waitAddNonvoter(ldr, m4.NID(), id2Addr(m4.NID()), false))
+	// add M3 as nonvoter, wait for success reply
+	c.ensure(waitAddNonvoter(ldr, 3, id2Addr(3), false))
 
 	// ensure that leader raised configChange
 	select {
@@ -75,23 +72,17 @@ func test_changeConfig_committedByAll(t *testing.T) {
 		t.Fatal("expected configChange from ldr")
 	}
 
-	// ensure that followers raised configChange, exactly once
-	set := make(map[uint64]bool)
-	for i := 0; i < 2; i++ {
-		select {
-		case e := <-configRelated.ch:
-			if e.src == ldr.NID() || e.src == m4.NID() {
-				t.Fatalf("got M%d", e.src)
-			}
-			if e.typ != configChanged {
-				t.Fatalf("got %d, want %d", e.typ, configChanged)
-			}
-			if set[e.src] {
-				t.Fatalf("duplicate configChange from M%d", e.src)
-			}
-		default:
-			t.Fatal("expected configChange from follower")
+	// ensure that follower raised configChange
+	select {
+	case e := <-configRelated.ch:
+		if e.src != followers[0].NID() {
+			t.Fatalf("got M%d, want M%d", e.src, followers[0].NID())
 		}
+		if e.typ != configChanged {
+			t.Fatalf("got %d, want %d", e.typ, configChanged)
+		}
+	default:
+		t.Fatal("expected configChange from follower")
 	}
 
 	// ensure that leader raised configCommitted
@@ -108,39 +99,35 @@ func test_changeConfig_committedByAll(t *testing.T) {
 	}
 
 	// wait and ensure that followers raised configCommitted
-	c.waitCatchup(followers[0])
-	c.waitCatchup(followers[1])
-	set = make(map[uint64]bool)
-	for i := 0; i < 2; i++ {
-		select {
-		case e := <-configRelated.ch:
-			if e.src == ldr.NID() || e.src == m4.NID() {
-				t.Fatalf("got M%d", e.src)
-			}
-			if e.typ != configCommitted {
-				t.Fatalf("got %d, want %d", e.typ, configCommitted)
-			}
-			if set[e.src] {
-				t.Fatalf("duplicate configCommitted from M%d", e.src)
-			}
-		default:
-			t.Fatal("expected configCommit from follower")
+	c.waitForCommitted(ldr.Info().LastLogIndex(), followers[0])
+	select {
+	case e := <-configRelated.ch:
+		if e.src != followers[0].NID() {
+			t.Fatalf("got M%d, want M%d", e.src, followers[0].NID())
 		}
+		if e.typ != configCommitted {
+			t.Fatalf("got %d, want %d", e.typ, configCommitted)
+		}
+	default:
+		t.Fatal("expected configCommit from follower")
 	}
 
+	// launch new raft instance M3, without bootstrap
+	m3 := c.launch(1, false)[3]
+
 	// ensure that config committed by all
-	c.waitCatchup(m4)
+	c.waitForCommitted(ldr.Info().LastLogIndex(), m3)
 	for _, r := range c.rr {
 		info := r.Info()
 		if !info.Configs().IsCommitted() {
 			t.Fatalf("config is not committed by M%d %s", info.NID(), info.State())
 		}
-		m4, ok := info.Configs().Committed.Nodes[4]
+		m3, ok := info.Configs().Committed.Nodes[3]
 		if !ok {
-			t.Fatalf("m4 is not present in M%d %s", info.NID(), info.State())
+			t.Fatalf("m3 is not present in M%d %s", info.NID(), info.State())
 		}
-		if m4.Voter {
-			t.Fatalf("m4 must be nonvoter in M%d %s", info.NID(), info.State())
+		if m3.Voter {
+			t.Fatalf("m3 must be nonvoter in M%d %s", info.NID(), info.State())
 		}
 	}
 }
