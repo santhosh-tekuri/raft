@@ -1,7 +1,6 @@
 package raft
 
 import (
-	"errors"
 	"fmt"
 	"time"
 )
@@ -216,14 +215,16 @@ func (f *flr) sendAppEntriesReq(req *appendEntriesReq) error {
 			debug(f, "matchIndex:", f.matchIndex)
 			f.notifyLdr(matchIndex{&f.status, f.matchIndex})
 		}
-	} else {
+	} else if resp.result == prevEntryNotFound || resp.result == prevTermMismatch {
 		if resp.lastLogIndex < f.matchIndex {
 			// this happens if someone restarted follower storage with empty storage
 			// todo: can we treat replicate entire snap+log to such follower ??
-			return errors.New("faulty follower: denies matchIndex")
+			return ErrFaultyFollower
 		}
 		f.nextIndex = min(f.nextIndex-1, resp.lastLogIndex+1)
 		debug(f, "nextIndex:", f.nextIndex)
+	} else {
+		return ErrRemote
 	}
 	return nil
 }
@@ -264,7 +265,7 @@ func (f *flr) sendInstallSnapReq(appReq *appendEntriesReq) error {
 		f.notifyLdr(matchIndex{&f.status, f.matchIndex})
 		return nil
 	} else {
-		return errors.New("installSnap.success is false")
+		return ErrRemote
 	}
 }
 
