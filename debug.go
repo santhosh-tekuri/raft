@@ -142,5 +142,5 @@ func (t transferLdr) String() string {
 }
 
 func (r rpcResponse) String() string {
-	return fmt.Sprintf("M%d << %s err: %v", r.from, r.resp, r.err)
+	return fmt.Sprintf("M%d << %s err: %v", r.from, r.response, r.err)
 }
