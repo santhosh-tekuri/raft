@@ -16,9 +16,10 @@ func RequestVote(from, to *Raft) (granted bool, err error) {
 			lastLogTerm:  r.lastLogTerm,
 		}
 		pool := from.getConnPool(to.nid)
-		cand := candShip{Raft: from}
-		resp, errr := cand.requestVote(pool, req, time.Time{})
-		granted, err = resp.result == success, errr
+		ch := make(chan rpcResponse, 1)
+		pool.doRPC(req, &voteResp{}, time.Time{}, ch)
+		rpc := <-ch
+		granted, err = rpc.resp.getResult() == success, rpc.err
 	}
 	if from.isClosing() {
 		fn(from)

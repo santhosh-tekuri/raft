@@ -84,6 +84,10 @@ func fatal(format string, args ...interface{}) {
 
 // ----------------------------------------------------------
 
+func (n Node) String() string {
+	return fmt.Sprintf("M%d", n.ID)
+}
+
 func (r *Raft) String() string {
 	return fmt.Sprintf("M%d %d %s |", r.nid, r.term, string(r.state))
 }
@@ -135,4 +139,8 @@ func (t takeSnapshot) String() string {
 
 func (t transferLdr) String() string {
 	return fmt.Sprintf("transferLdr{M%d %s}", t.target, t.timeout)
+}
+
+func (r rpcResponse) String() string {
+	return fmt.Sprintf("M%d << %s err: %v", r.from, r.resp, r.err)
 }

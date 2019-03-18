@@ -722,8 +722,6 @@ const (
 	quorumUnreachable
 	roundFinished
 	promoting
-	sending
-	received
 	shuttingDown
 
 	configRelated
@@ -932,37 +930,6 @@ func (ee *events) trace() (trace Trace) {
 			typ:       promoting,
 			target:    id,
 			numRounds: numRounds,
-		})
-	}
-
-	trace.sending = func(from, to uint64, state State, msg message) {
-		if _, ok := msg.(request); ok && state != Leader {
-			str := fmt.Sprintf("M%d %d %s | M%d", from, msg.getTerm(), string(state), to)
-			Debug(str, ">>>", msg)
-		}
-		ee.sendEvent(event{
-			src:     from,
-			typ:     sending,
-			target:  to,
-			msgType: fmt.Sprintf("%T", msg),
-		})
-	}
-
-	trace.received = func(by, from uint64, state State, term uint64, msg message) {
-		if state != Leader {
-			str := fmt.Sprintf("M%d %d %s |", by, term, string(state))
-			if _, ok := msg.(request); ok {
-				Debug(str, "<<<", msg)
-			} else {
-				str = fmt.Sprintf("%s M%d", str, from)
-				Debug(str, "<<<", msg)
-			}
-		}
-		ee.sendEvent(event{
-			src:     by,
-			typ:     received,
-			target:  from,
-			msgType: fmt.Sprintf("%T", msg),
 		})
 	}
 	return

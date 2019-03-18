@@ -348,11 +348,6 @@ type transferLdr struct {
 	timeout time.Duration
 }
 
-type timeoutNowResult struct {
-	target uint64
-	err    error
-}
-
 func TransferLeadership(target uint64, timeout time.Duration) Task {
 	return transferLdr{
 		task:    newTask(),

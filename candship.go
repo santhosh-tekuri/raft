@@ -6,7 +6,7 @@ import (
 
 type candShip struct {
 	*Raft
-	voteCh      chan voteResult
+	voteCh      chan rpcResponse
 	votesNeeded int
 }
 
@@ -19,7 +19,7 @@ func (c *candShip) startElection() {
 	c.timer.reset(d)
 	deadline := time.Now().Add(d)
 	c.votesNeeded = c.configs.Latest.quorum()
-	c.voteCh = make(chan voteResult, len(c.configs.Latest.Nodes))
+	c.voteCh = make(chan rpcResponse, len(c.configs.Latest.Nodes))
 
 	// increment currentTerm
 	c.setTerm(c.term + 1)
@@ -42,68 +42,40 @@ func (c *candShip) startElection() {
 		if n.ID == c.nid {
 			// vote for self
 			c.setVotedFor(c.nid)
-			c.voteCh <- voteResult{
-				voteResp: rpcVote.createResp(c.Raft, success).(*voteResp),
-				from:     c.nid,
+			c.voteCh <- rpcResponse{
+				resp: rpcVote.createResp(c.Raft, success),
+				from: c.nid,
 			}
 			continue
 		}
 		pool := c.getConnPool(n.ID)
-		go func(ch chan<- voteResult) {
-			resp, err := c.requestVote(pool, req, deadline)
-			ch <- voteResult{voteResp: resp, from: pool.nid, err: err}
-		}(c.voteCh)
+		debug(c, n, ">>", req)
+		go pool.doRPC(req, &voteResp{}, deadline, c.voteCh)
 	}
 }
 
-func (c *candShip) requestVote(pool *connPool, req *voteReq, deadline time.Time) (*voteResp, error) {
-	conn, err := pool.getConn()
-	if err != nil {
-		return nil, err
+func (c *candShip) onVoteResult(rpc rpcResponse) {
+	if rpc.from != c.nid {
+		debug(c, rpc)
 	}
-	resp := new(voteResp)
-	if c.trace.sending != nil {
-		c.trace.sending(c.nid, pool.nid, Candidate, req)
-	}
-	_ = conn.rwc.SetDeadline(deadline)
-	if err = conn.doRPC(req, resp); err != nil {
-		_ = conn.rwc.Close()
-		return nil, err
-	}
-	pool.returnConn(conn)
-	if c.trace.received != nil {
-		c.trace.received(c.nid, pool.nid, Candidate, req.term, resp)
-	}
-	return resp, nil
-}
-
-func (c *candShip) onVoteResult(v voteResult) {
-	// todo: if quorum unreachable raise alert
-	if v.err != nil {
-		debug(c, "<< voteResp", v.from, v.err)
+	if rpc.err != nil {
 		return
 	}
 
 	// if response contains term T > currentTerm:
 	// set currentTerm = T, convert to follower
-	if v.term > c.term {
+	if rpc.resp.getTerm() > c.term {
 		c.setState(Follower)
-		c.setTerm(v.term)
+		c.setTerm(rpc.resp.getTerm())
 		return
 	}
 
 	// if votes received from majority of servers: become leader
-	if v.result == success {
+	if rpc.resp.getResult() == success {
 		c.votesNeeded--
 		if c.votesNeeded == 0 {
 			c.setState(Leader)
 			c.setLeader(c.nid)
 		}
 	}
-}
-
-type voteResult struct {
-	*voteResp
-	from uint64
-	err  error
 }

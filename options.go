@@ -62,9 +62,6 @@ type Trace struct {
 	Unreachable       func(info Info, id uint64, since time.Time, err error)
 	QuorumUnreachable func(info Info, since time.Time)
 	ShuttingDown      func(info Info, reason error)
-
-	sending  func(self, to uint64, state State, msg message)
-	received func(self, from uint64, state State, term uint64, msg message)
 }
 
 func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {

@@ -24,10 +24,7 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 		return
 	}
 
-	if r.trace.received != nil {
-		r.trace.received(r.nid, rpc.req.from(), r.state, r.term, rpc.req)
-	}
-
+	debug(r, "<<", rpc.req)
 	result, err := rpcResult(0), error(nil)
 	if rpc.req.getTerm() < r.term {
 		result = staleTerm
@@ -62,9 +59,7 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 	}
 
 	rpc.resp = rpc.req.rpcType().createResp(r, result)
-	if r.trace.sending != nil {
-		r.trace.sending(r.nid, rpc.req.from(), r.state, rpc.resp)
-	}
+	debug(r, ">>", rpc.resp)
 	close(rpc.done)
 
 	if result == unexpectedErr {
