@@ -269,7 +269,7 @@ func (f *flr) sendInstallSnapReq(appReq *appendEntriesReq) error {
 	}
 }
 
-func (f *flr) doRPC(req request, resp message) error {
+func (f *flr) doRPC(req request, resp response) error {
 	if f.conn == nil {
 		conn, err := f.connPool.getConn()
 		if err != nil {

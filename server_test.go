@@ -70,7 +70,7 @@ func TestServer(t *testing.T) {
 				t.Fatalf("dial failed: %v", err)
 			}
 			defer c.rwc.Close()
-			resp := reflect.New(reflect.TypeOf(test.resp).Elem()).Interface().(message)
+			resp := reflect.New(reflect.TypeOf(test.resp).Elem()).Interface().(response)
 			if err := c.doRPC(test.req, resp); err != nil {
 				t.Fatalf("c.doRPC() failed: %v", err)
 			}
