@@ -43,8 +43,8 @@ func (c *candShip) startElection() {
 			// vote for self
 			c.setVotedFor(c.nid)
 			c.voteCh <- rpcResponse{
-				resp: rpcVote.createResp(c.Raft, success),
-				from: c.nid,
+				response: rpcVote.createResp(c.Raft, success),
+				from:     c.nid,
 			}
 			continue
 		}
@@ -54,24 +54,24 @@ func (c *candShip) startElection() {
 	}
 }
 
-func (c *candShip) onVoteResult(rpc rpcResponse) {
-	if rpc.from != c.nid {
-		debug(c, rpc)
+func (c *candShip) onVoteResult(resp rpcResponse) {
+	if resp.from != c.nid {
+		debug(c, resp)
 	}
-	if rpc.err != nil {
+	if resp.err != nil {
 		return
 	}
 
 	// if response contains term T > currentTerm:
 	// set currentTerm = T, convert to follower
-	if rpc.resp.getTerm() > c.term {
+	if resp.getTerm() > c.term {
 		c.setState(Follower)
-		c.setTerm(rpc.resp.getTerm())
+		c.setTerm(resp.getTerm())
 		return
 	}
 
 	// if votes received from majority of servers: become leader
-	if rpc.resp.getResult() == success {
+	if resp.getResult() == success {
 		c.votesNeeded--
 		if c.votesNeeded == 0 {
 			c.setState(Leader)

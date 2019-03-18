@@ -148,7 +148,7 @@ func (pool *connPool) closeAll() {
 }
 
 type rpcResponse struct {
-	resp response
+	response
 	from uint64
 	err  error
 }

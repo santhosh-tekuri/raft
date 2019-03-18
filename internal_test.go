@@ -18,8 +18,8 @@ func RequestVote(from, to *Raft) (granted bool, err error) {
 		pool := from.getConnPool(to.nid)
 		ch := make(chan rpcResponse, 1)
 		pool.doRPC(req, &voteResp{}, time.Time{}, ch)
-		rpc := <-ch
-		granted, err = rpc.resp.getResult() == success, rpc.err
+		resp := <-ch
+		granted, err = resp.getResult() == success, resp.err
 	}
 	if from.isClosing() {
 		fn(from)
