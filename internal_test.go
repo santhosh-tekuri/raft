@@ -1,7 +1,5 @@
 package raft
 
-import "time"
-
 // export access to raft internals for tests
 
 func Debug(args ...interface{}) {
@@ -16,10 +14,9 @@ func RequestVote(from, to *Raft) (granted bool, err error) {
 			lastLogTerm:  r.lastLogTerm,
 		}
 		pool := from.getConnPool(to.nid)
-		ch := make(chan rpcResponse, 1)
-		pool.doRPC(req, &voteResp{}, time.Time{}, ch)
-		resp := <-ch
-		granted, err = resp.getResult() == success, resp.err
+		resp := &timeoutNowResp{}
+		err = pool.doRPC(req, resp)
+		granted = resp.getResult() == success
 	}
 	if from.isClosing() {
 		fn(from)

@@ -1,25 +1,20 @@
 package raft
 
-import (
-	"time"
-)
-
 type candShip struct {
 	*Raft
-	voteCh      chan rpcResponse
+	respCh      chan rpcResponse
 	votesNeeded int
 }
 
 func (c *candShip) init()      { c.startElection() }
 func (c *candShip) onTimeout() { c.startElection() }
-func (c *candShip) release()   { c.voteCh = nil }
+func (c *candShip) release()   { c.respCh = nil }
 
 func (c *candShip) startElection() {
 	d := c.rtime.duration(c.hbTimeout)
 	c.timer.reset(d)
-	deadline := time.Now().Add(d)
 	c.votesNeeded = c.configs.Latest.quorum()
-	c.voteCh = make(chan rpcResponse, len(c.configs.Latest.Nodes))
+	c.respCh = make(chan rpcResponse, len(c.configs.Latest.Nodes))
 
 	// increment currentTerm
 	c.setTerm(c.term + 1)
@@ -42,7 +37,7 @@ func (c *candShip) startElection() {
 		if n.ID == c.nid {
 			// vote for self
 			c.setVotedFor(c.nid)
-			c.voteCh <- rpcResponse{
+			c.respCh <- rpcResponse{
 				response: rpcVote.createResp(c.Raft, success),
 				from:     c.nid,
 			}
@@ -50,7 +45,11 @@ func (c *candShip) startElection() {
 		}
 		pool := c.getConnPool(n.ID)
 		debug(c, n, ">>", req)
-		go pool.doRPC(req, &voteResp{}, deadline, c.voteCh)
+		go func(ch chan<- rpcResponse) {
+			resp := &voteResp{}
+			err := pool.doRPC(req, resp)
+			ch <- rpcResponse{resp, pool.nid, err}
+		}(c.respCh)
 	}
 }
 

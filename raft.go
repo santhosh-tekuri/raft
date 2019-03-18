@@ -204,7 +204,7 @@ func (r *Raft) stateLoop() (err error) {
 				r.onSnapshotTaken(t)
 
 			// candidate --------------
-			case v := <-c.voteCh:
+			case v := <-c.respCh:
 				assert(r.state == Candidate, "M%d BUG: %v", r.nid, r.state)
 				c.onVoteResult(v)
 
@@ -217,7 +217,7 @@ func (r *Raft) stateLoop() (err error) {
 				l.transfer.timer.active = false
 				l.onTransferTimeout()
 
-			case result := <-l.transfer.rpcCh:
+			case result := <-l.transfer.respCh:
 				l.onTimeoutNowResult(result)
 			}
 		}

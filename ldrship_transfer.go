@@ -4,10 +4,9 @@ import "time"
 
 type transfer struct {
 	transferLdr
-	timer    *safeTimer
-	deadline time.Time
-	term     uint64
-	rpcCh    <-chan rpcResponse
+	timer  *safeTimer
+	term   uint64
+	respCh chan rpcResponse
 }
 
 func (t transfer) inProgress() bool {
@@ -15,7 +14,7 @@ func (t transfer) inProgress() bool {
 }
 
 func (t transfer) targetChosen() bool {
-	return t.rpcCh != nil
+	return t.respCh != nil
 }
 
 func (t *transfer) reply(err error) {
@@ -24,7 +23,7 @@ func (t *transfer) reply(err error) {
 		t.task.reply(err)
 	}
 	t.timer.stop()
-	t.rpcCh = nil
+	t.respCh = nil
 }
 
 // ----------------------------------------------------
@@ -39,7 +38,6 @@ func (l *ldrShip) onTransfer(t transferLdr) {
 
 	l.transfer.term = l.term
 	l.transfer.transferLdr = t
-	l.transfer.deadline = time.Now().Add(t.timeout)
 	l.transfer.timer.reset(t.timeout)
 	if tgt := l.choseTransferTgt(); tgt != 0 {
 		l.doTransfer(tgt)
@@ -90,11 +88,14 @@ func (l *ldrShip) choseTransferTgt() uint64 {
 func (l *ldrShip) doTransfer(target uint64) {
 	debug(l, "transferring leadership:", target)
 	pool := l.getConnPool(target)
-	ch := make(chan rpcResponse, 1)
-	l.transfer.rpcCh = ch
+	l.transfer.respCh = make(chan rpcResponse, 1)
 	req := &timeoutNowReq{req{l.term, l.nid}}
 	debug(l, target, ">>", req)
-	go pool.doRPC(req, &timeoutNowResp{}, l.transfer.deadline, ch)
+	go func(ch chan<- rpcResponse) {
+		resp := &timeoutNowResp{}
+		err := pool.doRPC(req, resp)
+		ch <- rpcResponse{resp, pool.nid, err}
+	}(l.transfer.respCh)
 }
 
 func (l *ldrShip) onTransferTimeout() {
@@ -103,7 +104,7 @@ func (l *ldrShip) onTransferTimeout() {
 
 func (l *ldrShip) onTimeoutNowResult(rpc rpcResponse) {
 	debug(l, rpc)
-	l.transfer.rpcCh = nil
+	l.transfer.respCh = nil
 	if rpc.err != nil {
 		f := l.flrs[rpc.from]
 		if f.status.noContact.IsZero() {

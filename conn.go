@@ -147,30 +147,23 @@ func (pool *connPool) closeAll() {
 	pool.conns = nil
 }
 
+func (pool *connPool) doRPC(req request, resp response) error {
+	c, err := pool.getConn()
+	if err != nil {
+		return err
+	}
+	if err = c.doRPC(req, resp); err != nil {
+		_ = c.rwc.Close()
+		return err
+	}
+	pool.returnConn(c)
+	return nil
+}
+
 type rpcResponse struct {
 	response
 	from uint64
 	err  error
-}
-
-func (pool *connPool) doRPC(req request, resp response, deadline time.Time, ch chan<- rpcResponse) {
-	var err error
-	defer func() {
-		ch <- rpcResponse{resp, pool.nid, err}
-	}()
-	c, err := pool.getConn()
-	if err != nil {
-		return
-	}
-	if err = c.rwc.SetDeadline(deadline); err != nil {
-		_ = c.rwc.Close()
-		return
-	}
-	if err = c.doRPC(req, resp); err != nil {
-		_ = c.rwc.Close()
-		return
-	}
-	pool.returnConn(c)
 }
 
 // -----------------------------------------------------
