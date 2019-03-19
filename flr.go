@@ -34,6 +34,7 @@ type flr struct {
 	str   string // used for debug() calls
 }
 
+// todo: handle panics
 func (f *flr) replicate(req *appendEntriesReq) {
 	debug(f, "f.start")
 	if f.node.promote() {
@@ -183,10 +184,9 @@ func (f *flr) sendAppEntriesReq(c *conn, req *appendEntriesReq) (err error) {
 		f.notifyLdr(newTerm{resp.getTerm()})
 		return errStop
 	case success:
-		old := f.matchIndex
-		f.matchIndex = lastIndex
-		f.nextIndex = f.matchIndex + 1
-		if f.matchIndex != old {
+		if lastIndex > f.matchIndex {
+			f.matchIndex = lastIndex
+			f.nextIndex = f.matchIndex + 1
 			debug(f, "matchIndex:", f.matchIndex)
 			f.notifyLdr(matchIndex{&f.status, f.matchIndex})
 		}
@@ -223,7 +223,7 @@ func (f *flr) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
 	if err = c.writeReq(req); err != nil {
 		return err
 	}
-	if _, err = io.CopyN(c.rwc, snapshot, req.size); err != nil {
+	if _, err = io.CopyN(c.bufw, snapshot, req.size); err != nil {
 		return err
 	}
 	if err = c.bufw.Flush(); err != nil {
