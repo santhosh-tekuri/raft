@@ -136,35 +136,6 @@ func (f *flr) replicate(req *appendEntriesReq) {
 	}
 }
 
-func (f *flr) onLeaderUpdate(u leaderUpdate, req *appendEntriesReq) {
-	debug(f, u)
-	f.ldrLastIndex, req.ldrCommitIndex = u.lastIndex, u.commitIndex
-	if u.config != nil {
-		if n, ok := u.config.Nodes[f.status.id]; ok {
-			f.node = n
-			if !f.node.promote() {
-				f.round = nil
-			} else if f.round == nil {
-				// start first round
-				f.round = new(Round)
-				f.round.begin(f.ldrLastIndex)
-				debug(f, "started:", f.round)
-			}
-		}
-	}
-
-	// if round was completed
-	if f.round != nil && f.round.finished() {
-		if f.ldrLastIndex > f.round.LastIndex {
-			f.round.begin(f.ldrLastIndex)
-			debug(f, "started:", f.round)
-		} else {
-			debug(f, "reminding leader about promotion")
-			f.notifyRoundCompleted() // no new entries, reminding leader about promotion
-		}
-	}
-}
-
 const maxAppendEntries = 64 // todo: should be configurable
 
 func (f *flr) sendAppEntriesReq(c *conn, req *appendEntriesReq) error {
@@ -299,6 +270,35 @@ func (f *flr) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
 		return nil
 	} else {
 		return ErrRemote
+	}
+}
+
+func (f *flr) onLeaderUpdate(u leaderUpdate, req *appendEntriesReq) {
+	debug(f, u)
+	f.ldrLastIndex, req.ldrCommitIndex = u.lastIndex, u.commitIndex
+	if u.config != nil {
+		if n, ok := u.config.Nodes[f.status.id]; ok {
+			f.node = n
+			if !f.node.promote() {
+				f.round = nil
+			} else if f.round == nil {
+				// start first round
+				f.round = new(Round)
+				f.round.begin(f.ldrLastIndex)
+				debug(f, "started:", f.round)
+			}
+		}
+	}
+
+	// if round was completed
+	if f.round != nil && f.round.finished() {
+		if f.ldrLastIndex > f.round.LastIndex {
+			f.round.begin(f.ldrLastIndex)
+			debug(f, "started:", f.round)
+		} else {
+			debug(f, "reminding leader about promotion")
+			f.notifyRoundCompleted() // no new entries, reminding leader about promotion
+		}
 	}
 }
 
