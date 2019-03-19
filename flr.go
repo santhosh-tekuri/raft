@@ -55,8 +55,7 @@ func (f *flr) replicate(req *appendEntriesReq) {
 		}
 	}()
 
-	timer, failures := newSafeTimer(), uint64(0)
-	sendReq, err := f.sendAppEntriesReq, error(nil)
+	timer, failures, err := newSafeTimer(), uint64(0), error(nil)
 	for {
 		if failures > 0 {
 			if c != nil {
@@ -90,15 +89,11 @@ func (f *flr) replicate(req *appendEntriesReq) {
 
 		assert(f.matchIndex < f.nextIndex, "%v assert %d<%d", f, f.matchIndex, f.nextIndex)
 
-		// note: we are sure that sendInstallSnapReq never returns errNoEntryFound
-		if err = sendReq(c, req); err == errNoEntryFound {
-			sendReq = f.sendInstallSnapReq
-			err = sendReq(c, req)
-		}
+		err = f.sendAppEntriesReq(c, req)
 
 		if err == errStop {
 			return
-		} else if err != nil {
+		} else if err != nil && err != errNoEntryFound {
 			// todo: we need to distinguish between local/remote opErr
 			//       only local opErr to be sent to trace
 			if _, ok := err.(OpError); ok {
@@ -109,7 +104,6 @@ func (f *flr) replicate(req *appendEntriesReq) {
 			failures++
 			continue
 		}
-		sendReq = f.sendAppEntriesReq
 
 		if f.sendEntries && f.matchIndex == f.ldrLastIndex {
 			timer.reset(f.hbTimeout / 10)
@@ -138,27 +132,19 @@ func (f *flr) replicate(req *appendEntriesReq) {
 
 const maxAppendEntries = 64 // todo: should be configurable
 
-func (f *flr) sendAppEntriesReq(c *conn, req *appendEntriesReq) error {
+func (f *flr) sendAppEntriesReq(c *conn, req *appendEntriesReq) (err error) {
 	req.prevLogIndex = f.nextIndex - 1
 
 	// fill req.prevLogTerm
-	if req.prevLogIndex == 0 {
-		req.prevLogTerm = 0
+	f.storage.snapMu.RLock()
+	snapIndex, snapTerm := f.storage.snapIndex, f.storage.snapTerm
+	f.storage.snapMu.RUnlock()
+	if req.prevLogIndex == snapIndex {
+		req.prevLogTerm = snapTerm
 	} else {
-		snapIndex, snapTerm := f.getSnapLog()
-		if req.prevLogIndex < snapTerm {
-			return errNoEntryFound
-		}
-		if req.prevLogIndex == snapIndex {
-			req.prevLogTerm = snapTerm
-		} else if req.prevLogIndex >= f.ldrStartIndex { // being smart!!!
-			req.prevLogTerm = req.term
-		} else {
-			prevTerm, err := f.storage.getEntryTerm(req.prevLogIndex)
-			if err != nil {
-				return err
-			}
-			req.prevLogTerm = prevTerm
+		req.prevLogTerm, err = f.storage.getEntryTerm(req.prevLogIndex)
+		if err != nil { // meanwhile leader compacted log
+			return f.sendInstallSnapReq(c, req)
 		}
 	}
 
@@ -331,13 +317,6 @@ func (f *flr) notifyRoundCompleted() {
 		f.round.begin(f.ldrLastIndex)
 		debug(f, "started:", f.round)
 	}
-}
-
-func (f *flr) getSnapLog() (snapIndex, snapTerm uint64) {
-	// snapshoting might be in progress
-	f.storage.snapMu.RLock()
-	defer f.storage.snapMu.RUnlock()
-	return f.storage.snapIndex, f.storage.snapTerm
 }
 
 func lastEntry(req *appendEntriesReq) (index, term uint64) {
