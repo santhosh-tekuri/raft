@@ -146,20 +146,8 @@ func (f *flr) sendAppEntriesReq(c *conn, req *appendEntriesReq) (err error) {
 		assert(f.matchIndex == req.prevLogIndex, "%v assert %d==%d", f, f.matchIndex, req.prevLogIndex)
 		n = min(f.ldrLastIndex-f.matchIndex, maxAppendEntries)
 	}
-	if n > 0 {
-		req.entries = make([]*entry, n)
-		for i := range req.entries {
-			req.entries[i] = &entry{}
-			err := f.storage.getEntry(f.nextIndex+uint64(i), req.entries[i])
-			if err != nil {
-				return err
-			}
-		}
-	} else {
-		req.entries = nil
-	}
 
-	if req.entries != nil || !f.sendEntries {
+	if n > 0 || !f.sendEntries {
 		debug(f, ">>", req)
 	} else {
 		debug(f, ">> heartbeat")
@@ -167,12 +155,30 @@ func (f *flr) sendAppEntriesReq(c *conn, req *appendEntriesReq) (err error) {
 	if err := c.writeReq(req); err != nil {
 		return err
 	}
+	e := &entry{index: req.prevLogIndex}
+	for i := uint64(0); i < n; i++ {
+		if err := f.storage.getEntry(f.nextIndex+i, e); err != nil {
+			break
+		}
+		if err := writeUint8(c.bufw, 1); err != nil {
+			return err
+		}
+		if err = e.encode(c.bufw); err != nil {
+			return err
+		}
+	}
+	if err := writeUint8(c.bufw, appendEOF); err != nil {
+		return err
+	}
+	if err := c.bufw.Flush(); err != nil {
+		return err
+	}
 
 	resp := &appendEntriesResp{}
 	if err := c.readResp(resp); err != nil {
 		return err
 	}
-	if req.entries != nil || !f.sendEntries {
+	if n > 0 || !f.sendEntries {
 		debug(f, "<<", resp)
 	}
 	f.sendEntries = resp.result == success
@@ -182,7 +188,7 @@ func (f *flr) sendAppEntriesReq(c *conn, req *appendEntriesReq) (err error) {
 		return errStop
 	case success:
 		old := f.matchIndex
-		f.matchIndex, _ = lastEntry(req)
+		f.matchIndex = e.index
 		f.nextIndex = f.matchIndex + 1
 		if f.matchIndex != old {
 			debug(f, "matchIndex:", f.matchIndex)

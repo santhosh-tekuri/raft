@@ -52,6 +52,11 @@ func TestMessages(t *testing.T) {
 			if err := test.encode(b); err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
+			if test, ok := test.(*appendEntriesReq); ok {
+				if err := test.encodeEntries(b); err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+			}
 			typ := reflect.TypeOf(test).Elem()
 			cmd := reflect.New(typ).Interface().(message)
 			if err := cmd.decode(b); err != nil {

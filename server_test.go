@@ -22,17 +22,17 @@ func TestServer(t *testing.T) {
 			req:  &voteReq{req: req{term: 5, src: 2}, lastLogIndex: 3, lastLogTerm: 5},
 			resp: &voteResp{resp{term: 5, result: success}},
 		},
-		{
-			name: "appendEntries",
-			req: &appendEntriesReq{
-				req: req{term: 5, src: 3}, prevLogIndex: 3, prevLogTerm: 5,
-				entries: []*entry{
-					{index: 3, term: 5, typ: 2, data: []byte("sleep")},
-					{index: 4, term: 5, typ: 3, data: []byte("wakeup")},
-				}, ldrCommitIndex: 7,
-			},
-			resp: &appendEntriesResp{resp: resp{term: 5, result: success}, lastLogIndex: 10},
-		},
+		//{
+		//	name: "appendEntries",
+		//	req: &appendEntriesReq{
+		//		req: req{term: 5, src: 3}, prevLogIndex: 3, prevLogTerm: 5,
+		//		entries: []*entry{
+		//			{index: 3, term: 5, typ: 2, data: []byte("sleep")},
+		//			{index: 4, term: 5, typ: 3, data: []byte("wakeup")},
+		//		}, ldrCommitIndex: 7,
+		//	},
+		//	resp: &appendEntriesResp{resp: resp{term: 5, result: success}, lastLogIndex: 10},
+		//},
 	}
 
 	nw := fnet.New()

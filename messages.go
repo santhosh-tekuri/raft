@@ -377,7 +377,7 @@ func (req *appendEntriesReq) decode(r io.Reader) error {
 	return nil
 }
 
-func (req *appendEntriesReq) encodeNoEntries(w io.Writer) error {
+func (req *appendEntriesReq) encode(w io.Writer) error {
 	if err := req.req.encode(w); err != nil {
 		return err
 	}
@@ -390,10 +390,7 @@ func (req *appendEntriesReq) encodeNoEntries(w io.Writer) error {
 	return writeUint64(w, req.ldrCommitIndex)
 }
 
-func (req *appendEntriesReq) encode(w io.Writer) error {
-	if err := req.encodeNoEntries(w); err != nil {
-		return err
-	}
+func (req *appendEntriesReq) encodeEntries(w io.Writer) error {
 	if err := writeUint8(w, uint8(len(req.entries))); err != nil {
 		return err
 	}
