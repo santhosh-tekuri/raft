@@ -224,13 +224,11 @@ func (s *storage) getEntryTerm(index uint64) (uint64, error) {
 // called by raft.runLoop and m.replicate. append call can be called during this
 // never called with invalid index
 func (s *storage) getEntry(index uint64, e *entry) error {
-	s.prevLogMu.RLock()
 	if index <= s.prevLogIndex {
 		return errNoEntryFound
 	}
 	offset := index - s.prevLogIndex - 1
 	b, err := s.log.Get(offset)
-	s.prevLogMu.RUnlock()
 	if err != nil {
 		panic(opError(err, "Log.Get(%d)", offset))
 	}
@@ -273,6 +271,8 @@ func (s *storage) deleteLTE(index uint64) error {
 
 // no flr.replicate is going on when this called
 func (s *storage) clearLog() error {
+	s.prevLogMu.Lock()
+	defer s.prevLogMu.Unlock()
 	count := s.lastLogIndex - s.prevLogIndex
 	if err := s.log.DeleteFirst(count); err != nil {
 		return err

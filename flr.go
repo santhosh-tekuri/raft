@@ -125,6 +125,9 @@ func (f *flr) replicate(req *appendEntriesReq) {
 }
 
 func (f *flr) writeAppEntriesReq(c *conn, req *appendEntriesReq) (lastIndex uint64, err error) {
+	f.storage.prevLogMu.RLock()
+	defer f.storage.prevLogMu.RUnlock()
+
 	f.storage.snapMu.RLock()
 	snapIndex, snapTerm := f.storage.snapIndex, f.storage.snapTerm
 	f.storage.snapMu.RUnlock()
@@ -154,7 +157,7 @@ func (f *flr) writeAppEntriesReq(c *conn, req *appendEntriesReq) (lastIndex uint
 	e := &entry{index: req.prevLogIndex}
 	for i := uint64(0); i < n; i++ {
 		if err := f.storage.getEntry(f.nextIndex+i, e); err != nil {
-			break
+			panic(err)
 		}
 		if err = writeUint8(c.bufw, 1); err != nil {
 			return
