@@ -423,7 +423,6 @@ type installSnapReq struct {
 	lastTerm   uint64 // term of lastIndex
 	lastConfig Config // last config in the snapshot
 	size       int64  // size of the snapshot
-	snapshot   io.Reader
 }
 
 func (req *installSnapReq) rpcType() rpcType { return rpcInstallSnap }
@@ -457,7 +456,6 @@ func (req *installSnapReq) decode(r io.Reader) error {
 	} else {
 		req.size = int64(size)
 	}
-	req.snapshot = r
 	return nil
 }
 
@@ -471,17 +469,11 @@ func (req *installSnapReq) encode(w io.Writer) error {
 	if err := writeUint64(w, req.lastTerm); err != nil {
 		return err
 	}
-
 	e := req.lastConfig.encode()
 	if err := e.encode(w); err != nil {
 		return err
 	}
-
-	if err := writeUint64(w, uint64(req.size)); err != nil {
-		return err
-	}
-	_, err := io.CopyN(w, req.snapshot, req.size)
-	return err
+	return writeUint64(w, uint64(req.size))
 }
 
 // ------------------------------------------------------

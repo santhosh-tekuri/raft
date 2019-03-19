@@ -39,7 +39,7 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 			r.setLeader(rpc.req.from())
 		}
 
-		result, err = r.onRequest(rpc.req)
+		result, err = r.onRequest(rpc.req, rpc.reader)
 	}
 
 	if result == unexpectedErr && r.trace.Error != nil {
@@ -53,7 +53,7 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 		switch req := rpc.req.(type) {
 		case *installSnapReq:
 			if req.size > 0 {
-				_, rpc.readErr = io.CopyN(ioutil.Discard, req.snapshot, req.size)
+				_, rpc.readErr = io.CopyN(ioutil.Discard, rpc.reader, req.size)
 			}
 		}
 	}
@@ -68,7 +68,7 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 	return rpc.req.rpcType() != rpcVote || result == success
 }
 
-func (r *Raft) onRequest(req request) (result rpcResult, err error) {
+func (r *Raft) onRequest(req request, reader io.Reader) (result rpcResult, err error) {
 	defer func() {
 		if v := recover(); v != nil {
 			result, err = unexpectedErr, toErr(v)
@@ -81,7 +81,7 @@ func (r *Raft) onRequest(req request) (result rpcResult, err error) {
 	case *appendEntriesReq:
 		return r.onAppendEntriesRequest(req)
 	case *installSnapReq:
-		return r.onInstallSnapRequest(req)
+		return r.onInstallSnapRequest(req, reader)
 	case *timeoutNowReq:
 		return r.onTimeoutNowRequest()
 	default:
@@ -209,13 +209,13 @@ func (r *Raft) applyCommitted(ne *entry) {
 	}
 }
 
-func (r *Raft) onInstallSnapRequest(req *installSnapReq) (rpcResult, error) {
+func (r *Raft) onInstallSnapRequest(req *installSnapReq, reader io.Reader) (rpcResult, error) {
 	// store snapshot
 	sink, err := r.snapshots.New(req.lastIndex, req.lastTerm, req.lastConfig)
 	if err != nil {
 		return unexpectedErr, err
 	}
-	n, err := io.CopyN(sink, req.snapshot, req.size)
+	n, err := io.CopyN(sink, reader, req.size)
 	req.size -= n
 	if err != nil {
 		_, _ = sink.Done(err)

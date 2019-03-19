@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"reflect"
 	"testing"
 )
@@ -40,7 +39,6 @@ func TestMessages(t *testing.T) {
 				Nodes: nodes,
 				Index: 1, Term: 2,
 			}, size: int64(len(snapshot)),
-			snapshot: ioutil.NopCloser(bytes.NewReader([]byte(snapshot))),
 		},
 		&installSnapResp{resp{term: 5, result: success}},
 		&installSnapResp{resp{term: 5, result: unexpectedErr}},
@@ -58,19 +56,6 @@ func TestMessages(t *testing.T) {
 			cmd := reflect.New(typ).Interface().(message)
 			if err := cmd.decode(b); err != nil {
 				t.Fatalf("decode failed: %v", err)
-			}
-
-			if test, ok := test.(*installSnapReq); ok {
-				test.snapshot = nil
-				cmd := cmd.(*installSnapReq)
-				cmdSnapshot, err := ioutil.ReadAll(cmd.snapshot)
-				if err != nil {
-					t.Fatalf("snapshot read failed: %v", err)
-				}
-				if string(cmdSnapshot) != snapshot {
-					t.Fatalf("snapshot: got %s, want %s", cmdSnapshot, snapshot)
-				}
-				cmd.snapshot = nil
 			}
 			if !reflect.DeepEqual(cmd, test) {
 				t.Fatalf("mismatch: got %#v, want %#v", cmd, test)

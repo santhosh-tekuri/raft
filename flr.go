@@ -2,6 +2,7 @@ package raft
 
 import (
 	"fmt"
+	"io"
 	"time"
 )
 
@@ -194,8 +195,12 @@ func (f *flr) sendAppEntriesReq(req *appendEntriesReq) error {
 	} else {
 		debug(f, ">> heartbeat")
 	}
+	if err := f.sendReq(req); err != nil {
+		return err
+	}
+
 	resp := &appendEntriesResp{}
-	if err := f.doRPC(req, resp); err != nil {
+	if err := f.receiveResp(resp); err != nil {
 		return err
 	}
 	if req.entries != nil || !f.sendEntries {
@@ -242,11 +247,24 @@ func (f *flr) sendInstallSnapReq(appReq *appendEntriesReq) error {
 		lastTerm:   meta.Term,
 		lastConfig: meta.Config,
 		size:       meta.Size,
-		snapshot:   snapshot,
 	}
+	debug(f, ">>", req)
+	if err = f.sendReq(req); err != nil {
+		return err
+	}
+	if _, err = io.CopyN(f.conn.rwc, snapshot, req.size); err != nil {
+		_ = f.conn.rwc.Close()
+		f.conn = nil
+		return err
+	}
+	if err = f.conn.bufw.Flush(); err != nil {
+		_ = f.conn.rwc.Close()
+		f.conn = nil
+		return err
+	}
+
 	resp := &installSnapResp{}
-	debug(f, "sending installReq")
-	if err := f.doRPC(req, resp); err != nil {
+	if err = f.receiveResp(resp); err != nil {
 		return err
 	}
 	if resp.getTerm() > req.getTerm() {
@@ -269,7 +287,7 @@ func (f *flr) sendInstallSnapReq(appReq *appendEntriesReq) error {
 	}
 }
 
-func (f *flr) doRPC(req request, resp response) error {
+func (f *flr) sendReq(req request) error {
 	if f.conn == nil {
 		conn, err := f.connPool.getConn()
 		if err != nil {
@@ -282,13 +300,16 @@ func (f *flr) doRPC(req request, resp response) error {
 			f.notifyLdr(noContact{&f.status, f.noContact, nil})
 		}
 	}
-	err := f.conn.doRPC(req, resp)
+	err := f.conn.sendReq(req)
 	if err != nil {
 		_ = f.conn.rwc.Close()
 		f.conn = nil
-		return err
 	}
-	return nil
+	return err
+}
+
+func (f *flr) receiveResp(resp response) error {
+	return f.conn.receiveResp(resp)
 }
 
 func (f *flr) notifyLdr(u interface{}) {

@@ -2,6 +2,7 @@ package raft
 
 import (
 	"bufio"
+	"io"
 	"net"
 	"sync"
 )
@@ -9,6 +10,7 @@ import (
 type rpc struct {
 	req     request
 	resp    response
+	reader  io.Reader
 	readErr error // error while reading partial req payload
 	done    chan struct{}
 }
@@ -69,7 +71,7 @@ func (s *server) handleRPC(ch chan<- *rpc, r *bufio.Reader, w *bufio.Writer) err
 	if err != nil {
 		return err
 	}
-	rpc := &rpc{req: rpcType(b).createReq(), done: make(chan struct{})}
+	rpc := &rpc{req: rpcType(b).createReq(), reader: r, done: make(chan struct{})}
 
 	// decode request
 	// todo: set read deadline
