@@ -26,7 +26,7 @@ func TestMessages(t *testing.T) {
 		&voteResp{resp{term: 5, result: success}},
 		&voteResp{resp{term: 5, result: alreadyVoted}},
 		&appendEntriesReq{
-			req: req{term: 5, src: 2}, prevLogIndex: 3, prevLogTerm: 5,
+			req: req{term: 5, src: 2}, prevLogIndex: 3, prevLogTerm: 5, numEntries: 10, ldrCommitIndex: 56,
 		},
 		&appendEntriesResp{resp: resp{term: 5, result: success}, lastLogIndex: 9},
 		&installSnapReq{

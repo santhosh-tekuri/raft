@@ -93,20 +93,11 @@ func (r *Raft) onVoteRequest(req *voteReq) (rpcResult, error) {
 
 func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq, reader io.Reader) (rpcResult, error) {
 	drain := func(result rpcResult, err error) (rpcResult, error) {
-		n, errr := uint8(0), error(nil)
-		for {
-			for n == 0 {
-				if n, errr = readUint8(reader); errr != nil {
-					return readErr, errr
-				}
-			}
-			if n == appendEOF {
-				break
-			}
-			n--
+		for req.numEntries > 0 {
+			req.numEntries--
 			ne := &entry{}
-			if errr = ne.decode(reader); errr != nil {
-				return readErr, errr
+			if err := ne.decode(reader); err != nil {
+				return readErr, err
 			}
 		}
 		return result, err
@@ -153,20 +144,10 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq, reader io.Reader) (
 
 	// valid req: let us consume entries
 	index, term := req.prevLogIndex, req.prevLogTerm
-	n, err := uint8(0), error(nil)
-	for {
-		for n == 0 {
-			n, err = readUint8(reader)
-			if err != nil {
-				return readErr, err
-			}
-		}
-		if n == appendEOF {
-			break
-		}
-		n--
+	for req.numEntries > 0 {
+		req.numEntries--
 		ne := &entry{}
-		if err = ne.decode(reader); err != nil {
+		if err := ne.decode(reader); err != nil {
 			return readErr, err
 		}
 		prevTerm := term

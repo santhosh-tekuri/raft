@@ -124,6 +124,8 @@ func (f *flr) replicate(req *appendEntriesReq) {
 	}
 }
 
+const maxAppendEntries = 64
+
 func (f *flr) writeAppEntriesReq(c *conn, req *appendEntriesReq) (lastIndex uint64, err error) {
 	f.storage.prevLogMu.RLock()
 	defer f.storage.prevLogMu.RUnlock()
@@ -144,10 +146,10 @@ func (f *flr) writeAppEntriesReq(c *conn, req *appendEntriesReq) (lastIndex uint
 		}
 	}
 
-	var n uint64
+	req.numEntries = 0
 	if f.matchIndex+1 == f.nextIndex {
 		assert(f.matchIndex == req.prevLogIndex, "%v assert %d==%d", f, f.matchIndex, req.prevLogIndex)
-		n = min(f.ldrLastIndex-f.matchIndex, maxAppendEntries)
+		req.numEntries = min(f.ldrLastIndex-f.matchIndex, maxAppendEntries)
 	}
 
 	debug(f, ">>", req)
@@ -155,19 +157,13 @@ func (f *flr) writeAppEntriesReq(c *conn, req *appendEntriesReq) (lastIndex uint
 		return
 	}
 	e := &entry{index: req.prevLogIndex}
-	for i := uint64(0); i < n; i++ {
+	for i := uint64(0); i < req.numEntries; i++ {
 		if err := f.storage.getEntry(f.nextIndex+i, e); err != nil {
 			panic(err)
-		}
-		if err = writeUint8(c.bufw, 1); err != nil {
-			return
 		}
 		if err = e.encode(c.bufw); err != nil {
 			return
 		}
-	}
-	if err = writeUint8(c.bufw, appendEOF); err != nil {
-		return
 	}
 	if err = c.bufw.Flush(); err != nil {
 		return

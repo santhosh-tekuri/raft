@@ -3,7 +3,6 @@ package raft
 import (
 	"fmt"
 	"io"
-	"math"
 )
 
 type entryType uint8
@@ -323,22 +322,18 @@ func (resp *voteResp) String() string {
 
 // ------------------------------------------------------
 
-const (
-	maxAppendEntries = math.MaxUint8 - 1
-	appendEOF        = math.MaxUint8
-)
-
 type appendEntriesReq struct {
 	req
 	prevLogIndex   uint64
 	prevLogTerm    uint64
 	ldrCommitIndex uint64
+	numEntries     uint64
 }
 
 func (req *appendEntriesReq) rpcType() rpcType { return rpcAppendEntries }
 func (req *appendEntriesReq) String() string {
-	format := "appendEntriesReq{T%d M%d prev:(%d,%d), commit:%d}"
-	return fmt.Sprintf(format, req.term, req.src, req.prevLogIndex, req.prevLogTerm, req.ldrCommitIndex)
+	format := "appendEntriesReq{T%d M%d prev:(%d,%d), #entries: %d, commit:%d}"
+	return fmt.Sprintf(format, req.term, req.src, req.prevLogIndex, req.prevLogTerm, req.numEntries, req.ldrCommitIndex)
 }
 
 func (req *appendEntriesReq) decode(r io.Reader) error {
@@ -352,7 +347,10 @@ func (req *appendEntriesReq) decode(r io.Reader) error {
 	if req.prevLogTerm, err = readUint64(r); err != nil {
 		return err
 	}
-	req.ldrCommitIndex, err = readUint64(r)
+	if req.ldrCommitIndex, err = readUint64(r); err != nil {
+		return err
+	}
+	req.numEntries, err = readUint64(r)
 	return err
 }
 
@@ -366,7 +364,10 @@ func (req *appendEntriesReq) encode(w io.Writer) error {
 	if err := writeUint64(w, req.prevLogTerm); err != nil {
 		return err
 	}
-	return writeUint64(w, req.ldrCommitIndex)
+	if err := writeUint64(w, req.ldrCommitIndex); err != nil {
+		return err
+	}
+	return writeUint64(w, req.numEntries)
 }
 
 // ------------------------------------------------------
