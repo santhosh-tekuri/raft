@@ -25,44 +25,17 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 	}
 
 	debug(r, "<<", rpc.req)
-	result, err := rpcResult(0), error(nil)
-	if rpc.req.getTerm() < r.term {
-		result = staleTerm
-	} else {
-		if rpc.req.getTerm() > r.term {
-			r.setState(Follower)
-			r.setTerm(rpc.req.getTerm())
-		}
-
-		if typ := rpc.req.rpcType(); typ.fromLeader() && typ != rpcTimeoutNow {
-			r.setState(Follower)
-			r.setLeader(rpc.req.from())
-		}
-
-		result, err = r.onRequest(rpc.req, rpc.reader)
-	}
-
-	if result == unexpectedErr && r.trace.Error != nil {
-		r.trace.Error(err)
-	}
-
-	// if possible, drain any partially read requests
-	if result == readErr {
-		rpc.readErr = err
-	} else if result != unexpectedErr {
-		switch req := rpc.req.(type) {
-		case *installSnapReq:
-			if req.size > 0 {
-				_, rpc.readErr = io.CopyN(ioutil.Discard, rpc.reader, req.size)
-			}
-		}
-	}
-
+	result, err := r.onRequest(rpc.req, rpc.reader)
 	rpc.resp = rpc.req.rpcType().createResp(r, result)
 	debug(r, ">>", rpc.resp)
 	close(rpc.done)
 
-	if result == unexpectedErr {
+	if result == readErr {
+		rpc.readErr = err
+	} else if result == unexpectedErr {
+		if r.trace.Error != nil {
+			r.trace.Error(err)
+		}
 		panic(err)
 	}
 	return rpc.req.rpcType() != rpcVote || result == success
@@ -89,7 +62,16 @@ func (r *Raft) onRequest(req request, reader io.Reader) (result rpcResult, err e
 	}
 }
 
+// onVoteRequest -------------------------------------------------
+
 func (r *Raft) onVoteRequest(req *voteReq) (rpcResult, error) {
+	if req.term < r.term {
+		return staleTerm, nil
+	} else if req.term > r.term {
+		r.setTerm(req.getTerm())
+		r.setState(Follower)
+	}
+
 	// if we already voted
 	if r.votedFor != 0 {
 		if r.votedFor == req.src { // same candidate we votedFor
@@ -107,14 +89,15 @@ func (r *Raft) onVoteRequest(req *voteReq) (rpcResult, error) {
 	return success, nil
 }
 
+// onAppendEntriesRequest -------------------------------------------------
+
 func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq, reader io.Reader) (rpcResult, error) {
 	drain := func(result rpcResult, err error) (rpcResult, error) {
-		n, err := uint8(0), error(nil)
+		n, errr := uint8(0), error(nil)
 		for {
 			for n == 0 {
-				n, err = readUint8(reader)
-				if err != nil {
-					return readErr, err
+				if n, errr = readUint8(reader); errr != nil {
+					return readErr, errr
 				}
 			}
 			if n == appendEOF {
@@ -122,12 +105,21 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq, reader io.Reader) (
 			}
 			n--
 			ne := &entry{}
-			if err = ne.decode(reader); err != nil {
-				return readErr, err
+			if errr = ne.decode(reader); errr != nil {
+				return readErr, errr
 			}
 		}
 		return result, err
 	}
+
+	if req.term < r.term {
+		return drain(staleTerm, nil)
+	} else if req.term > r.term {
+		r.setTerm(req.getTerm())
+		r.setState(Follower)
+	}
+	r.setState(Follower)
+	r.setLeader(req.src)
 
 	// reply false if log at req.prevLogIndex does not match
 	if req.prevLogIndex > r.snapIndex {
@@ -245,7 +237,26 @@ func (r *Raft) applyCommitted(ne *entry) {
 	}
 }
 
+// onInstallSnapRequest -------------------------------------------------
+
 func (r *Raft) onInstallSnapRequest(req *installSnapReq, reader io.Reader) (rpcResult, error) {
+	drain := func(result rpcResult, err error) (rpcResult, error) {
+		if req.size > 0 {
+			if _, errr := io.CopyN(ioutil.Discard, reader, req.size); errr != nil {
+				return readErr, errr
+			}
+		}
+		return result, err
+	}
+	if req.term < r.term {
+		return drain(staleTerm, nil)
+	} else if req.term > r.term {
+		r.setTerm(req.getTerm())
+		r.setState(Follower)
+	}
+	r.setState(Follower)
+	r.setLeader(req.src)
+
 	// store snapshot
 	sink, err := r.snapshots.New(req.lastIndex, req.lastTerm, req.lastConfig)
 	if err != nil {
@@ -299,6 +310,8 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq, reader io.Reader) (rpcR
 
 	return success, nil
 }
+
+// onTimeoutNowRequest -------------------------------------------------
 
 func (r *Raft) onTimeoutNowRequest() (rpcResult, error) {
 	r.setState(Candidate)
