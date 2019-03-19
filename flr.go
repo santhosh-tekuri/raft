@@ -18,10 +18,9 @@ type flr struct {
 	ldrLastIndex  uint64
 	matchIndex    uint64
 	nextIndex     uint64
-	sendEntries   bool
 
 	node  Node
-	round *Round // nil if no promotion reqd
+	round *Round // nil if no promotion required
 
 	// from this time node is unreachable
 	// zero value means node is reachable
@@ -100,7 +99,7 @@ func (f *flr) replicate(req *appendEntriesReq) {
 			continue
 		}
 
-		if f.sendEntries && f.matchIndex == f.ldrLastIndex {
+		if f.matchIndex == f.ldrLastIndex {
 			timer.reset(f.hbTimeout / 10)
 			// nothing to send. start heartbeat timer
 			select {
@@ -142,16 +141,12 @@ func (f *flr) sendAppEntriesReq(c *conn, req *appendEntriesReq) (err error) {
 	}
 
 	var n uint64
-	if f.sendEntries {
+	if f.matchIndex+1 == f.nextIndex {
 		assert(f.matchIndex == req.prevLogIndex, "%v assert %d==%d", f, f.matchIndex, req.prevLogIndex)
 		n = min(f.ldrLastIndex-f.matchIndex, maxAppendEntries)
 	}
 
-	if n > 0 || !f.sendEntries {
-		debug(f, ">>", req)
-	} else {
-		debug(f, ">> heartbeat")
-	}
+	debug(f, ">>", req)
 	if err := c.writeReq(req); err != nil {
 		return err
 	}
@@ -178,10 +173,7 @@ func (f *flr) sendAppEntriesReq(c *conn, req *appendEntriesReq) (err error) {
 	if err := c.readResp(resp); err != nil {
 		return err
 	}
-	if n > 0 || !f.sendEntries {
-		debug(f, "<<", resp)
-	}
-	f.sendEntries = resp.result == success
+	debug(f, "<<", resp)
 	switch resp.result {
 	case staleTerm:
 		f.notifyLdr(newTerm{resp.getTerm()})
@@ -238,10 +230,6 @@ func (f *flr) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
 	if err = c.readResp(resp); err != nil {
 		return err
 	}
-	// we have to still send one appEntries, to update his commit index
-	// so we should not update sendEntries=true, because if we have
-	// no entries beyond snapshot, we sleep for hbTimeout
-	//f.sendEntries = resp.success // NOTE: dont do this
 	switch resp.result {
 	case staleTerm:
 		f.notifyLdr(newTerm{resp.getTerm()})
