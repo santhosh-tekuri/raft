@@ -83,12 +83,14 @@ func (f *flr) replicate(req *appendEntriesReq) {
 		if err == errStop {
 			return
 		} else if err != nil && err != errNoEntryFound {
-			// todo: we need to distinguish between local/remote opErr
-			//       only local opErr to be sent to trace
 			if _, ok := err.(OpError); ok {
 				if f.trace.Error != nil {
 					f.trace.Error(err)
 				}
+				panic(err)
+			}
+			if remoteErr, ok := err.(remoteError); ok {
+				err = remoteErr.error
 			}
 			failures++
 			continue
@@ -193,8 +195,10 @@ func (f *flr) sendAppEntriesReq(c *conn, req *appendEntriesReq) (err error) {
 		f.nextIndex = min(f.nextIndex-1, resp.lastLogIndex+1)
 		debug(f, "nextIndex:", f.nextIndex)
 		return nil
+	case unexpectedErr:
+		return remoteError{resp.err}
 	default:
-		return ErrRemote
+		panic(fmt.Errorf("[BUG] appendEntries.result==%v", resp.result))
 	}
 }
 
@@ -241,8 +245,10 @@ func (f *flr) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
 		debug(f, "matchIndex:", f.matchIndex, "nextIndex:", f.nextIndex)
 		f.notifyLdr(matchIndex{&f.status, f.matchIndex})
 		return nil
+	case unexpectedErr:
+		return remoteError{resp.err}
 	default:
-		return ErrRemote
+		panic(fmt.Errorf("[BUG] installSnapResp.result==%v", resp.result))
 	}
 }
 

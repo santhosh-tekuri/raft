@@ -6,6 +6,8 @@ import (
 	"io"
 	"reflect"
 	"testing"
+
+	"github.com/pkg/errors"
 )
 
 func TestMessages(t *testing.T) {
@@ -37,7 +39,8 @@ func TestMessages(t *testing.T) {
 			}, size: int64(len(snapshot)),
 		},
 		&installSnapResp{resp{term: 5, result: success}},
-		&installSnapResp{resp{term: 5, result: unexpectedErr}},
+		&installSnapResp{resp{term: 5, result: unexpectedErr, err: errors.New("notOpErr")}},
+		&installSnapResp{resp{term: 5, result: unexpectedErr, err: OpError{"myop", errors.New("notOpErr")}}},
 		&timeoutNowReq{req{term: 5, src: 3}},
 		&timeoutNowResp{resp{term: 5, result: success}},
 	}
@@ -53,6 +56,35 @@ func TestMessages(t *testing.T) {
 			if err := cmd.decode(b); err != nil {
 				t.Fatalf("decode failed: %v", err)
 			}
+
+			// check resp.error
+			if _, ok := test.(response); ok {
+				testErr := test.(response).getErr()
+				cmdErr := test.(response).getErr()
+				test.(response).setErr(nil)
+				cmd.(response).setErr(nil)
+				if testOpErr, ok := testErr.(OpError); ok {
+					cmdOperr, ok := cmdErr.(OpError)
+					if !ok {
+						t.Fatal("expected OpError")
+					}
+					if testOpErr.Op != cmdOperr.Op {
+						t.Fatalf("opMismatch: %q, %q", testOpErr.Op, cmdOperr.Op)
+					}
+					testErr, cmdErr = testOpErr.Err, cmdOperr.Err
+				}
+				if testErr != nil {
+					if cmdErr == nil {
+						t.Fatal("expected error")
+					}
+					if testErr.Error() != cmdErr.Error() {
+						t.Fatalf("errMismsatch: %q, %q", testErr.Error(), cmdErr.Error())
+					}
+				} else if cmdErr != nil {
+					t.Fatal("expected nil error")
+				}
+			}
+
 			if !reflect.DeepEqual(cmd, test) {
 				t.Fatalf("mismatch: got %#v, want %#v", cmd, test)
 			}

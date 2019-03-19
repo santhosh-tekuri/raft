@@ -101,6 +101,10 @@ func opError(err error, format string, v ...interface{}) OpError {
 	}
 }
 
+type remoteError struct {
+	error
+}
+
 // -----------------------------------------------------------
 
 type IdentityError struct {

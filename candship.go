@@ -38,7 +38,7 @@ func (c *candShip) startElection() {
 			// vote for self
 			c.setVotedFor(c.nid)
 			c.respCh <- rpcResponse{
-				response: rpcVote.createResp(c.Raft, success),
+				response: rpcVote.createResp(c.Raft, success, nil),
 				from:     c.nid,
 			}
 			continue

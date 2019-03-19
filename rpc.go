@@ -16,9 +16,9 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 	// handle identity req
 	if req, ok := rpc.req.(*identityReq); ok {
 		if r.cid != req.cid || r.nid != req.nid {
-			rpc.resp = rpcIdentity.createResp(r, idMismatch)
+			rpc.resp = rpcIdentity.createResp(r, idMismatch, nil)
 		} else {
-			rpc.resp = rpcIdentity.createResp(r, success)
+			rpc.resp = rpcIdentity.createResp(r, success, nil)
 		}
 		close(rpc.done)
 		return
@@ -26,7 +26,7 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 
 	debug(r, "<<", rpc.req)
 	result, err := r.onRequest(rpc.req, rpc.reader)
-	rpc.resp = rpc.req.rpcType().createResp(r, result)
+	rpc.resp = rpc.req.rpcType().createResp(r, result, err)
 	debug(r, ">>", rpc.resp)
 	close(rpc.done)
 

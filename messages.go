@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"errors"
 	"fmt"
 	"io"
 )
@@ -105,8 +106,8 @@ func (t rpcType) createReq() request {
 	panic(fmt.Errorf("raft.createReq(%d)", t))
 }
 
-func (t rpcType) createResp(r *Raft, result rpcResult) response {
-	resp := resp{r.term, result}
+func (t rpcType) createResp(r *Raft, result rpcResult, err error) response {
+	resp := resp{r.term, result, err}
 	switch t {
 	case rpcIdentity:
 		return &identityResp{resp}
@@ -203,15 +204,20 @@ func (req *req) encode(w io.Writer) error {
 type response interface {
 	message
 	getResult() rpcResult
+	getErr() error
+	setErr(error)
 }
 
 type resp struct {
 	term   uint64
 	result rpcResult
+	err    error
 }
 
 func (resp *resp) getTerm() uint64      { return resp.term }
 func (resp *resp) getResult() rpcResult { return resp.result }
+func (resp *resp) getErr() error        { return resp.err }
+func (resp *resp) setErr(err error)     { resp.err = err }
 
 func (resp *resp) decode(r io.Reader) error {
 	var err error
@@ -224,6 +230,20 @@ func (resp *resp) decode(r io.Reader) error {
 	} else {
 		resp.result = rpcResult(result)
 	}
+	if resp.result == unexpectedErr {
+		op, err := readString(r)
+		if err != nil {
+			return err
+		}
+		errStr, err := readString(r)
+		if err != nil {
+			return err
+		}
+		resp.err = errors.New(errStr)
+		if op != "" {
+			resp.err = OpError{op, resp.err}
+		}
+	}
 	return nil
 }
 
@@ -231,7 +251,23 @@ func (resp *resp) encode(w io.Writer) error {
 	if err := writeUint64(w, resp.term); err != nil {
 		return err
 	}
-	return writeUint8(w, uint8(resp.result))
+	if err := writeUint8(w, uint8(resp.result)); err != nil {
+		return err
+	}
+	if resp.result == unexpectedErr {
+		op := ""
+		err := resp.err
+		if opErr, ok := err.(OpError); ok {
+			op, err = opErr.Op, opErr.Err
+		}
+		if err := writeString(w, op); err != nil {
+			return err
+		}
+		if err := writeString(w, err.Error()); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ------------------------------------------------------
