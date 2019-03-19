@@ -57,10 +57,8 @@ func (f *flr) replicate(req *appendEntriesReq) {
 				_ = c.rwc.Close()
 				c = nil
 			}
-			if f.noContact.IsZero() {
-				f.noContact = time.Now()
-				debug(f, "noContact", err)
-				f.notifyLdr(noContact{&f.status, f.noContact, err})
+			if failures == 1 {
+				f.notifyNoContact(err)
 			}
 			select {
 			case <-f.stopCh:
@@ -74,18 +72,14 @@ func (f *flr) replicate(req *appendEntriesReq) {
 				failures++
 				continue
 			}
-			failures = 0
-			if !f.noContact.IsZero() {
-				f.noContact = time.Time{} // zeroing
-				debug(f, "yesContact")
-				f.notifyLdr(noContact{&f.status, f.noContact, nil})
+			if failures > 0 {
+				failures = 0
+				f.notifyNoContact(nil)
 			}
 		}
 
 		assert(f.matchIndex < f.nextIndex, "%v assert %d<%d", f, f.matchIndex, f.nextIndex)
-
 		err = f.sendAppEntriesReq(c, req)
-
 		if err == errStop {
 			return
 		} else if err != nil && err != errNoEntryFound {
@@ -135,9 +129,8 @@ func (f *flr) writeAppEntriesReq(c *conn, req *appendEntriesReq) (lastIndex uint
 	snapIndex, snapTerm := f.storage.snapIndex, f.storage.snapTerm
 	f.storage.snapMu.RUnlock()
 
+	// fill req.prevLogXXX
 	req.prevLogIndex = f.nextIndex - 1
-
-	// fill req.prevLogTerm
 	if req.prevLogIndex == snapIndex {
 		req.prevLogTerm = snapTerm
 	} else {
@@ -239,7 +232,7 @@ func (f *flr) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
 		f.notifyLdr(newTerm{resp.getTerm()})
 		return errStop
 	case success:
-		// case: snapshot was taken before we got leaderUpdate about lastLogindex
+		// case: snapshot was taken before we got leaderUpdate about lastLogIndex
 		if req.lastIndex > f.ldrLastIndex {
 			f.ldrLastIndex = req.lastIndex
 		}
@@ -293,6 +286,18 @@ func (f *flr) notifyLdr(u interface{}) {
 		if f.matchIndex >= f.round.LastIndex {
 			f.notifyRoundCompleted()
 		}
+	}
+}
+
+func (f *flr) notifyNoContact(err error) {
+	if err != nil {
+		f.noContact = time.Now()
+		debug(f, "noContact", err)
+		f.notifyLdr(noContact{&f.status, f.noContact, err})
+	} else {
+		f.noContact = time.Time{} // zeroing
+		debug(f, "yesContact")
+		f.notifyLdr(noContact{&f.status, f.noContact, nil})
 	}
 }
 
