@@ -42,7 +42,7 @@ func (c *conn) writeReq(req request) error {
 	return c.bufw.Flush()
 }
 
-func (c *conn) receiveResp(resp response) error {
+func (c *conn) readResp(resp response) error {
 	if err := c.rwc.SetDeadline(time.Now().Add(c.timeout)); err != nil {
 		return err
 	}
@@ -53,7 +53,7 @@ func (c *conn) doRPC(req request, resp response) error {
 	if err := c.writeReq(req); err != nil {
 		return err
 	}
-	return c.receiveResp(resp)
+	return c.readResp(resp)
 }
 
 // --------------------------------------------------------------------

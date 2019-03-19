@@ -200,7 +200,7 @@ func (f *flr) sendAppEntriesReq(req *appendEntriesReq) error {
 	}
 
 	resp := &appendEntriesResp{}
-	if err := f.receiveResp(resp); err != nil {
+	if err := f.readResp(resp); err != nil {
 		return err
 	}
 	if req.entries != nil || !f.sendEntries {
@@ -264,7 +264,7 @@ func (f *flr) sendInstallSnapReq(appReq *appendEntriesReq) error {
 	}
 
 	resp := &installSnapResp{}
-	if err = f.receiveResp(resp); err != nil {
+	if err = f.readResp(resp); err != nil {
 		return err
 	}
 	if resp.getTerm() > req.getTerm() {
@@ -308,8 +308,8 @@ func (f *flr) writeReq(req request) error {
 	return err
 }
 
-func (f *flr) receiveResp(resp response) error {
-	return f.conn.receiveResp(resp)
+func (f *flr) readResp(resp response) error {
+	return f.conn.readResp(resp)
 }
 
 func (f *flr) notifyLdr(u interface{}) {
