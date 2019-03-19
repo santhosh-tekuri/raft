@@ -124,19 +124,20 @@ func (f *flr) replicate(req *appendEntriesReq) {
 	}
 }
 
-func (f *flr) sendAppEntriesReq(c *conn, req *appendEntriesReq) (err error) {
-	req.prevLogIndex = f.nextIndex - 1
-
-	// fill req.prevLogTerm
+func (f *flr) writeAppEntriesReq(c *conn, req *appendEntriesReq) (lastIndex uint64, err error) {
 	f.storage.snapMu.RLock()
 	snapIndex, snapTerm := f.storage.snapIndex, f.storage.snapTerm
 	f.storage.snapMu.RUnlock()
+
+	req.prevLogIndex = f.nextIndex - 1
+
+	// fill req.prevLogTerm
 	if req.prevLogIndex == snapIndex {
 		req.prevLogTerm = snapTerm
 	} else {
 		req.prevLogTerm, err = f.storage.getEntryTerm(req.prevLogIndex)
 		if err != nil { // meanwhile leader compacted log
-			return f.sendInstallSnapReq(c, req)
+			return
 		}
 	}
 
@@ -147,25 +148,35 @@ func (f *flr) sendAppEntriesReq(c *conn, req *appendEntriesReq) (err error) {
 	}
 
 	debug(f, ">>", req)
-	if err := c.writeReq(req); err != nil {
-		return err
+	if err = c.writeReq(req); err != nil {
+		return
 	}
 	e := &entry{index: req.prevLogIndex}
 	for i := uint64(0); i < n; i++ {
 		if err := f.storage.getEntry(f.nextIndex+i, e); err != nil {
 			break
 		}
-		if err := writeUint8(c.bufw, 1); err != nil {
-			return err
+		if err = writeUint8(c.bufw, 1); err != nil {
+			return
 		}
 		if err = e.encode(c.bufw); err != nil {
-			return err
+			return
 		}
 	}
-	if err := writeUint8(c.bufw, appendEOF); err != nil {
-		return err
+	if err = writeUint8(c.bufw, appendEOF); err != nil {
+		return
 	}
-	if err := c.bufw.Flush(); err != nil {
+	if err = c.bufw.Flush(); err != nil {
+		return
+	}
+	return e.index, nil
+}
+
+func (f *flr) sendAppEntriesReq(c *conn, req *appendEntriesReq) (err error) {
+	lastIndex, err := f.writeAppEntriesReq(c, req)
+	if err == errNoEntryFound {
+		return f.sendInstallSnapReq(c, req)
+	} else if err != nil {
 		return err
 	}
 
@@ -180,7 +191,7 @@ func (f *flr) sendAppEntriesReq(c *conn, req *appendEntriesReq) (err error) {
 		return errStop
 	case success:
 		old := f.matchIndex
-		f.matchIndex = e.index
+		f.matchIndex = lastIndex
 		f.nextIndex = f.matchIndex + 1
 		if f.matchIndex != old {
 			debug(f, "matchIndex:", f.matchIndex)
