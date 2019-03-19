@@ -125,8 +125,6 @@ func (f *flr) replicate(req *appendEntriesReq) {
 	}
 }
 
-const maxAppendEntries = 64 // todo: should be configurable
-
 func (f *flr) sendAppEntriesReq(c *conn, req *appendEntriesReq) (err error) {
 	req.prevLogIndex = f.nextIndex - 1
 

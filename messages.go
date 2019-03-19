@@ -3,6 +3,7 @@ package raft
 import (
 	"fmt"
 	"io"
+	"math"
 )
 
 type entryType uint8
@@ -322,12 +323,17 @@ func (resp *voteResp) String() string {
 
 // ------------------------------------------------------
 
+const (
+	maxAppendEntries = math.MaxUint8 - 1
+	appendEOF        = math.MaxUint8
+)
+
 type appendEntriesReq struct {
 	req
 	prevLogIndex   uint64
 	prevLogTerm    uint64
-	entries        []*entry
 	ldrCommitIndex uint64
+	entries        []*entry
 }
 
 func (req *appendEntriesReq) rpcType() rpcType { return rpcAppendEntries }
@@ -347,24 +353,31 @@ func (req *appendEntriesReq) decode(r io.Reader) error {
 	if req.prevLogTerm, err = readUint64(r); err != nil {
 		return err
 	}
-
-	size, err := readUint32(r)
-	if err != nil {
+	if req.ldrCommitIndex, err = readUint64(r); err != nil {
 		return err
 	}
-	req.entries = make([]*entry, size)
-	for i := uint32(0); i < size; i++ {
-		req.entries[i] = &entry{}
-		if err = req.entries[i].decode(r); err != nil {
+
+	req.entries = nil
+	for {
+		size, err := readUint8(r)
+		if err != nil {
 			return err
 		}
+		if size == appendEOF {
+			break
+		}
+		for ; size > 0; size-- {
+			e := &entry{}
+			if err = e.decode(r); err != nil {
+				return err
+			}
+			req.entries = append(req.entries, e)
+		}
 	}
-
-	req.ldrCommitIndex, err = readUint64(r)
-	return err
+	return nil
 }
 
-func (req *appendEntriesReq) encode(w io.Writer) error {
+func (req *appendEntriesReq) encodeNoEntries(w io.Writer) error {
 	if err := req.req.encode(w); err != nil {
 		return err
 	}
@@ -374,8 +387,14 @@ func (req *appendEntriesReq) encode(w io.Writer) error {
 	if err := writeUint64(w, req.prevLogTerm); err != nil {
 		return err
 	}
+	return writeUint64(w, req.ldrCommitIndex)
+}
 
-	if err := writeUint32(w, uint32(len(req.entries))); err != nil {
+func (req *appendEntriesReq) encode(w io.Writer) error {
+	if err := req.encodeNoEntries(w); err != nil {
+		return err
+	}
+	if err := writeUint8(w, uint8(len(req.entries))); err != nil {
 		return err
 	}
 	for _, entry := range req.entries {
@@ -383,8 +402,7 @@ func (req *appendEntriesReq) encode(w io.Writer) error {
 			return err
 		}
 	}
-
-	return writeUint64(w, req.ldrCommitIndex)
+	return writeUint8(w, appendEOF)
 }
 
 // ------------------------------------------------------
