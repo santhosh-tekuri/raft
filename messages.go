@@ -333,13 +333,12 @@ type appendEntriesReq struct {
 	prevLogIndex   uint64
 	prevLogTerm    uint64
 	ldrCommitIndex uint64
-	entries        []*entry
 }
 
 func (req *appendEntriesReq) rpcType() rpcType { return rpcAppendEntries }
 func (req *appendEntriesReq) String() string {
-	format := "appendEntriesReq{T%d M%d prev:(%d,%d), #entries:%d, commit:%d}"
-	return fmt.Sprintf(format, req.term, req.src, req.prevLogIndex, req.prevLogTerm, len(req.entries), req.ldrCommitIndex)
+	format := "appendEntriesReq{T%d M%d prev:(%d,%d), commit:%d}"
+	return fmt.Sprintf(format, req.term, req.src, req.prevLogIndex, req.prevLogTerm, req.ldrCommitIndex)
 }
 
 func (req *appendEntriesReq) decode(r io.Reader) error {
@@ -353,28 +352,8 @@ func (req *appendEntriesReq) decode(r io.Reader) error {
 	if req.prevLogTerm, err = readUint64(r); err != nil {
 		return err
 	}
-	if req.ldrCommitIndex, err = readUint64(r); err != nil {
-		return err
-	}
-
-	req.entries = nil
-	for {
-		size, err := readUint8(r)
-		if err != nil {
-			return err
-		}
-		if size == appendEOF {
-			break
-		}
-		for ; size > 0; size-- {
-			e := &entry{}
-			if err = e.decode(r); err != nil {
-				return err
-			}
-			req.entries = append(req.entries, e)
-		}
-	}
-	return nil
+	req.ldrCommitIndex, err = readUint64(r)
+	return err
 }
 
 func (req *appendEntriesReq) encode(w io.Writer) error {
@@ -388,18 +367,6 @@ func (req *appendEntriesReq) encode(w io.Writer) error {
 		return err
 	}
 	return writeUint64(w, req.ldrCommitIndex)
-}
-
-func (req *appendEntriesReq) encodeEntries(w io.Writer) error {
-	if err := writeUint8(w, uint8(len(req.entries))); err != nil {
-		return err
-	}
-	for _, entry := range req.entries {
-		if err := entry.encode(w); err != nil {
-			return err
-		}
-	}
-	return writeUint8(w, appendEOF)
 }
 
 // ------------------------------------------------------

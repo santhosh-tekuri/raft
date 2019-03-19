@@ -79,7 +79,7 @@ func (r *Raft) onRequest(req request, reader io.Reader) (result rpcResult, err e
 	case *voteReq:
 		return r.onVoteRequest(req)
 	case *appendEntriesReq:
-		return r.onAppendEntriesRequest(req)
+		return r.onAppendEntriesRequest(req, reader)
 	case *installSnapReq:
 		return r.onInstallSnapRequest(req, reader)
 	case *timeoutNowReq:
@@ -107,11 +107,32 @@ func (r *Raft) onVoteRequest(req *voteReq) (rpcResult, error) {
 	return success, nil
 }
 
-func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) (rpcResult, error) {
+func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq, reader io.Reader) (rpcResult, error) {
+	drain := func(result rpcResult, err error) (rpcResult, error) {
+		n, err := uint8(0), error(nil)
+		for {
+			for n == 0 {
+				n, err = readUint8(reader)
+				if err != nil {
+					return readErr, err
+				}
+			}
+			if n == appendEOF {
+				break
+			}
+			n--
+			ne := &entry{}
+			if err = ne.decode(reader); err != nil {
+				return readErr, err
+			}
+		}
+		return result, err
+	}
+
 	// reply false if log at req.prevLogIndex does not match
 	if req.prevLogIndex > r.snapIndex {
 		if req.prevLogIndex > r.lastLogIndex {
-			return prevEntryNotFound, nil
+			return drain(prevEntryNotFound, nil)
 		}
 
 		var prevLogTerm uint64
@@ -125,10 +146,10 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) (rpcResult, error) 
 				panic(err)
 			}
 			prevLogTerm = prevEntry.term
-			// we never get ErrnotFound here, because we are the goroutine who is compacting
+			// we never get ErrNotFound here, because we are the goroutine who is compacting
 		}
 		if req.prevLogTerm != prevLogTerm {
-			return prevTermMismatch, nil
+			return drain(prevTermMismatch, nil)
 		}
 
 		// valid req: can we commit req.prevLogIndex ?
@@ -140,7 +161,22 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq) (rpcResult, error) 
 
 	// valid req: let us consume entries
 	index, term := req.prevLogIndex, req.prevLogTerm
-	for _, ne := range req.entries {
+	n, err := uint8(0), error(nil)
+	for {
+		for n == 0 {
+			n, err = readUint8(reader)
+			if err != nil {
+				return readErr, err
+			}
+		}
+		if n == appendEOF {
+			break
+		}
+		n--
+		ne := &entry{}
+		if err = ne.decode(reader); err != nil {
+			return readErr, err
+		}
 		prevTerm := term
 		index, term = ne.index, ne.term
 		if ne.index <= r.snapIndex {

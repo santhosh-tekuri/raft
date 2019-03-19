@@ -27,10 +27,6 @@ func TestMessages(t *testing.T) {
 		&voteResp{resp{term: 5, result: alreadyVoted}},
 		&appendEntriesReq{
 			req: req{term: 5, src: 2}, prevLogIndex: 3, prevLogTerm: 5,
-			entries: []*entry{
-				{index: 3, term: 5, typ: 2, data: []byte("sleep")},
-				{index: 4, term: 5, typ: 3, data: []byte("wakeup")},
-			}, ldrCommitIndex: 7,
 		},
 		&appendEntriesResp{resp: resp{term: 5, result: success}, lastLogIndex: 9},
 		&installSnapReq{
@@ -51,11 +47,6 @@ func TestMessages(t *testing.T) {
 			b := new(bytes.Buffer)
 			if err := test.encode(b); err != nil {
 				t.Fatalf("unexpected error: %v", err)
-			}
-			if test, ok := test.(*appendEntriesReq); ok {
-				if err := test.encodeEntries(b); err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
 			}
 			typ := reflect.TypeOf(test).Elem()
 			cmd := reflect.New(typ).Interface().(message)
