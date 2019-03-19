@@ -29,7 +29,7 @@ func dial(dialFn dialFn, address string, timeout time.Duration) (*conn, error) {
 	}, nil
 }
 
-func (c *conn) sendReq(req request) error {
+func (c *conn) writeReq(req request) error {
 	if err := c.rwc.SetDeadline(time.Now().Add(c.timeout)); err != nil {
 		return err
 	}
@@ -50,7 +50,7 @@ func (c *conn) receiveResp(resp response) error {
 }
 
 func (c *conn) doRPC(req request, resp response) error {
-	if err := c.sendReq(req); err != nil {
+	if err := c.writeReq(req); err != nil {
 		return err
 	}
 	return c.receiveResp(resp)

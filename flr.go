@@ -195,7 +195,7 @@ func (f *flr) sendAppEntriesReq(req *appendEntriesReq) error {
 	} else {
 		debug(f, ">> heartbeat")
 	}
-	if err := f.sendReq(req); err != nil {
+	if err := f.writeReq(req); err != nil {
 		return err
 	}
 
@@ -249,7 +249,7 @@ func (f *flr) sendInstallSnapReq(appReq *appendEntriesReq) error {
 		size:       meta.Size,
 	}
 	debug(f, ">>", req)
-	if err = f.sendReq(req); err != nil {
+	if err = f.writeReq(req); err != nil {
 		return err
 	}
 	if _, err = io.CopyN(f.conn.rwc, snapshot, req.size); err != nil {
@@ -287,7 +287,7 @@ func (f *flr) sendInstallSnapReq(appReq *appendEntriesReq) error {
 	}
 }
 
-func (f *flr) sendReq(req request) error {
+func (f *flr) writeReq(req request) error {
 	if f.conn == nil {
 		conn, err := f.connPool.getConn()
 		if err != nil {
@@ -300,7 +300,7 @@ func (f *flr) sendReq(req request) error {
 			f.notifyLdr(noContact{&f.status, f.noContact, nil})
 		}
 	}
-	err := f.conn.sendReq(req)
+	err := f.conn.writeReq(req)
 	if err != nil {
 		_ = f.conn.rwc.Close()
 		f.conn = nil
