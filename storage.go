@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net"
 	"sync"
 
 	"github.com/pkg/errors"
@@ -19,6 +20,7 @@ type Vars interface {
 type Log interface {
 	Count() (uint64, error)
 	Get(offset uint64) ([]byte, error)
+	WriteTo(w io.Writer, offset uint64, n uint64) error
 	Append(entry []byte) error
 	DeleteFirst(n uint64) error
 	DeleteLast(n uint64) error
@@ -237,6 +239,20 @@ func (s *storage) getEntry(index uint64, e *entry) error {
 	}
 	if e.index != index {
 		panic(opError(fmt.Errorf("got %d, want %d", e.index, index), "log.Get(%d).index: ", offset))
+	}
+	return nil
+}
+
+func (s *storage) WriteEntriesTo(w io.Writer, from uint64, n uint64) error {
+	if from <= s.prevLogIndex {
+		return errNoEntryFound
+	}
+	offset := from - s.prevLogIndex - 1
+	if err := s.log.WriteTo(w, offset, n); err != nil {
+		if _, ok := err.(*net.OpError); !ok {
+			panic(opError(err, "Log.WriteTo(%d, %d)", offset, n))
+		}
+		return err
 	}
 	return nil
 }

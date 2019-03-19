@@ -156,19 +156,13 @@ func (f *flr) writeAppEntriesReq(c *conn, req *appendEntriesReq) (lastIndex uint
 	if err = c.writeReq(req); err != nil {
 		return
 	}
-	e := &entry{index: req.prevLogIndex}
-	for i := uint64(0); i < req.numEntries; i++ {
-		if err := f.storage.getEntry(f.nextIndex+i, e); err != nil {
-			panic(err)
-		}
-		if err = e.encode(c.bufw); err != nil {
-			return
-		}
+	if err = f.storage.WriteEntriesTo(c.bufw, f.nextIndex, req.numEntries); err != nil {
+		return
 	}
 	if err = c.bufw.Flush(); err != nil {
 		return
 	}
-	return e.index, nil
+	return req.prevLogIndex + req.numEntries, nil
 }
 
 func (f *flr) sendAppEntriesReq(c *conn, req *appendEntriesReq) (err error) {
@@ -245,6 +239,10 @@ func (f *flr) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
 		f.notifyLdr(newTerm{resp.getTerm()})
 		return errStop
 	case success:
+		// case: snapshot was taken before we got leaderUpdate about lastLogindex
+		if req.lastIndex > f.ldrLastIndex {
+			f.ldrLastIndex = req.lastIndex
+		}
 		f.matchIndex = req.lastIndex
 		f.nextIndex = f.matchIndex + 1
 		debug(f, "matchIndex:", f.matchIndex, "nextIndex:", f.nextIndex)

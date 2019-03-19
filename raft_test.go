@@ -1092,11 +1092,6 @@ func (fsm *fsmMock) RestoreFrom(r io.Reader) error {
 
 // inmemStorage ------------------------------------------------------------------
 
-var (
-	ErrNotFound   = errors.New("not found")
-	ErrOutOfRange = errors.New("out of range")
-)
-
 type inmemStorage struct {
 	cid          uint64
 	nid          uint64
@@ -1163,31 +1158,29 @@ func (s *inmemStorage) Empty() (bool, error) {
 	return len(s.entries) == 0, nil
 }
 
-func (s *inmemStorage) First() ([]byte, error) {
-	s.muLog.RLock()
-	defer s.muLog.RUnlock()
-	if len(s.entries) == 0 {
-		return nil, ErrNotFound
-	}
-	return s.entries[0], nil
-}
-
-func (s *inmemStorage) Last() ([]byte, error) {
-	s.muLog.RLock()
-	defer s.muLog.RUnlock()
-	if len(s.entries) == 0 {
-		return nil, ErrNotFound
-	}
-	return s.entries[len(s.entries)-1], nil
-}
-
 func (s *inmemStorage) Get(offset uint64) ([]byte, error) {
 	s.muLog.RLock()
 	defer s.muLog.RUnlock()
 	if offset >= uint64(len(s.entries)) {
-		return nil, ErrNotFound
+		return nil, fmt.Errorf("offset: %d, numEntries: %d", offset, len(s.entries))
 	}
 	return s.entries[offset], nil
+}
+
+func (s *inmemStorage) WriteTo(w io.Writer, offset uint64, n uint64) error {
+	s.muLog.RLock()
+	defer s.muLog.RUnlock()
+	if offset+n > uint64(len(s.entries)) {
+		return fmt.Errorf("offset: %d, numEntries: %d", offset, len(s.entries))
+	}
+	for n > 0 {
+		if _, err := w.Write(s.entries[offset]); err != nil {
+			return err
+		}
+		offset++
+		n--
+	}
+	return nil
 }
 
 func (s *inmemStorage) Append(entry []byte) error {
@@ -1201,7 +1194,7 @@ func (s *inmemStorage) DeleteFirst(n uint64) error {
 	s.muLog.Lock()
 	defer s.muLog.Unlock()
 	if n > uint64(len(s.entries)) {
-		return ErrOutOfRange
+		return fmt.Errorf("n: %d, numEntries: %d", n, len(s.entries))
 	}
 	s.entries = s.entries[n:]
 	return nil
@@ -1211,7 +1204,7 @@ func (s *inmemStorage) DeleteLast(n uint64) error {
 	s.muLog.Lock()
 	defer s.muLog.Unlock()
 	if n > uint64(len(s.entries)) {
-		return ErrOutOfRange
+		return fmt.Errorf("n: %d, numEntries: %d", n, len(s.entries))
 	}
 	s.entries = s.entries[:len(s.entries)-int(n)]
 	return nil
