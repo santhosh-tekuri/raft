@@ -13,7 +13,6 @@ type flr struct {
 	status flrStatus
 
 	connPool  *connPool
-	conn      *conn
 	storage   *storage
 	hbTimeout time.Duration
 
@@ -42,12 +41,6 @@ type flr struct {
 }
 
 func (f *flr) replicate(req *appendEntriesReq) {
-	defer func() {
-		if f.conn != nil {
-			f.connPool.returnConn(f.conn)
-		}
-	}()
-
 	debug(f, "f.start")
 	if f.node.promote() {
 		f.round = new(Round)
@@ -55,15 +48,52 @@ func (f *flr) replicate(req *appendEntriesReq) {
 		debug(f, "started:", f.round)
 	}
 
+	var c *conn
+	defer func() {
+		if c != nil {
+			f.connPool.returnConn(c)
+		}
+	}()
+
 	timer, failures := newSafeTimer(), uint64(0)
 	sendReq, err := f.sendAppEntriesReq, error(nil)
 	for {
+		if failures > 0 {
+			if c != nil {
+				_ = c.rwc.Close()
+				c = nil
+			}
+			if f.noContact.IsZero() {
+				f.noContact = time.Now()
+				debug(f, "noContact", err)
+				f.notifyLdr(noContact{&f.status, f.noContact, err})
+			}
+			select {
+			case <-f.stopCh:
+				return
+			case <-time.After(backOff(failures)):
+			}
+		}
+
+		if c == nil {
+			if c, err = f.connPool.getConn(); err != nil {
+				failures++
+				continue
+			}
+			failures = 0
+			if !f.noContact.IsZero() {
+				f.noContact = time.Time{} // zeroing
+				debug(f, "yesContact")
+				f.notifyLdr(noContact{&f.status, f.noContact, nil})
+			}
+		}
+
 		assert(f.matchIndex < f.nextIndex, "%v assert %d<%d", f, f.matchIndex, f.nextIndex)
 
 		// note: we are sure that sendInstallSnapReq never returns errNoEntryFound
-		if err = sendReq(req); err == errNoEntryFound {
+		if err = sendReq(c, req); err == errNoEntryFound {
 			sendReq = f.sendInstallSnapReq
-			err = sendReq(req)
+			err = sendReq(c, req)
 		}
 
 		if err == errStop {
@@ -76,20 +106,9 @@ func (f *flr) replicate(req *appendEntriesReq) {
 					f.trace.Error(err)
 				}
 			}
-			if f.noContact.IsZero() {
-				f.noContact = time.Now()
-				debug(f, "noContact", err)
-				f.notifyLdr(noContact{&f.status, f.noContact, err})
-			}
 			failures++
-			select {
-			case <-f.stopCh:
-				return
-			case <-time.After(backOff(failures)):
-				continue
-			}
+			continue
 		}
-		failures = 0
 		sendReq = f.sendAppEntriesReq
 
 		if f.sendEntries && f.matchIndex == f.ldrLastIndex {
@@ -148,7 +167,7 @@ func (f *flr) onLeaderUpdate(u leaderUpdate, req *appendEntriesReq) {
 
 const maxAppendEntries = 64 // todo: should be configurable
 
-func (f *flr) sendAppEntriesReq(req *appendEntriesReq) error {
+func (f *flr) sendAppEntriesReq(c *conn, req *appendEntriesReq) error {
 	req.prevLogIndex = f.nextIndex - 1
 
 	// fill req.prevLogTerm
@@ -195,12 +214,12 @@ func (f *flr) sendAppEntriesReq(req *appendEntriesReq) error {
 	} else {
 		debug(f, ">> heartbeat")
 	}
-	if err := f.writeReq(req); err != nil {
+	if err := c.writeReq(req); err != nil {
 		return err
 	}
 
 	resp := &appendEntriesResp{}
-	if err := f.readResp(resp); err != nil {
+	if err := c.readResp(resp); err != nil {
 		return err
 	}
 	if req.entries != nil || !f.sendEntries {
@@ -234,7 +253,7 @@ func (f *flr) sendAppEntriesReq(req *appendEntriesReq) error {
 	return nil
 }
 
-func (f *flr) sendInstallSnapReq(appReq *appendEntriesReq) error {
+func (f *flr) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
 	meta, snapshot, err := f.storage.snapshots.Open()
 	if err != nil {
 		return opError(err, "Snapshots.Open")
@@ -249,22 +268,18 @@ func (f *flr) sendInstallSnapReq(appReq *appendEntriesReq) error {
 		size:       meta.Size,
 	}
 	debug(f, ">>", req)
-	if err = f.writeReq(req); err != nil {
+	if err = c.writeReq(req); err != nil {
 		return err
 	}
-	if _, err = io.CopyN(f.conn.rwc, snapshot, req.size); err != nil {
-		_ = f.conn.rwc.Close()
-		f.conn = nil
+	if _, err = io.CopyN(c.rwc, snapshot, req.size); err != nil {
 		return err
 	}
-	if err = f.conn.bufw.Flush(); err != nil {
-		_ = f.conn.rwc.Close()
-		f.conn = nil
+	if err = c.bufw.Flush(); err != nil {
 		return err
 	}
 
 	resp := &installSnapResp{}
-	if err = f.readResp(resp); err != nil {
+	if err = c.readResp(resp); err != nil {
 		return err
 	}
 	if resp.getTerm() > req.getTerm() {
@@ -285,31 +300,6 @@ func (f *flr) sendInstallSnapReq(appReq *appendEntriesReq) error {
 	} else {
 		return ErrRemote
 	}
-}
-
-func (f *flr) writeReq(req request) error {
-	if f.conn == nil {
-		conn, err := f.connPool.getConn()
-		if err != nil {
-			return err
-		}
-		f.conn = conn
-		if !f.noContact.IsZero() {
-			f.noContact = time.Time{} // zeroing
-			debug(f, "yesContact")
-			f.notifyLdr(noContact{&f.status, f.noContact, nil})
-		}
-	}
-	err := f.conn.writeReq(req)
-	if err != nil {
-		_ = f.conn.rwc.Close()
-		f.conn = nil
-	}
-	return err
-}
-
-func (f *flr) readResp(resp response) error {
-	return f.conn.readResp(resp)
 }
 
 func (f *flr) notifyLdr(u interface{}) {
