@@ -7,10 +7,8 @@ import (
 )
 
 type flr struct {
-	rtime randTime
-
-	// this is owned by ldr goroutine
-	status flrStatus
+	rtime  randTime
+	status flrStatus // owned by ldr goroutine
 
 	connPool  *connPool
 	storage   *storage
@@ -29,12 +27,9 @@ type flr struct {
 	// zero value means node is reachable
 	noContact time.Time
 
-	// leader notifies flr with update
 	fromLeaderCh chan leaderUpdate
-
-	// flr notifies leader about its progress
-	toLeaderCh chan<- interface{}
-	stopCh     chan struct{}
+	toLeaderCh   chan<- interface{}
+	stopCh       chan struct{}
 
 	trace *Trace // todo: trace should not be shared with ldrShip
 	str   string // used for debug() calls
@@ -182,13 +177,12 @@ func (f *flr) sendAppEntriesReq(c *conn, req *appendEntriesReq) (err error) {
 	if req.entries != nil || !f.sendEntries {
 		debug(f, "<<", resp)
 	}
-	if resp.getTerm() > req.getTerm() {
+	f.sendEntries = resp.result == success
+	switch resp.result {
+	case staleTerm:
 		f.notifyLdr(newTerm{resp.getTerm()})
 		return errStop
-	}
-
-	f.sendEntries = resp.result == success
-	if resp.result == success {
+	case success:
 		old := f.matchIndex
 		f.matchIndex, _ = lastEntry(req)
 		f.nextIndex = f.matchIndex + 1
@@ -196,7 +190,8 @@ func (f *flr) sendAppEntriesReq(c *conn, req *appendEntriesReq) (err error) {
 			debug(f, "matchIndex:", f.matchIndex)
 			f.notifyLdr(matchIndex{&f.status, f.matchIndex})
 		}
-	} else if resp.result == prevEntryNotFound || resp.result == prevTermMismatch {
+		return nil
+	case prevEntryNotFound, prevTermMismatch:
 		if resp.lastLogIndex < f.matchIndex {
 			// this happens if someone restarted follower storage with empty storage
 			// todo: can we treat replicate entire snap+log to such follower ??
@@ -204,10 +199,10 @@ func (f *flr) sendAppEntriesReq(c *conn, req *appendEntriesReq) (err error) {
 		}
 		f.nextIndex = min(f.nextIndex-1, resp.lastLogIndex+1)
 		debug(f, "nextIndex:", f.nextIndex)
-	} else {
+		return nil
+	default:
 		return ErrRemote
 	}
-	return nil
 }
 
 func (f *flr) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
@@ -239,22 +234,21 @@ func (f *flr) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
 	if err = c.readResp(resp); err != nil {
 		return err
 	}
-	if resp.getTerm() > req.getTerm() {
-		f.notifyLdr(newTerm{resp.getTerm()})
-		return errStop
-	}
-
 	// we have to still send one appEntries, to update his commit index
 	// so we should not update sendEntries=true, because if we have
 	// no entries beyond snapshot, we sleep for hbTimeout
 	//f.sendEntries = resp.success // NOTE: dont do this
-	if resp.result == success {
+	switch resp.result {
+	case staleTerm:
+		f.notifyLdr(newTerm{resp.getTerm()})
+		return errStop
+	case success:
 		f.matchIndex = req.lastIndex
 		f.nextIndex = f.matchIndex + 1
-		debug(f, "matchIndex:", f.matchIndex)
+		debug(f, "matchIndex:", f.matchIndex, "nextIndex:", f.nextIndex)
 		f.notifyLdr(matchIndex{&f.status, f.matchIndex})
 		return nil
-	} else {
+	default:
 		return ErrRemote
 	}
 }
