@@ -157,6 +157,8 @@ func (l *ldrShip) checkReplUpdates(u interface{}) {
 	matchUpdated, noContactUpdated := false, false
 	for {
 		switch u := u.(type) {
+		case error:
+			panic(u)
 		case matchIndex:
 			matchUpdated = true
 			u.status.matchIndex = u.val

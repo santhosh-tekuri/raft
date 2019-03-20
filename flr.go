@@ -34,7 +34,6 @@ type flr struct {
 	str   string // used for debug() calls
 }
 
-// todo: handle panics
 func (f *flr) replicate(req *appendEntriesReq) {
 	debug(f, "f.start")
 	if f.node.promote() {
@@ -47,6 +46,9 @@ func (f *flr) replicate(req *appendEntriesReq) {
 	defer func() {
 		if c != nil {
 			f.connPool.returnConn(c)
+		}
+		if v := recover(); v != nil {
+			f.notifyLdr(toErr(v))
 		}
 	}()
 
@@ -83,14 +85,10 @@ func (f *flr) replicate(req *appendEntriesReq) {
 		if err == errStop {
 			return
 		} else if err != nil && err != errNoEntryFound {
-			if _, ok := err.(OpError); ok {
-				if f.trace.Error != nil {
-					f.trace.Error(err)
-				}
-				panic(err)
-			}
 			if remoteErr, ok := err.(remoteError); ok {
 				err = remoteErr.error
+			} else if _, ok := err.(OpError); ok {
+				panic(err)
 			}
 			failures++
 			continue
