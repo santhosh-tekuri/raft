@@ -13,6 +13,7 @@ type flr struct {
 	connPool  *connPool
 	storage   *storage
 	hbTimeout time.Duration
+	timer     *safeTimer
 
 	ldrStartIndex uint64
 	ldrLastIndex  uint64
@@ -61,10 +62,12 @@ func (f *flr) runLoop(req *appendEntriesReq) {
 			if failures == 1 {
 				f.notifyNoContact(err)
 			}
+			f.timer.reset(backOff(failures))
 			select {
 			case <-f.stopCh:
 				return
-			case <-time.After(backOff(failures)):
+			case <-f.timer.C:
+				f.timer.active = false
 			}
 		}
 
@@ -96,7 +99,6 @@ func (f *flr) runLoop(req *appendEntriesReq) {
 }
 
 func (f *flr) replicate(c *conn, req *appendEntriesReq) (err error) {
-	timer := newSafeTimer()
 	resp := &appendEntriesResp{}
 	for {
 		err = f.writeAppendEntriesReq(c, req)
@@ -115,7 +117,7 @@ func (f *flr) replicate(c *conn, req *appendEntriesReq) (err error) {
 		if err = f.onAppendEntriesResp(resp); err != nil {
 			return err
 		}
-		if err = f.checkLeaderUpdate(timer, req); err != nil {
+		if err = f.checkLeaderUpdate(req); err != nil {
 			return err
 		}
 	}
@@ -243,19 +245,18 @@ func (f *flr) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
 	}
 }
 
-func (f *flr) checkLeaderUpdate(timer *safeTimer, req *appendEntriesReq) error {
+func (f *flr) checkLeaderUpdate(req *appendEntriesReq) error {
 	if f.matchIndex == f.ldrLastIndex {
-		timer.reset(f.hbTimeout / 10)
+		f.timer.reset(f.hbTimeout / 10)
 		// nothing to send. start heartbeat timer
 		select {
 		case <-f.stopCh:
 			return errStop
 		case update := <-f.fromLeaderCh:
 			f.onLeaderUpdate(update, req)
-		case <-timer.C:
-			timer.active = false
+		case <-f.timer.C:
+			f.timer.active = false
 		}
-		timer.stop()
 	} else {
 		// check signal if any, without blocking
 		select {

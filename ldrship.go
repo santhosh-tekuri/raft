@@ -128,6 +128,7 @@ func (l *ldrShip) addFlr(node Node) {
 		nextIndex:     l.lastLogIndex + 1,
 		connPool:      l.getConnPool(node.ID),
 		hbTimeout:     l.hbTimeout,
+		timer:         newSafeTimer(),
 		storage:       l.storage,
 		stopCh:        make(chan struct{}),
 		toLeaderCh:    l.fromReplsCh,
