@@ -33,7 +33,7 @@ type flr struct {
 	str string // used for debug() calls
 }
 
-func (f *flr) replicate(req *appendEntriesReq) {
+func (f *flr) runLoop(req *appendEntriesReq) {
 	debug(f, "f.start")
 	if f.node.promote() {
 		f.round = new(Round)
@@ -80,7 +80,7 @@ func (f *flr) replicate(req *appendEntriesReq) {
 		}
 
 		assert(f.matchIndex < f.nextIndex, "%v assert %d<%d", f, f.matchIndex, f.nextIndex)
-		err = f.sendAppEntriesReq(c, req)
+		err = f.replicate(c, req)
 		if err == errStop {
 			return
 		} else if err != nil && err != errNoEntryFound {
@@ -95,7 +95,7 @@ func (f *flr) replicate(req *appendEntriesReq) {
 	}
 }
 
-func (f *flr) sendAppEntriesReq(c *conn, req *appendEntriesReq) (err error) {
+func (f *flr) replicate(c *conn, req *appendEntriesReq) (err error) {
 	timer := newSafeTimer()
 	resp := &appendEntriesResp{}
 	for {

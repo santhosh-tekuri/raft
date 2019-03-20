@@ -147,7 +147,7 @@ func (l *ldrShip) addFlr(node Node) {
 	l.wg.Add(1)
 	go func() {
 		defer l.wg.Done()
-		f.replicate(req)
+		f.runLoop(req)
 		debug(f, "f.replicateEnd")
 	}()
 }
