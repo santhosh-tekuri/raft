@@ -55,10 +55,6 @@ func (f *flr) runLoop(req *appendEntriesReq) {
 	failures, err := uint64(0), error(nil)
 	for {
 		if failures > 0 {
-			if c != nil {
-				_ = c.rwc.Close()
-				c = nil
-			}
 			if failures == 1 {
 				f.notifyNoContact(err)
 			}
@@ -86,18 +82,18 @@ func (f *flr) runLoop(req *appendEntriesReq) {
 		err = f.replicate(c, req)
 		if err == errStop {
 			return
-		} else if err != nil && err != errNoEntryFound {
-			if remoteErr, ok := err.(remoteError); ok {
-				err = remoteErr.error
-			} else if _, ok := err.(OpError); ok {
-				panic(err)
-			}
-			failures++
-			continue
+		} else if _, ok := err.(OpError); ok {
+			panic(err)
+		} else if remoteErr, ok := err.(remoteError); ok {
+			err = remoteErr.error
 		}
+		failures++
+		_ = c.rwc.Close()
+		c = nil
 	}
 }
 
+// always returns non-nil error
 func (f *flr) replicate(c *conn, req *appendEntriesReq) (err error) {
 	resp := &appendEntriesResp{}
 	for {
