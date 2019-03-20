@@ -12,7 +12,6 @@ var (
 
 	ErrIdentityAlreadySet = errors.New("raft: identity already set")
 	ErrIdentityNotSet     = errors.New("raft: identity not set")
-	ErrRemote             = errors.New("raft: remote error")
 	ErrFaultyFollower     = errors.New("raft: faulty follower, denies matchIndex")
 
 	// ErrAlreadyBootstrapped is returned when bootstrap task received
