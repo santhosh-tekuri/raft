@@ -123,6 +123,8 @@ type FlrStatus struct {
 	ID          uint64    `json:"-"`
 	MatchIndex  uint64    `json:"matchIndexes"`
 	Unreachable time.Time `json:"unreachable,omitempty"`
+	Err         error     `json:"-"`
+	ErrMessage  string    `json:"error,omitempty"`
 	Rounds      uint64    `json:"rounds,omitempty"`
 }
 
@@ -179,9 +181,15 @@ func (info liveInfo) Followers() map[uint64]FlrStatus {
 	}
 	flrs := make(map[uint64]FlrStatus)
 	for id, f := range info.r.ldr.flrs {
+		errMessage := ""
+		if f.status.err != nil {
+			errMessage = f.status.err.Error()
+		}
 		flrs[id] = FlrStatus{
 			MatchIndex:  f.status.matchIndex,
 			Unreachable: f.status.noContact,
+			Err:         f.status.err,
+			ErrMessage:  errMessage,
 			Rounds:      f.status.rounds,
 		}
 	}

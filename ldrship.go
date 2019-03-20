@@ -163,7 +163,7 @@ func (l *ldrShip) checkReplUpdates(u interface{}) {
 			u.status.matchIndex = u.val
 		case noContact:
 			noContactUpdated = true
-			u.status.noContact = u.time
+			u.status.noContact, u.status.err = u.time, u.err
 			if l.trace.Unreachable != nil {
 				l.trace.Unreachable(l.liveInfo(), u.status.id, u.time, u.err)
 			}

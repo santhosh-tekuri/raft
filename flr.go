@@ -382,5 +382,7 @@ type flrStatus struct {
 	// zero value means it is reachable
 	noContact time.Time
 
+	err error
+
 	rounds uint64 // #rounds completed
 }
