@@ -694,8 +694,8 @@ func waitTask(r *Raft, t Task, timeout time.Duration) (interface{}, error) {
 	}
 }
 
-func waitBootstrap(r *Raft, nodes map[uint64]Node, timeout time.Duration) error {
-	_, err := waitTask(r, Bootstrap(nodes), timeout)
+func waitBootstrap(r *Raft, c Config, timeout time.Duration) error {
+	_, err := waitTask(r, ChangeConfig(c), timeout)
 	return err
 }
 

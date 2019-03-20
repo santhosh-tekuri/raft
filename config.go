@@ -98,6 +98,10 @@ type Config struct {
 	Term  uint64          `json:"term"`
 }
 
+func (c Config) IsBootstrap() bool {
+	return c.Index == 0
+}
+
 func (c Config) nodeForAddr(addr string) (Node, bool) {
 	for _, node := range c.Nodes {
 		if node.Addr == addr {
@@ -223,7 +227,7 @@ func (c Configs) clone() Configs {
 }
 
 func (c Configs) IsBootstrap() bool {
-	return c.Latest.Index == 0
+	return c.Latest.IsBootstrap()
 }
 
 func (c Configs) IsCommitted() bool {
@@ -232,16 +236,16 @@ func (c Configs) IsCommitted() bool {
 
 // ---------------------------------------------------------
 
-func (r *Raft) bootstrap(t bootstrap) {
+func (r *Raft) bootstrap(t changeConfig) {
 	if !r.configs.IsBootstrap() {
-		t.reply(ErrAlreadyBootstrapped)
+		t.reply(NotLeaderError{r.leader, r.leaderAddr(), false})
 		return
 	}
-	if err := t.config.validate(); err != nil {
+	if err := t.newConf.validate(); err != nil {
 		t.reply(fmt.Errorf("raft.bootstrap: invalid config: %v", err))
 		return
 	}
-	self, ok := t.config.Nodes[r.nid]
+	self, ok := t.newConf.Nodes[r.nid]
 	if !ok {
 		t.reply(fmt.Errorf("raft.bootstrap: invalid config: self %d does not exist", r.nid))
 		return
@@ -252,11 +256,19 @@ func (r *Raft) bootstrap(t bootstrap) {
 	}
 
 	debug(r, "bootstrapping....")
-	if err := r.storage.bootstrap(t.config); err != nil {
+	t.newConf.Index, t.newConf.Term = 1, 1
+	// promote if requested
+	for id, n := range t.newConf.Nodes {
+		if n.promote() {
+			n.Voter, n.Promote = true, false
+			t.newConf.Nodes[id] = n
+		}
+	}
+	if err := r.storage.bootstrap(t.newConf); err != nil {
 		t.reply(err)
 		return
 	}
-	r.changeConfig(t.config)
+	r.changeConfig(t.newConf)
 	t.reply(nil)
 	r.setState(Candidate)
 }

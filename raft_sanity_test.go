@@ -70,11 +70,13 @@ func test_bootstrap(t *testing.T) {
 
 	// bootstrap one of the nodes
 	ldr := c.rr[1]
-	nodes := make(map[uint64]Node, 3)
+	config := ldr.Info().Configs().Latest
 	for _, r := range c.rr {
-		nodes[r.NID()] = Node{ID: r.NID(), Addr: id2Addr(r.NID()), Voter: true}
+		if err := config.AddVoter(r.NID(), id2Addr(r.NID())); err != nil {
+			c.Fatal(err)
+		}
 	}
-	if err := waitBootstrap(ldr, nodes, c.longTimeout); err != nil {
+	if err := waitBootstrap(ldr, config, c.longTimeout); err != nil {
 		t.Fatal(err)
 	}
 
@@ -90,11 +92,12 @@ func test_bootstrap(t *testing.T) {
 	c.ensureFSMSame([]string{"hello"})
 
 	// ensure bootstrap fails if already bootstrapped
-	if err := waitBootstrap(c.rr[1], nodes, c.longTimeout); err != ErrAlreadyBootstrapped {
-		t.Fatalf("got %v, want %v", err, ErrAlreadyBootstrapped)
+	if err := waitBootstrap(ldr, config, c.longTimeout); err != ErrConfigChanged {
+		t.Fatalf("got %v, want %v", err, ErrConfigChanged)
 	}
-	if err := waitBootstrap(c.rr[2], nodes, c.longTimeout); err != ErrAlreadyBootstrapped {
-		t.Fatalf("got %v, want %v", err, ErrAlreadyBootstrapped)
+	err := waitBootstrap(c.rr[2], config, c.longTimeout)
+	if _, ok := err.(NotLeaderError); !ok {
+		t.Fatalf("got %v, want NotLeaderError", err)
 	}
 
 	// disconnect leader, and ensure that new leader is chosen

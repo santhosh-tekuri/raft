@@ -99,25 +99,6 @@ func BarrierFSM() FSMTask {
 
 // ------------------------------------------------------------------------
 
-type bootstrap struct {
-	*task
-	config Config
-}
-
-func Bootstrap(nodes map[uint64]Node) Task {
-	config := Config{Nodes: nodes, Index: 1, Term: 1}
-	// promote if requested
-	for id, n := range config.Nodes {
-		if n.promote() {
-			n.Voter, n.Promote = true, false
-			config.Nodes[id] = n
-		}
-	}
-	return bootstrap{task: newTask(), config: config.clone()}
-}
-
-// ------------------------------------------------------------------------
-
 type FlrStatus struct {
 	ID          uint64    `json:"-"`
 	MatchIndex  uint64    `json:"matchIndexes"`
@@ -263,18 +244,25 @@ func (r *Raft) SetTrace(trace Trace) error {
 
 // ------------------------------------------------------------------------
 
+func (c *Config) AddVoter(id uint64, addr string) error {
+	if !c.IsBootstrap() {
+		return fmt.Errorf("raft: voter cannot be added in bootstrapped config")
+	}
+	return c.addNode(Node{ID: id, Addr: addr, Voter: true})
+}
+
 func (c *Config) AddNonVoter(id uint64, addr string, promote bool) error {
-	if id == 0 {
-		return errors.New("raft: id must be greater than zero")
-	}
-	if _, ok := c.Nodes[id]; ok {
-		return fmt.Errorf("raft: node %d already exists", id)
-	}
-	n := Node{ID: id, Addr: addr, Promote: promote}
+	return c.addNode(Node{ID: id, Addr: addr, Promote: promote})
+}
+
+func (c *Config) addNode(n Node) error {
 	if err := n.validate(); err != nil {
 		return err
 	}
-	c.Nodes[id] = n
+	if _, ok := c.Nodes[n.ID]; ok {
+		return fmt.Errorf("raft: node %d already exists", n.ID)
+	}
+	c.Nodes[n.ID] = n
 	return nil
 }
 
@@ -368,8 +356,12 @@ func TransferLeadership(target uint64, timeout time.Duration) Task {
 // todo: reply tasks even on panic
 func (r *Raft) executeTask(t Task) {
 	switch t := t.(type) {
-	case bootstrap:
-		r.bootstrap(t)
+	case changeConfig:
+		if r.state == Leader {
+			r.ldr.executeTask(t)
+		} else {
+			r.bootstrap(t)
+		}
 	case takeSnapshot:
 		if r.snapTakenCh != nil {
 			t.reply(InProgressError("takeSnapshot"))

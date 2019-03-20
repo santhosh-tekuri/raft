@@ -14,9 +14,6 @@ var (
 	ErrIdentityNotSet     = errors.New("raft: identity not set")
 	ErrFaultyFollower     = errors.New("raft: faulty follower, denies matchIndex")
 
-	// ErrAlreadyBootstrapped is returned when bootstrap task received
-	// by already bootstrapped server
-	ErrAlreadyBootstrapped              = errors.New("raft.bootstrap: already bootstrapped")
 	ErrNotCommitReady                   = errors.New("raft.configChange: not ready to commit")
 	ErrConfigChanged                    = errors.New("raft.configChange: config changed meanwhile")
 	ErrSnapshotThreshold                = errors.New("raft.takeSnapshot: not enough outstanding logs to snapshot")
