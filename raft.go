@@ -191,7 +191,7 @@ func (r *Raft) stateLoop() (err error) {
 				if r.state == Leader {
 					_ = l.storeEntry(ne)
 				} else {
-					ne.reply(NotLeaderError{f.leaderAddr(), false})
+					ne.reply(NotLeaderError{r.leader, r.leaderAddr(), false})
 				}
 
 			case t := <-r.taskCh:

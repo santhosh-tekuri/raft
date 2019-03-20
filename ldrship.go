@@ -73,7 +73,7 @@ func (l *ldrShip) release() {
 	}
 
 	// respond to any pending user entries
-	var err error = NotLeaderError{l.leaderAddr(), true}
+	var err error = NotLeaderError{l.leader, l.leaderAddr(), true}
 	if l.isClosing() {
 		err = ErrServerClosed
 	}

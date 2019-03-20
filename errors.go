@@ -41,9 +41,14 @@ var (
 // complete a request or node lost its leadership before
 // completing the request.
 type NotLeaderError struct {
+	// LeaderID is the nodeID of leader.
+	//
+	// It is zero, if this node does not know who leader is.
+	LeaderID uint64
+
 	// LeaderAddr is address of leader.
 	//
-	// It is empty string, if this node does not know current leader.
+	// It is empty string, if this node does not know who leader is.
 	LeaderAddr string
 
 	// Lost is true, if the node lost its leadership before
@@ -53,11 +58,11 @@ type NotLeaderError struct {
 
 func (e NotLeaderError) Error() string {
 	var contact string
-	if e.LeaderAddr != "" {
-		contact = ", contact " + e.LeaderAddr
+	if e.LeaderID != 0 {
+		contact = fmt.Sprintf(", contact node %d at %s", e.LeaderID, e.LeaderAddr)
 	}
 	if e.Lost {
-		return "raft: lost leadership " + contact
+		return "raft: lost leadership" + contact
 	}
 	return "raft: this node is not the leader" + contact
 }
