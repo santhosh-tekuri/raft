@@ -11,14 +11,14 @@ import (
 
 // Node represents a single node in raft configuration.
 type Node struct {
-	// ID is a unique string identifying this node for all time.
+	// ID uniquely identifies this node in raft cluster.
 	ID uint64 `json:"-"`
 
-	// Addr is its network address that other nodes can contact.
+	// Addr is network address that other nodes can contact.
 	Addr string `json:"addr"`
 
-	// Voter determines whether it can participate in elections and
-	// its matchIndex is used in advancing leader's commitIndex.
+	// Voter can participate in elections and its matchIndex
+	// is used in advancing leader's commitIndex.
 	Voter bool `json:"voter"`
 
 	// Promote determines whether this node should be promoted to
