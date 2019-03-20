@@ -101,7 +101,7 @@ func BarrierFSM() FSMTask {
 
 type FlrStatus struct {
 	ID          uint64    `json:"-"`
-	MatchIndex  uint64    `json:"matchIndexes"`
+	MatchIndex  uint64    `json:"matchIndex"`
 	Unreachable time.Time `json:"unreachable,omitempty"`
 	Err         error     `json:"-"`
 	ErrMessage  string    `json:"error,omitempty"`
