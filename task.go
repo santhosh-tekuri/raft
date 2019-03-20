@@ -102,7 +102,6 @@ func BarrierFSM() FSMTask {
 type bootstrap struct {
 	*task
 	config Config
-	//todo add clusterID
 }
 
 func Bootstrap(nodes map[uint64]Node) Task {

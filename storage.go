@@ -84,7 +84,6 @@ func (s Storage) SetIdentity(cid, nid uint64) error {
 	return nil
 }
 
-// todo: can we avoid panics on storage error
 type storage struct {
 	vars     Vars
 	cid      uint64
