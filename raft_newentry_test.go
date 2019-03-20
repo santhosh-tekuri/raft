@@ -36,7 +36,7 @@ func test_update_concurrent(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			if _, err := waitUpdate(ldr, fmt.Sprintf("test%d", i), 0); err != nil {
-				Debug("FAIL got", err, "want nil")
+				t.Log("FAIL got", err, "want nil")
 				t.Fail() // note: t.Fatal should note be called from non-test goroutine
 			}
 		}(i)

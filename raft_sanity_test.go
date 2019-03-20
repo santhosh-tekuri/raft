@@ -13,7 +13,7 @@ func test_voting(t *testing.T) {
 	defer c.shutdown()
 
 	// a follower that thinks there's a leader should vote for that leader
-	granted, err := RequestVote(ldr, followers[0])
+	granted, err := requestVote(ldr, followers[0])
 	if err != nil {
 		t.Fatalf("requestVote failed: %v", err)
 	}
@@ -22,7 +22,7 @@ func test_voting(t *testing.T) {
 	}
 
 	// a follower that thinks there's a leader shouldn't vote for a different candidate
-	granted, err = RequestVote(followers[0], followers[1])
+	granted, err = requestVote(followers[0], followers[1])
 	if err != nil {
 		t.Fatalf("requestVote failed: %v", err)
 	} else if granted {

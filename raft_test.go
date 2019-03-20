@@ -111,7 +111,7 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 
 	// wait until all pending debug messages are printed to stdout
-	Debug("barrier")
+	debug("barrier")
 
 	os.Exit(code)
 }
@@ -236,7 +236,7 @@ func (c *cluster) launch(n int, bootstrap bool) map[uint64]*Raft {
 		s := &inmemStorage{cid: c.id, nid: node.ID}
 		storage := Storage{Vars: s, Log: s, Snapshots: s}
 		if bootstrap {
-			if err := BootstrapStorage(storage, nodes); err != nil {
+			if err := bootstrapStorage(storage, nodes); err != nil {
 				c.Fatalf("Storage.bootstrap failed: %v", err)
 			}
 		}
@@ -753,6 +753,37 @@ func waitUpdate(r *Raft, cmd string, timeout time.Duration) (fsmReply, error) {
 
 func waitRead(r *Raft, read string, timeout time.Duration) (fsmReply, error) {
 	return waitFSMTask(r, ReadFSM([]byte(read)), timeout)
+}
+
+func requestVote(from, to *Raft) (granted bool, err error) {
+	fn := func(r *Raft) {
+		req := &voteReq{
+			req:          req{r.term, r.nid},
+			lastLogIndex: r.lastLogIndex,
+			lastLogTerm:  r.lastLogTerm,
+		}
+		pool := from.getConnPool(to.nid)
+		resp := &timeoutNowResp{}
+		err = pool.doRPC(req, resp)
+		granted = resp.getResult() == success
+	}
+	if from.isClosing() {
+		fn(from)
+	} else {
+		ierr := from.inspect(fn)
+		if err == nil {
+			err = ierr
+		}
+	}
+	return
+}
+
+func bootstrapStorage(storage Storage, nodes map[uint64]Node) error {
+	store := newStorage(storage)
+	if err := store.init(); err != nil {
+		return err
+	}
+	return store.bootstrap(Config{Nodes: nodes, Index: 1, Term: 1})
 }
 
 // events ---------------------------------------------

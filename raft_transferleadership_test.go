@@ -127,7 +127,7 @@ func test_transferLeadership_newTermDetected(t *testing.T) {
 
 	// send requestVote with one of the follower as candidate with new term
 	flrs[0].term++
-	_, err := RequestVote(flrs[0], ldr)
+	_, err := requestVote(flrs[0], ldr)
 	if err != nil {
 		c.Fatalf("requestVote: %v", err)
 	}
