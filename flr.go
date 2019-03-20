@@ -51,7 +51,7 @@ func (f *flr) replicate(req *appendEntriesReq) {
 		}
 	}()
 
-	timer, failures, err := newSafeTimer(), uint64(0), error(nil)
+	failures, err := uint64(0), error(nil)
 	for {
 		if failures > 0 {
 			if c != nil {
@@ -92,45 +92,33 @@ func (f *flr) replicate(req *appendEntriesReq) {
 			failures++
 			continue
 		}
-
-		if f.matchIndex == f.ldrLastIndex {
-			timer.reset(f.hbTimeout / 10)
-			// nothing to send. start heartbeat timer
-			select {
-			case <-f.stopCh:
-				return
-			case update := <-f.fromLeaderCh:
-				f.onLeaderUpdate(update, req)
-			case <-timer.C:
-				timer.active = false
-			}
-			timer.stop()
-		} else {
-			// check signal if any, without blocking
-			select {
-			case <-f.stopCh:
-				return
-			case update := <-f.fromLeaderCh:
-				f.onLeaderUpdate(update, req)
-			default:
-			}
-		}
 	}
 }
 
 func (f *flr) sendAppEntriesReq(c *conn, req *appendEntriesReq) (err error) {
-	err = f.writeAppendEntriesReq(c, req)
-	if err == errNoEntryFound {
-		return f.sendInstallSnapReq(c, req)
-	} else if err != nil {
-		return err
-	}
-
+	timer := newSafeTimer()
 	resp := &appendEntriesResp{}
-	if err = c.readResp(resp); err != nil {
-		return err
+	for {
+		err = f.writeAppendEntriesReq(c, req)
+		if err == errNoEntryFound {
+			if err = f.sendInstallSnapReq(c, req); err == nil {
+				continue
+			}
+		}
+		if err != nil {
+			return err
+		}
+
+		if err = c.readResp(resp); err != nil {
+			return err
+		}
+		if err = f.onAppendEntriesResp(resp); err != nil {
+			return err
+		}
+		if err = f.checkLeaderUpdate(timer, req); err != nil {
+			return err
+		}
 	}
-	return f.onAppendEntriesResp(resp)
 }
 
 const maxAppendEntries = 64
@@ -253,6 +241,32 @@ func (f *flr) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
 	default:
 		panic(fmt.Errorf("[BUG] installSnapResp.result==%v", resp.result))
 	}
+}
+
+func (f *flr) checkLeaderUpdate(timer *safeTimer, req *appendEntriesReq) error {
+	if f.matchIndex == f.ldrLastIndex {
+		timer.reset(f.hbTimeout / 10)
+		// nothing to send. start heartbeat timer
+		select {
+		case <-f.stopCh:
+			return errStop
+		case update := <-f.fromLeaderCh:
+			f.onLeaderUpdate(update, req)
+		case <-timer.C:
+			timer.active = false
+		}
+		timer.stop()
+	} else {
+		// check signal if any, without blocking
+		select {
+		case <-f.stopCh:
+			return errStop
+		case update := <-f.fromLeaderCh:
+			f.onLeaderUpdate(update, req)
+		default:
+		}
+	}
+	return nil
 }
 
 func (f *flr) onLeaderUpdate(u leaderUpdate, req *appendEntriesReq) {
