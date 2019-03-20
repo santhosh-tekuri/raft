@@ -118,9 +118,24 @@ func (f *flr) replicate(req *appendEntriesReq) {
 	}
 }
 
+func (f *flr) sendAppEntriesReq(c *conn, req *appendEntriesReq) (err error) {
+	err = f.writeAppendEntriesReq(c, req)
+	if err == errNoEntryFound {
+		return f.sendInstallSnapReq(c, req)
+	} else if err != nil {
+		return err
+	}
+
+	resp := &appendEntriesResp{}
+	if err = c.readResp(resp); err != nil {
+		return err
+	}
+	return f.onAppendEntriesResp(resp)
+}
+
 const maxAppendEntries = 64
 
-func (f *flr) writeAppEntriesReq(c *conn, req *appendEntriesReq) (err error) {
+func (f *flr) writeAppendEntriesReq(c *conn, req *appendEntriesReq) (err error) {
 	f.storage.prevLogMu.RLock()
 	defer f.storage.prevLogMu.RUnlock()
 
@@ -162,18 +177,7 @@ func (f *flr) writeAppEntriesReq(c *conn, req *appendEntriesReq) (err error) {
 	return nil
 }
 
-func (f *flr) sendAppEntriesReq(c *conn, req *appendEntriesReq) (err error) {
-	err = f.writeAppEntriesReq(c, req)
-	if err == errNoEntryFound {
-		return f.sendInstallSnapReq(c, req)
-	} else if err != nil {
-		return err
-	}
-
-	resp := &appendEntriesResp{}
-	if err := c.readResp(resp); err != nil {
-		return err
-	}
+func (f *flr) onAppendEntriesResp(resp *appendEntriesResp) error {
 	debug(f, "<<", resp)
 	switch resp.result {
 	case staleTerm:
