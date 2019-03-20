@@ -263,7 +263,6 @@ func (l *ldrShip) checkQuorum(wait time.Duration) {
 		return
 	}
 
-	// todo: if quorum unreachable raise alert
 	if l.quorumWait == 0 || !l.timer.active {
 		if l.trace.QuorumUnreachable != nil {
 			l.trace.QuorumUnreachable(l.liveInfo(), time.Now())
