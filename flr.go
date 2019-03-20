@@ -120,7 +120,7 @@ func (f *flr) replicate(req *appendEntriesReq) {
 
 const maxAppendEntries = 64
 
-func (f *flr) writeAppEntriesReq(c *conn, req *appendEntriesReq) (lastIndex uint64, err error) {
+func (f *flr) writeAppEntriesReq(c *conn, req *appendEntriesReq) (err error) {
 	f.storage.prevLogMu.RLock()
 	defer f.storage.prevLogMu.RUnlock()
 
@@ -155,11 +155,15 @@ func (f *flr) writeAppEntriesReq(c *conn, req *appendEntriesReq) (lastIndex uint
 	if err = c.bufw.Flush(); err != nil {
 		return
 	}
-	return req.prevLogIndex + req.numEntries, nil
+	if req.numEntries > 0 {
+		f.nextIndex += req.numEntries
+		debug(f, "nextIndex:", f.matchIndex)
+	}
+	return nil
 }
 
 func (f *flr) sendAppEntriesReq(c *conn, req *appendEntriesReq) (err error) {
-	lastIndex, err := f.writeAppEntriesReq(c, req)
+	err = f.writeAppEntriesReq(c, req)
 	if err == errNoEntryFound {
 		return f.sendInstallSnapReq(c, req)
 	} else if err != nil {
@@ -176,9 +180,8 @@ func (f *flr) sendAppEntriesReq(c *conn, req *appendEntriesReq) (err error) {
 		f.notifyLdr(newTerm{resp.getTerm()})
 		return errStop
 	case success:
-		if lastIndex > f.matchIndex {
-			f.matchIndex = lastIndex
-			f.nextIndex = f.matchIndex + 1
+		if f.matchIndex < f.nextIndex-1 {
+			f.matchIndex = f.nextIndex - 1
 			debug(f, "matchIndex:", f.matchIndex)
 			f.notifyLdr(matchIndex{&f.status, f.matchIndex})
 		}
