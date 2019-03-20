@@ -104,12 +104,12 @@ func (u leaderUpdate) String() string {
 	return fmt.Sprintf("leaderUpdate{last:%d, commit:%d, config: %v}", u.lastIndex, u.commitIndex, u.config)
 }
 
-func (i *liveInfo) String() string {
-	return fmt.Sprintf("M%d %d %s |", i.NID(), i.Term(), string(i.State()))
+func (info *liveInfo) String() string {
+	return fmt.Sprintf("M%d %d %s |", info.NID(), info.Term(), string(info.State()))
 }
 
-func (i *cachedInfo) String() string {
-	return fmt.Sprintf("M%d %d %s |", i.NID(), i.Term(), string(i.State()))
+func (info *cachedInfo) String() string {
+	return fmt.Sprintf("M%d %d %s |", info.NID(), info.Term(), string(info.State()))
 }
 
 func (ne newEntry) String() string {
