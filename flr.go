@@ -30,8 +30,7 @@ type flr struct {
 	toLeaderCh   chan<- interface{}
 	stopCh       chan struct{}
 
-	trace *Trace // todo: trace should not be shared with ldrShip
-	str   string // used for debug() calls
+	str string // used for debug() calls
 }
 
 func (f *flr) replicate(req *appendEntriesReq) {
@@ -187,7 +186,6 @@ func (f *flr) sendAppEntriesReq(c *conn, req *appendEntriesReq) (err error) {
 	case prevEntryNotFound, prevTermMismatch:
 		if resp.lastLogIndex < f.matchIndex {
 			// this happens if someone restarted follower storage with empty storage
-			// todo: can we treat replicate entire snap+log to such follower ??
 			return ErrFaultyFollower
 		}
 		f.nextIndex = min(f.nextIndex-1, resp.lastLogIndex+1)

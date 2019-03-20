@@ -132,7 +132,6 @@ func (l *ldrShip) addFlr(node Node) {
 		stopCh:        make(chan struct{}),
 		toLeaderCh:    l.fromReplsCh,
 		fromLeaderCh:  make(chan leaderUpdate, 1),
-		trace:         &l.trace,
 		str:           fmt.Sprintf("%v M%d", l, node.ID),
 	}
 	l.flrs[node.ID] = f

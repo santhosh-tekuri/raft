@@ -188,7 +188,7 @@ func (r *Raft) getConnPool(nid uint64) *connPool {
 			resolver: r.resolver,
 			dialFn:   r.dialFn,
 			timeout:  10 * time.Second, // todo
-			max:      3,                //todo
+			max:      3,
 		}
 		r.connPools[nid] = pool
 	}
