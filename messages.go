@@ -243,6 +243,8 @@ func (resp *resp) decode(r io.Reader) error {
 		if op != "" {
 			resp.err = OpError{op, resp.err}
 		}
+	} else {
+		resp.err = nil
 	}
 	return nil
 }
