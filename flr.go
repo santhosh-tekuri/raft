@@ -48,6 +48,7 @@ func (f *flr) runLoop(req *appendEntriesReq) {
 			f.connPool.returnConn(c)
 		}
 		if v := recover(); v != nil {
+			debug(f, "got panic:", v)
 			f.notifyLdr(toErr(v))
 		}
 	}()
@@ -146,19 +147,23 @@ func (f *flr) writeAppendEntriesReq(c *conn, req *appendEntriesReq) (err error) 
 		req.numEntries = min(f.ldrLastIndex-f.matchIndex, maxAppendEntries)
 	}
 
-	debug(f, ">>", req)
+	if f.matchIndex+1 == f.nextIndex && req.numEntries == 0 {
+		debug(f, ">> heartbeat")
+	} else {
+		debug(f, ">>", req)
+	}
 	if err = c.writeReq(req); err != nil {
 		return
 	}
-	if err = f.storage.WriteEntriesTo(c.bufw, f.nextIndex, req.numEntries); err != nil {
-		return
-	}
-	if err = c.bufw.Flush(); err != nil {
-		return
-	}
 	if req.numEntries > 0 {
+		if err = f.storage.WriteEntriesTo(c.bufw, f.nextIndex, req.numEntries); err != nil {
+			return
+		}
+		if err = c.bufw.Flush(); err != nil {
+			return
+		}
 		f.nextIndex += req.numEntries
-		debug(f, "nextIndex:", f.matchIndex)
+		debug(f, "nextIndex:", f.nextIndex)
 	}
 	return nil
 }
