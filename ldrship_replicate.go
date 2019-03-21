@@ -6,7 +6,6 @@ import (
 	"time"
 )
 
-// todo: for nonvoter, dont send heartbeats
 type flr struct {
 	rtime  randTime
 	status flrStatus // owned by ldr goroutine
@@ -319,14 +318,20 @@ func (f *flr) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
 
 func (f *flr) checkLeaderUpdate(req *appendEntriesReq, sendEntries bool) error {
 	if sendEntries && f.nextIndex > f.ldrLastIndex {
-		f.timer.reset(f.hbTimeout / 10)
+		// for nonvoter, dont send heartbeats
+		var timerCh <-chan time.Time
+		if f.voter {
+			f.timer.reset(f.hbTimeout / 10)
+			timerCh = f.timer.C
+		}
+
 		// nothing to send. start heartbeat timer
 		select {
 		case <-f.stopCh:
 			return errStop
 		case update := <-f.fromLeaderCh:
 			f.onLeaderUpdate(update, req)
-		case <-f.timer.C:
+		case <-timerCh:
 			f.timer.active = false
 		}
 	} else {
