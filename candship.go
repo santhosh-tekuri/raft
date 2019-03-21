@@ -1,5 +1,12 @@
 package raft
 
+// todo: Quiet a server that's no longer in the cluster
+//       If a server leaves a configuration it may not actually
+//       get the log entry replicated that removes it, so it'll
+//       try to start elections. The rest of the cluster will
+//       ignore it, but if we give it feedback to shut up it
+//       will be less of a noisy process.
+
 type candShip struct {
 	*Raft
 	respCh      chan rpcResponse
