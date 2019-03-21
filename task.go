@@ -258,12 +258,12 @@ func (c *Config) AddVoter(id uint64, addr string) error {
 	return c.addNode(Node{ID: id, Addr: addr, Voter: true})
 }
 
-// AddNonVoter adds given node as nonvoter.
+// AddNonvoter adds given node as nonvoter.
 //
 // Voters can't be directly added to cluster. They must be added as
 // nonvoter with promote turned on. once the node's log catches up,
 // leader promotes it to voter.
-func (c *Config) AddNonVoter(id uint64, addr string, promote bool) error {
+func (c *Config) AddNonvoter(id uint64, addr string, promote bool) error {
 	return c.addNode(Node{ID: id, Addr: addr, Promote: promote})
 }
 
@@ -278,9 +278,12 @@ func (c *Config) addNode(n Node) error {
 	return nil
 }
 
-func (c *Config) Remove(id uint64) error {
-	if _, ok := c.Nodes[id]; !ok {
+//RemoteNonvoter removes the given nonvoter.
+func (c *Config) RemoveNonvoter(id uint64) error {
+	if n, ok := c.Nodes[id]; !ok {
 		return fmt.Errorf("raft: node %d not found", id)
+	} else if n.Voter {
+		return fmt.Errorf("raft: only nonvoters can be removed")
 	}
 	delete(c.Nodes, id)
 	return nil

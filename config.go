@@ -291,33 +291,42 @@ func (l *ldrShip) changeConfig(t changeConfig) {
 		return
 	}
 
-	voters := func(c Config) map[uint64]bool {
-		m := make(map[uint64]bool)
-		for id, n := range c.Nodes {
-			if n.Voter {
-				m[id] = true
+	voters, nonvoters := make(map[uint64]bool), make(map[uint64]bool)
+	for id, n := range l.configs.Latest.Nodes {
+		if n.Voter {
+			voters[id] = true
+		} else {
+			nonvoters[id] = true
+		}
+	}
+	for id, n := range t.newConf.Nodes {
+		if n.Voter {
+			if !voters[id] {
+				t.reply(fmt.Errorf("raft.changeConfig: new voter %d found. please add it as nonvoter with promote", id))
+				return
+			}
+			delete(voters, id)
+		} else {
+			delete(nonvoters, id)
+		}
+	}
+	if len(voters) > 1 {
+		t.reply(fmt.Errorf("raft.changeConfig: numVoters can be decreased at most by one"))
+		return
+	}
+	if len(voters) == 1 {
+		for id := range voters {
+			if _, ok := t.newConf.Nodes[id]; !ok {
+				t.reply(fmt.Errorf("raft.changeConfig: voter %d removed. please demote it and then remove", id))
+				return
 			}
 		}
-		return m
 	}
-
-	curVoters, newVoters := voters(l.configs.Latest), voters(t.newConf)
-
-	// remove common voters
-	for curVoter := range curVoters {
-		if newVoters[curVoter] {
-			delete(curVoters, curVoter)
-			delete(newVoters, curVoter)
+	for id := range nonvoters {
+		if l.flrs[id].status.matchIndex < l.configs.Latest.Index {
+			t.reply(fmt.Errorf("raft.changeConfig: nonvoter %d is not yet ready for removal", id))
+			return
 		}
-	}
-
-	if len(newVoters) > 0 {
-		t.reply(fmt.Errorf("raft.changeConfig: new voters found. please add them as nonvoters with promote flag"))
-		return
-	}
-	if len(curVoters) > 1 {
-		t.reply(errors.New("raft.changeConfig: only one voter can lose its voting right"))
-		return
 	}
 	l.doChangeConfig(t.task, t.newConf)
 }

@@ -25,7 +25,7 @@ func test_changeConfig_validations(t *testing.T) {
 	// adding node with existing id should fail
 	config := ldr.Info().Configs().Latest
 	for id := range config.Nodes {
-		if err := config.AddNonVoter(id, "localhost:8888", false); err == nil {
+		if err := config.AddNonvoter(id, "localhost:8888", false); err == nil {
 			t.Fatal(err)
 		}
 	}
