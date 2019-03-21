@@ -301,20 +301,16 @@ func (r *Raft) FSM() FSM {
 }
 
 func (r *Raft) addr() string {
-	if self, ok := r.configs.Latest.Nodes[r.nid]; ok {
-		return self.Addr
-	}
-	return ""
+	addr, _ := r.resolver.lookupID(r.nid)
+	return addr
 }
 
 func (r *Raft) leaderAddr() string {
 	if r.leader == 0 {
 		return ""
 	}
-	if ldr, ok := r.configs.Latest.Nodes[r.leader]; ok {
-		return ldr.Addr
-	}
-	return ""
+	addr, _ := r.resolver.lookupID(r.leader)
+	return addr
 }
 
 func (r *Raft) liveInfo() Info {
