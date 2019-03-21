@@ -28,11 +28,12 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 	result, err := r.onRequest(rpc.req, rpc.reader)
 	rpc.resp = rpc.req.rpcType().createResp(r, result, err)
 	debug(r, ">>", rpc.resp)
-	close(rpc.done)
-
 	if result == readErr {
 		rpc.readErr = err
-	} else if result == unexpectedErr {
+	}
+	close(rpc.done)
+
+	if result == unexpectedErr {
 		if r.trace.Error != nil {
 			r.trace.Error(err)
 		}
