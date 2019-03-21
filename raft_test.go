@@ -425,7 +425,9 @@ func (c *cluster) waitForFollowers(ldr *Raft) {
 		}
 		return true
 	}
-	if !waitForCondition(condition, c.heartbeatTimeout, c.longTimeout) {
+	leaderChanged := c.registerFor(leaderChanged)
+	defer c.unregister(leaderChanged)
+	if !leaderChanged.waitFor(condition, c.longTimeout) {
 		log = true
 		condition()
 		c.Fatalf("waitForFollowers(M%d) timeout", ldr.NID())
@@ -792,6 +794,7 @@ type eventType int
 const (
 	fsmChanged eventType = iota
 	stateChanged
+	leaderChanged
 	electionStarted
 	electionAborted
 	configChanged
@@ -812,6 +815,7 @@ type event struct {
 
 	fsmLen    uint64
 	state     State
+	leader    uint64
 	configs   Configs
 	target    uint64
 	since     time.Time
@@ -937,6 +941,13 @@ func (ee *events) trace() (trace Trace) {
 			src:   info.NID(),
 			typ:   stateChanged,
 			state: info.State(),
+		})
+	}
+	trace.LeaderChanged = func(info Info) {
+		ee.sendEvent(event{
+			src:    info.NID(),
+			typ:    leaderChanged,
+			leader: info.Leader(),
 		})
 	}
 	trace.ElectionStarted = func(info Info) {
