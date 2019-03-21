@@ -92,31 +92,109 @@ func (f *flr) runLoop(req *appendEntriesReq) {
 func (f *flr) replicate(c *conn, req *appendEntriesReq) (err error) {
 	resp := &appendEntriesResp{}
 	for {
-		err = f.writeAppendEntriesReq(c, req)
-		if err == errNoEntryFound {
-			if err = f.sendInstallSnapReq(c, req); err == nil {
-				continue
+		// find matchIndex ---------------------------------------------------
+		for {
+			err = f.writeAppendEntriesReq(c, req, false)
+			if err == errNoEntryFound {
+				if err = f.sendInstallSnapReq(c, req); err == nil {
+					continue
+				}
+			}
+			if err != nil {
+				return err
+			}
+
+			if err = c.readResp(resp); err != nil {
+				return err
+			}
+			if err = f.onAppendEntriesResp(resp, f.nextIndex-1); err != nil {
+				return err
+			}
+			if err = f.checkLeaderUpdate(req, false); err != nil {
+				return err
+			}
+			if f.matchIndex+1 == f.nextIndex {
+				break
 			}
 		}
-		if err != nil {
-			return err
-		}
 
-		if err = c.readResp(resp); err != nil {
-			return err
+		debug(f, "pipelining.............................")
+		// pipelining ---------------------------------------------------------
+		type result struct {
+			lastIndex uint64
+			err       error
 		}
-		if err = f.onAppendEntriesResp(resp); err != nil {
-			return err
-		}
-		if err = f.checkLeaderUpdate(req); err != nil {
-			return err
+		var (
+			resultCh = make(chan result, 128)
+			stopCh   = make(chan struct{})
+		)
+		go func() {
+			defer func() {
+				if v := recover(); v != nil {
+					select {
+					case <-stopCh:
+						return
+					case resultCh <- result{0, toErr(v)}:
+					}
+				}
+				close(resultCh)
+			}()
+			for {
+				err := f.writeAppendEntriesReq(c, req, true)
+				select {
+				case <-stopCh:
+					return
+				case resultCh <- result{f.nextIndex - 1, err}:
+				}
+				if err != nil {
+					return
+				}
+				if err = f.checkLeaderUpdate(req, true); err != nil {
+					select {
+					case <-stopCh:
+						return
+					case resultCh <- result{0, err}:
+					}
+					return
+				}
+			}
+		}()
+		for result := range resultCh {
+			if result.err != nil {
+				debug(f, "pipeline ended with", result.err)
+				if result.err == errNoEntryFound {
+					break
+				}
+				return result.err
+			}
+			if err = c.readResp(resp); err != nil {
+				debug(f, "pipeline ended with readResp error:", err)
+				close(stopCh)
+				// wait for pipeline routine finish
+				for range resultCh {
+				}
+				return err
+			}
+			if resp.result == success {
+				_ = f.onAppendEntriesResp(resp, result.lastIndex)
+			} else {
+				debug(f, "pipeline ended with resp.result", resp.result)
+				close(stopCh)
+				// drain remaining responses
+				for range resultCh {
+					if err = c.readResp(resp); err != nil {
+						return err
+					}
+				}
+				break
+			}
 		}
 	}
 }
 
 const maxAppendEntries = 64
 
-func (f *flr) writeAppendEntriesReq(c *conn, req *appendEntriesReq) (err error) {
+func (f *flr) writeAppendEntriesReq(c *conn, req *appendEntriesReq, sendEntries bool) (err error) {
 	f.storage.prevLogMu.RLock()
 	defer f.storage.prevLogMu.RUnlock()
 
@@ -136,12 +214,11 @@ func (f *flr) writeAppendEntriesReq(c *conn, req *appendEntriesReq) (err error) 
 	}
 
 	req.numEntries = 0
-	if f.matchIndex+1 == f.nextIndex {
-		assert(f.matchIndex == req.prevLogIndex, "%v assert %d==%d", f, f.matchIndex, req.prevLogIndex)
-		req.numEntries = min(f.ldrLastIndex-f.matchIndex, maxAppendEntries)
+	if sendEntries {
+		req.numEntries = min(f.ldrLastIndex-req.prevLogIndex, maxAppendEntries)
 	}
 
-	if f.matchIndex+1 == f.nextIndex && req.numEntries == 0 {
+	if sendEntries && req.numEntries == 0 {
 		debug(f, ">> heartbeat")
 	} else {
 		debug(f, ">>", req)
@@ -162,15 +239,15 @@ func (f *flr) writeAppendEntriesReq(c *conn, req *appendEntriesReq) (err error) 
 	return nil
 }
 
-func (f *flr) onAppendEntriesResp(resp *appendEntriesResp) error {
+func (f *flr) onAppendEntriesResp(resp *appendEntriesResp, reqLastIndex uint64) error {
 	debug(f, "<<", resp)
 	switch resp.result {
 	case staleTerm:
 		f.notifyLdr(newTerm{resp.getTerm()})
 		return errStop
 	case success:
-		if f.matchIndex < f.nextIndex-1 {
-			f.matchIndex = f.nextIndex - 1
+		if reqLastIndex > f.matchIndex {
+			f.matchIndex = reqLastIndex
 			debug(f, "matchIndex:", f.matchIndex)
 			f.notifyLdr(matchIndex{&f.status, f.matchIndex})
 		}
@@ -240,8 +317,8 @@ func (f *flr) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
 	}
 }
 
-func (f *flr) checkLeaderUpdate(req *appendEntriesReq) error {
-	if f.matchIndex == f.ldrLastIndex {
+func (f *flr) checkLeaderUpdate(req *appendEntriesReq, sendEntries bool) error {
+	if sendEntries && f.nextIndex > f.ldrLastIndex {
 		f.timer.reset(f.hbTimeout / 10)
 		// nothing to send. start heartbeat timer
 		select {
