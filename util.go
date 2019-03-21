@@ -6,6 +6,8 @@ import (
 	"math"
 	"math/big"
 	"math/rand"
+	"runtime"
+	"strings"
 	"time"
 )
 
@@ -121,8 +123,17 @@ func (s decrUint64Slice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
 // -------------------------------------------------------------------------
 
-func bug(format string, v ...interface{}) error {
-	return fmt.Errorf("[BUG] "+format, v...)
+func bug(calldepth int, format string, v ...interface{}) error {
+	_, file, line, ok := runtime.Caller(calldepth)
+	if !ok {
+		file = "???"
+		line = 0
+	}
+	if i := strings.LastIndex(file, "/"); i != -1 {
+		file = file[i+1:]
+	}
+	prefix := fmt.Sprintf("[RAFT-BUG] %s:%d ", file, line)
+	return fmt.Errorf(prefix+format, v...)
 }
 
 func toErr(v interface{}) error {

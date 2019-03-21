@@ -124,13 +124,9 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq, reader io.Reader) (
 		if req.prevLogIndex == r.lastLogIndex {
 			prevLogTerm = r.lastLogTerm
 		} else {
-			var err error
 			prevEntry = &entry{}
-			if err = r.storage.getEntry(req.prevLogIndex, prevEntry); err != nil {
-				panic(err)
-			}
+			r.storage.mustGetEntry(req.prevLogIndex, prevEntry)
 			prevLogTerm = prevEntry.term
-			// we never get ErrNotFound here, because we are the goroutine who is compacting
 		}
 		if req.prevLogTerm != prevLogTerm {
 			return drain(prevTermMismatch, nil)
@@ -158,9 +154,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq, reader io.Reader) (
 		}
 		if ne.index <= r.lastLogIndex {
 			me := &entry{}
-			if err := r.storage.getEntry(ne.index, me); err != nil {
-				panic(err)
-			}
+			r.storage.mustGetEntry(ne.index, me)
 			if me.term == ne.term {
 				continue
 			}
@@ -208,9 +202,7 @@ func (r *Raft) applyCommitted(ne *entry) {
 			e = ne
 		} else {
 			e = &entry{}
-			if err := r.storage.getEntry(r.lastApplied+1, e); err != nil {
-				panic(err)
-			}
+			r.storage.mustGetEntry(r.lastApplied+1, e)
 		}
 
 		r.applyEntry(newEntry{entry: e})

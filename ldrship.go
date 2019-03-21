@@ -108,7 +108,7 @@ func (l *ldrShip) storeEntry(ne newEntry) error {
 	if ne.typ == entryConfig {
 		config := Config{}
 		if err := config.decode(ne.entry); err != nil {
-			panic(bug("config.decode: %v", err))
+			panic(bug(1, "config.decode: %v", err))
 		}
 		l.voter = config.isVoter(l.nid)
 		l.Raft.changeConfig(config)
@@ -320,7 +320,7 @@ func (l *ldrShip) applyCommitted() {
 		}
 		if ne.entry == nil {
 			ne.entry = &entry{}
-			l.storage.getEntry(l.lastApplied+1, ne.entry)
+			l.storage.mustGetEntry(l.lastApplied+1, ne.entry)
 		}
 
 		l.applyEntry(ne)

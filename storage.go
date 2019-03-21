@@ -207,7 +207,7 @@ func (s *storage) setTerm(term uint64) {
 
 func (s *storage) setVotedFor(id uint64) {
 	if id == 0 {
-		panic(bug("setVotedFor(0)"))
+		panic(bug(2, "setVotedFor(0)"))
 	}
 	if err := s.vars.SetVote(s.term, id); err != nil {
 		panic(opError(err, "Vars.SetVote(%d, %d)", s.term, id))
@@ -242,6 +242,12 @@ func (s *storage) getEntry(index uint64, e *entry) error {
 	return nil
 }
 
+func (s *storage) mustGetEntry(index uint64, e *entry) {
+	if err := s.getEntry(index, e); err != nil {
+		panic(bug(2, "storage.MustGetEntry(%d): %v", index, err))
+	}
+}
+
 func (s *storage) WriteEntriesTo(w io.Writer, from uint64, n uint64) error {
 	if from <= s.prevLogIndex {
 		return errNoEntryFound
@@ -259,11 +265,11 @@ func (s *storage) WriteEntriesTo(w io.Writer, from uint64, n uint64) error {
 // called by raft.runLoop. getEntry call can be called during this
 func (s *storage) appendEntry(e *entry) {
 	if e.index != s.lastLogIndex+1 {
-		panic(bug("storage.appendEntry.index: got %d, want %d", e.index, s.lastLogIndex+1))
+		panic(bug(2, "storage.appendEntry.index: got %d, want %d", e.index, s.lastLogIndex+1))
 	}
 	w := new(bytes.Buffer)
 	if err := e.encode(w); err != nil {
-		panic(bug("entry.encode(%d): %v", e.index, err))
+		panic(bug(2, "entry.encode(%d): %v", e.index, err))
 	}
 	if err := s.log.Append(w.Bytes()); err != nil {
 		panic(opError(err, "Log.Append"))
