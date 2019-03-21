@@ -160,6 +160,7 @@ func (l *ldrShip) checkReplUpdates(u interface{}) {
 		case error:
 			panic(u)
 		case matchIndex:
+			debug(l, "<<", u)
 			matchUpdated = true
 			u.status.matchIndex = u.val
 		case noContact:
@@ -233,6 +234,8 @@ func (l *ldrShip) checkReplUpdates(u interface{}) {
 	if noContactUpdated {
 		l.checkQuorum(l.quorumWait)
 	}
+
+	// todo: do this in case matchIndex in above switch
 	if matchUpdated || noContactUpdated {
 		if l.transfer.inProgress() && !l.transfer.targetChosen() {
 			if tgt := l.choseTransferTgt(); tgt != 0 {

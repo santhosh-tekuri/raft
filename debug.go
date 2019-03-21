@@ -125,10 +125,6 @@ func (ne newEntry) String() string {
 	}
 }
 
-func (t bootstrap) String() string {
-	return fmt.Sprintf("bootstrap{%s}", t.config)
-}
-
 func (t changeConfig) String() string {
 	return fmt.Sprintf("changeConfig{%s}", t.newConf)
 }
@@ -143,4 +139,8 @@ func (t transferLdr) String() string {
 
 func (r rpcResponse) String() string {
 	return fmt.Sprintf("M%d << %s err: %v", r.from, r.response, r.err)
+}
+
+func (u matchIndex) String() string {
+	return fmt.Sprintf("replUpdate{M%d matchIndex:%d}", u.status.id, u.val)
 }
