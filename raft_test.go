@@ -142,6 +142,9 @@ func launchCluster(t *testing.T, n int) (c *cluster, ldr *Raft, flrs []*Raft) {
 }
 
 func newCluster(t *testing.T) *cluster {
+	debug()
+	debug("-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8--")
+	debug()
 	tdebug(t.Name(), "--------------------------")
 	heartbeatTimeout := 50 * time.Millisecond
 	testTimeout := time.AfterFunc(time.Minute, func() {
