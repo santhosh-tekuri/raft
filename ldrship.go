@@ -44,6 +44,7 @@ func (l *ldrShip) init() {
 			l.addFlr(node)
 		}
 	}
+	l.beginCancelRounds()
 
 	// add a blank no-op entry into log at the start of its term
 	_ = l.storeEntry(newEntry{entry: &entry{typ: entryNop}})
@@ -111,6 +112,7 @@ func (l *ldrShip) storeEntry(ne newEntry) error {
 		}
 		l.voter = config.isVoter(l.nid)
 		l.Raft.changeConfig(config)
+		l.beginFinishedRounds()
 	}
 	l.notifyFlr(ne.typ == entryConfig)
 	return nil
@@ -119,7 +121,7 @@ func (l *ldrShip) storeEntry(ne newEntry) error {
 func (l *ldrShip) addFlr(node Node) {
 	assert(node.ID != l.nid, "adding leader as follower")
 	f := &flr{
-		node:          node,
+		voter:         node.Voter,
 		rtime:         newRandTime(),
 		status:        flrStatus{id: node.ID},
 		ldrStartIndex: l.startIndex,
@@ -163,6 +165,9 @@ func (l *ldrShip) checkReplUpdates(u interface{}) {
 			debug(l, "<<", u)
 			matchUpdated = true
 			u.status.matchIndex = u.val
+			if u.status.round != nil {
+				l.checkPromotion(u.status)
+			}
 		case noContact:
 			noContactUpdated = true
 			u.status.noContact, u.status.err = u.time, u.err
@@ -177,45 +182,6 @@ func (l *ldrShip) checkReplUpdates(u interface{}) {
 			l.setLeader(0)
 			l.setTerm(u.val)
 			return
-		case roundCompleted:
-			r := u.round
-			if r.Ordinal > u.status.rounds {
-				debug(l, "completed", r)
-				u.status.rounds++
-				if l.trace.RoundCompleted != nil {
-					l.trace.RoundCompleted(l.liveInfo(), u.status.id, r)
-				}
-			} else {
-				debug(l, u.status.id, "is reminding promotion:", r)
-			}
-			if l.transfer.inProgress() {
-				debug(l, "cannot promote: transferLeadership in progress")
-				break
-			}
-			if !l.configs.IsCommitted() {
-				debug(l, "cannot promote: config not committed")
-				break
-			}
-			hasNewEntries := l.lastLogIndex > u.status.matchIndex
-			if hasNewEntries && r.Duration() > l.promoteThreshold {
-				debug(l, "best of luck for next round")
-				break // best of luck for next round !!!
-			}
-			n, ok := l.configs.Latest.Nodes[u.status.id]
-			if !ok || !n.promote() {
-				debug(l, "this node should not be promoted")
-				break
-			}
-
-			// promoting flr
-			debug(l, "promoting", n.ID)
-			config := l.configs.Latest.clone()
-			n.Voter, n.Promote = true, false
-			config.Nodes[n.ID] = n
-			if l.trace.Promoting != nil {
-				l.trace.Promoting(l.liveInfo(), n.ID, r.Ordinal)
-			}
-			l.doChangeConfig(nil, config)
 		}
 
 		// get any waiting update
@@ -309,7 +275,10 @@ func (l *ldrShip) onMajorityCommit() {
 	// note: if majorityMatchIndex >= ldr.startIndex, it also mean
 	// majorityMatchIndex.term == currentTerm
 	if majorityMatchIndex > l.commitIndex && majorityMatchIndex >= l.startIndex {
-		l.setCommitIndex(majorityMatchIndex)
+		configCommitted := l.setCommitIndex(majorityMatchIndex)
+		if configCommitted {
+			l.promotePending()
+		}
 		l.applyCommitted()
 		l.notifyFlr(false) // we updated commit index
 	}

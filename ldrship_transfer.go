@@ -100,6 +100,7 @@ func (l *ldrShip) doTransfer(target uint64) {
 
 func (l *ldrShip) onTransferTimeout() {
 	l.transfer.reply(TimeoutError("transferLeadership"))
+	l.promotePending()
 }
 
 func (l *ldrShip) onTimeoutNowResult(rpc rpcResponse) {
@@ -116,4 +117,6 @@ func (l *ldrShip) onTimeoutNowResult(rpc rpcResponse) {
 			}
 		}
 	}
+	// todo: handle the case where target got disconnected just before starting election
+	//       solution: if we dont detect any new term within 2*heartbeat, we retry another target
 }

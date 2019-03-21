@@ -349,15 +349,17 @@ func (l *ldrShip) doChangeConfig(t *task, config Config) {
 			l.addFlr(node)
 		}
 	}
+	l.beginCancelRounds()
 }
 
 // ---------------------------------------------------------
 
-func (r *Raft) setCommitIndex(index uint64) {
+func (r *Raft) setCommitIndex(index uint64) (configCommitted bool) {
 	r.commitIndex = index
 	debug(r, "commitIndex", r.commitIndex)
 	if !r.configs.IsCommitted() && r.configs.Latest.Index <= r.commitIndex {
 		r.commitConfig()
+		configCommitted = true
 		if r.state == Leader && !r.configs.Latest.isVoter(r.nid) {
 			// if we are no longer voter after this config is committed,
 			// then what is the point of accepting fsm entries from user ????
@@ -368,6 +370,7 @@ func (r *Raft) setCommitIndex(index uint64) {
 		// todo: we can provide option to shutdown
 		//       if it is no longer part of new config
 	}
+	return
 }
 
 func (r *Raft) changeConfig(new Config) {

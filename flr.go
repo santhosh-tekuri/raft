@@ -6,6 +6,7 @@ import (
 	"time"
 )
 
+// todo: for nonvoter, dont send heartbeats
 type flr struct {
 	rtime  randTime
 	status flrStatus // owned by ldr goroutine
@@ -20,8 +21,7 @@ type flr struct {
 	matchIndex    uint64
 	nextIndex     uint64
 
-	node  Node
-	round *Round // nil if no promotion required
+	voter bool
 
 	// from this time node is unreachable
 	// zero value means node is reachable
@@ -36,12 +36,6 @@ type flr struct {
 
 func (f *flr) runLoop(req *appendEntriesReq) {
 	debug(f, "f.start")
-	if f.node.promote() {
-		f.round = new(Round)
-		f.round.begin(f.ldrLastIndex)
-		debug(f, "started:", f.round)
-	}
-
 	var c *conn
 	defer func() {
 		if c != nil {
@@ -275,28 +269,7 @@ func (f *flr) onLeaderUpdate(u leaderUpdate, req *appendEntriesReq) {
 	debug(f, u)
 	f.ldrLastIndex, req.ldrCommitIndex = u.lastIndex, u.commitIndex
 	if u.config != nil {
-		if n, ok := u.config.Nodes[f.status.id]; ok {
-			f.node = n
-			if !f.node.promote() {
-				f.round = nil
-			} else if f.round == nil {
-				// start first round
-				f.round = new(Round)
-				f.round.begin(f.ldrLastIndex)
-				debug(f, "started:", f.round)
-			}
-		}
-	}
-
-	// if round was completed
-	if f.round != nil && f.round.finished() {
-		if f.ldrLastIndex > f.round.LastIndex {
-			f.round.begin(f.ldrLastIndex)
-			debug(f, "started:", f.round)
-		} else {
-			debug(f, "reminding leader about promotion")
-			f.notifyRoundCompleted() // no new entries, reminding leader about promotion
-		}
+		f.voter = u.config.Nodes[f.status.id].Voter
 	}
 }
 
@@ -304,13 +277,6 @@ func (f *flr) notifyLdr(u interface{}) {
 	select {
 	case <-f.stopCh:
 	case f.toLeaderCh <- u:
-	}
-
-	// check if we just completed round
-	if _, ok := u.(matchIndex); ok && f.round != nil {
-		if f.matchIndex >= f.round.LastIndex {
-			f.notifyRoundCompleted()
-		}
 	}
 }
 
@@ -324,46 +290,6 @@ func (f *flr) notifyNoContact(err error) {
 		debug(f, "yesContact")
 		f.notifyLdr(noContact{&f.status, f.noContact, nil})
 	}
-}
-
-func (f *flr) notifyRoundCompleted() {
-	if !f.round.finished() {
-		f.round.finish()
-	}
-	debug(f, "notify completed:", f.round)
-	update := roundCompleted{&f.status, *f.round}
-	select {
-	case <-f.stopCh:
-	case f.toLeaderCh <- update:
-	}
-	// if any entries still left, start next round
-	if f.ldrLastIndex > f.round.LastIndex {
-		f.round.begin(f.ldrLastIndex)
-		debug(f, "started:", f.round)
-	}
-}
-
-// ------------------------------------------------
-
-type Round struct {
-	Ordinal   uint64
-	Start     time.Time
-	End       time.Time
-	LastIndex uint64
-}
-
-func (r *Round) begin(lastIndex uint64) {
-	r.Ordinal, r.Start, r.LastIndex = r.Ordinal+1, time.Now(), lastIndex
-}
-func (r *Round) finish()                { r.End = time.Now() }
-func (r *Round) finished() bool         { return !r.End.IsZero() }
-func (r Round) Duration() time.Duration { return r.End.Sub(r.Start) }
-
-func (r Round) String() string {
-	if r.finished() {
-		return fmt.Sprintf("round{#%d %s lastIndex: %d}", r.Ordinal, r.Duration(), r.LastIndex)
-	}
-	return fmt.Sprintf("round{#%d lastIndex: %d}", r.Ordinal, r.LastIndex)
 }
 
 // ------------------------------------------------
@@ -389,11 +315,6 @@ type newTerm struct {
 	val uint64
 }
 
-type roundCompleted struct {
-	status *flrStatus
-	round  Round
-}
-
 type flrStatus struct {
 	id uint64
 
@@ -407,5 +328,5 @@ type flrStatus struct {
 
 	err error
 
-	rounds uint64 // #rounds completed
+	round *Round // nil if no promotion required
 }

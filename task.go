@@ -105,7 +105,7 @@ type FlrStatus struct {
 	Unreachable time.Time `json:"unreachable,omitempty"`
 	Err         error     `json:"-"`
 	ErrMessage  string    `json:"error,omitempty"`
-	Rounds      uint64    `json:"rounds,omitempty"`
+	Round       uint64    `json:"round,omitempty"`
 }
 
 type json struct {
@@ -165,12 +165,16 @@ func (info liveInfo) Followers() map[uint64]FlrStatus {
 		if f.status.err != nil {
 			errMessage = f.status.err.Error()
 		}
+		var round uint64
+		if f.status.round != nil {
+			round = f.status.round.Ordinal
+		}
 		flrs[id] = FlrStatus{
 			MatchIndex:  f.status.matchIndex,
 			Unreachable: f.status.noContact,
 			Err:         f.status.err,
 			ErrMessage:  errMessage,
-			Rounds:      f.status.rounds,
+			Round:       round,
 		}
 	}
 	return flrs
