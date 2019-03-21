@@ -39,9 +39,9 @@ func (l *ldrShip) init() {
 	l.fromReplsCh = make(chan interface{}, len(l.configs.Latest.Nodes))
 
 	// start replication routine for each follower
-	for id, node := range l.configs.Latest.Nodes {
+	for id, n := range l.configs.Latest.Nodes {
 		if id != l.nid {
-			l.addFlr(node)
+			l.addFlr(n)
 		}
 	}
 	l.beginCancelRounds()
@@ -118,26 +118,26 @@ func (l *ldrShip) storeEntry(ne newEntry) error {
 	return nil
 }
 
-func (l *ldrShip) addFlr(node Node) {
-	assert(node.ID != l.nid, "adding leader as follower")
+func (l *ldrShip) addFlr(n Node) {
+	assert(n.ID != l.nid, "adding leader as follower")
 	f := &flr{
-		voter:         node.Voter,
+		voter:         n.Voter,
 		rtime:         newRandTime(),
-		status:        flrStatus{id: node.ID},
+		status:        flrStatus{id: n.ID},
 		ldrStartIndex: l.startIndex,
 		ldrLastIndex:  l.lastLogIndex,
 		matchIndex:    0,
 		nextIndex:     l.lastLogIndex + 1,
-		connPool:      l.getConnPool(node.ID),
+		connPool:      l.getConnPool(n.ID),
 		hbTimeout:     l.hbTimeout,
 		timer:         newSafeTimer(),
 		storage:       l.storage,
 		stopCh:        make(chan struct{}),
 		toLeaderCh:    l.fromReplsCh,
 		fromLeaderCh:  make(chan leaderUpdate, 1),
-		str:           fmt.Sprintf("%v M%d", l, node.ID),
+		str:           fmt.Sprintf("%v M%d", l, n.ID),
 	}
-	l.flrs[node.ID] = f
+	l.flrs[n.ID] = f
 
 	// send initial empty AppendEntries RPCs (heartbeat) to each follower
 	req := &appendEntriesReq{

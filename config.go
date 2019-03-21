@@ -103,23 +103,23 @@ func (c Config) IsBootstrap() bool {
 }
 
 func (c Config) nodeForAddr(addr string) (Node, bool) {
-	for _, node := range c.Nodes {
-		if node.Addr == addr {
-			return node, true
+	for _, n := range c.Nodes {
+		if n.Addr == addr {
+			return n, true
 		}
 	}
 	return Node{}, false
 }
 
 func (c Config) isVoter(id uint64) bool {
-	node, ok := c.Nodes[id]
-	return ok && node.Voter
+	n, ok := c.Nodes[id]
+	return ok && n.Voter
 }
 
 func (c Config) numVoters() int {
 	voters := 0
-	for _, node := range c.Nodes {
-		if node.Voter {
+	for _, n := range c.Nodes {
+		if n.Voter {
 			voters++
 		}
 	}
@@ -132,8 +132,8 @@ func (c Config) quorum() int {
 
 func (c Config) clone() Config {
 	nodes := make(map[uint64]Node)
-	for id, node := range c.Nodes {
-		nodes[id] = node
+	for id, n := range c.Nodes {
+		nodes[id] = n
 	}
 	c.Nodes = nodes
 	return c
@@ -181,17 +181,17 @@ func (c *Config) decode(e *entry) error {
 
 func (c Config) validate() error {
 	addrs := make(map[string]bool)
-	for id, node := range c.Nodes {
-		if err := node.validate(); err != nil {
+	for id, n := range c.Nodes {
+		if err := n.validate(); err != nil {
 			return err
 		}
-		if id != node.ID {
-			return fmt.Errorf("id mismatch for node %d", node.ID)
+		if id != n.ID {
+			return fmt.Errorf("id mismatch for node %d", n.ID)
 		}
-		if addrs[node.Addr] {
-			return fmt.Errorf("duplicate address %s", node.Addr)
+		if addrs[n.Addr] {
+			return fmt.Errorf("duplicate address %s", n.Addr)
 		}
-		addrs[node.Addr] = true
+		addrs[n.Addr] = true
 	}
 	if c.numVoters() == 0 {
 		return errors.New("zero voters")
@@ -341,12 +341,12 @@ func (l *ldrShip) doChangeConfig(t *task, config Config) {
 	}
 
 	// add new flrs
-	for id, node := range config.Nodes {
+	for id, n := range config.Nodes {
 		if id == l.nid {
 			continue
 		}
 		if _, ok := l.flrs[id]; !ok {
-			l.addFlr(node)
+			l.addFlr(n)
 		}
 	}
 	l.beginCancelRounds()
