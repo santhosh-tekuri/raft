@@ -274,12 +274,11 @@ func (c *cluster) serve(r *Raft) {
 	}()
 }
 
-func (c *cluster) ensureLaunch(n int) (ldr *Raft, followers []*Raft) {
+func (c *cluster) ensureLaunch(n int) (ldr *Raft, flrs []*Raft) {
 	c.Helper()
 	c.launch(n, true)
 	ldr = c.waitForHealthy()
-	c.ensureLeader(ldr.NID())
-	followers = c.followers()
+	flrs = c.followers()
 	return
 }
 
@@ -395,9 +394,9 @@ func (c *cluster) followers() []*Raft {
 
 func (c *cluster) waitForHealthy() *Raft {
 	c.Helper()
-	c.waitForStability()
-	ldr := c.leader()
-	c.followers()
+	ldr := c.waitForLeader()
+	c.waitForFollowers(ldr)
+	c.waitForCommitted(ldr.Info().LastLogIndex())
 	return ldr
 }
 

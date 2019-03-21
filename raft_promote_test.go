@@ -92,7 +92,7 @@ func test_promote_newNode_uptodateButConfigChangeInProgress(t *testing.T) {
 	// launch m3
 	m3 := c.launch(1, false)[3]
 
-	// wait until m4 ready for promotion
+	// wait until m3 ready for promotion
 	e, err := roundCompleted.waitForEvent(c.longTimeout)
 	if err != nil {
 		t.Fatalf("waitForRoundComplete: %v", err)
