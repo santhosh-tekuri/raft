@@ -286,10 +286,12 @@ func (r *Raft) setLeader(id uint64) {
 	r.leader = id
 }
 
+// CID returns cluster ID.
 func (r *Raft) CID() uint64 {
 	return r.cid
 }
 
+// NID returns node ID.
 func (r *Raft) NID() uint64 {
 	return r.nid
 }

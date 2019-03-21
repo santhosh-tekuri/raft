@@ -248,6 +248,9 @@ func (r *Raft) SetTrace(trace Trace) error {
 
 // ------------------------------------------------------------------------
 
+// AddVoter adds given node as voter.
+//
+// This call fails if config is not bootstrap.
 func (c *Config) AddVoter(id uint64, addr string) error {
 	if !c.IsBootstrap() {
 		return fmt.Errorf("raft: voter cannot be added in bootstrapped config")
@@ -255,6 +258,11 @@ func (c *Config) AddVoter(id uint64, addr string) error {
 	return c.addNode(Node{ID: id, Addr: addr, Voter: true})
 }
 
+// AddNonVoter adds given node as nonvoter.
+//
+// Voters can't be directly added to cluster. They must be added as
+// nonvoter with promote turned on. once the node's log catches up,
+// leader promotes it to voter.
 func (c *Config) AddNonVoter(id uint64, addr string, promote bool) error {
 	return c.addNode(Node{ID: id, Addr: addr, Promote: promote})
 }
@@ -278,6 +286,10 @@ func (c *Config) Remove(id uint64) error {
 	return nil
 }
 
+// ChangeAddr changes address of given node.
+//
+// If you have set Options.Resolver, the address resolved
+// by Resolver still takes precedence.
 func (c *Config) ChangeAddr(id uint64, addr string) error {
 	n, ok := c.Nodes[id]
 	if !ok {
@@ -295,6 +307,10 @@ func (c *Config) ChangeAddr(id uint64, addr string) error {
 	return nil
 }
 
+// Promote turns on promote flag for given nonvoter.
+//
+// This does not promote the node to voter immediately. Once the node's
+// log catches up, leader promotes it to voter.
 func (c *Config) Promote(id uint64) error {
 	n, ok := c.Nodes[id]
 	if !ok {
@@ -308,6 +324,9 @@ func (c *Config) Promote(id uint64) error {
 	return nil
 }
 
+// Demote changes the given node to nonvoter and turns off promote flag.
+//
+// This method can be called on both voters and nonvoters.
 func (c *Config) Demote(id uint64) error {
 	n, ok := c.Nodes[id]
 	if !ok {
