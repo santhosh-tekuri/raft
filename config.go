@@ -412,8 +412,11 @@ func (r *Raft) setCommitIndex(index uint64) (configCommitted bool) {
 			r.setState(Follower)
 			r.setLeader(0)
 		}
-		// todo: we can provide option to shutdown
-		//       if it is no longer part of new config
+		if r.shutdownOnRemove {
+			if _, ok := r.configs.Latest.Nodes[r.nid]; !ok {
+				r.doClose(ErrNodeRemoved)
+			}
+		}
 	}
 	return
 }

@@ -29,6 +29,7 @@ type Raft struct {
 	hbTimeout        time.Duration
 	quorumWait       time.Duration
 	promoteThreshold time.Duration
+	shutdownOnRemove bool
 	trace            Trace
 
 	// dialing flrs
@@ -71,6 +72,7 @@ func New(opt Options, fsm FSM, storage Storage) (*Raft, error) {
 		hbTimeout:        opt.HeartbeatTimeout,
 		quorumWait:       opt.QuorumWait,
 		promoteThreshold: opt.PromoteThreshold,
+		shutdownOnRemove: opt.ShutdownOnRemove,
 		trace:            opt.Trace,
 		dialFn:           net.DialTimeout,
 		connPools:        make(map[uint64]*connPool),

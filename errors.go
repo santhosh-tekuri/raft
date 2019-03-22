@@ -11,6 +11,7 @@ var (
 	// ErrServerClosed is returned by the Raft's Serve and ListenAndServe
 	// methods after a call to Shutdown
 	ErrServerClosed = errors.New("raft: server closed")
+	ErrNodeRemoved  = errors.New("raft: node removed")
 
 	ErrIdentityAlreadySet = errors.New("raft: identity already set")
 	ErrIdentityNotSet     = errors.New("raft: identity not set")

@@ -15,6 +15,7 @@ type Options struct {
 	QuorumWait        time.Duration
 	PromoteThreshold  time.Duration
 	SnapshotThreshold uint64
+	ShutdownOnRemove  bool
 	Trace             Trace
 	Resolver          Resolver
 }
@@ -43,6 +44,7 @@ func DefaultOptions() Options {
 		HeartbeatTimeout: hbTimeout,
 		QuorumWait:       hbTimeout,
 		PromoteThreshold: hbTimeout,
+		ShutdownOnRemove: true,
 		Trace:            DefaultTrace(logger("[INFO]"), logger("[WARN]")),
 	}
 }
