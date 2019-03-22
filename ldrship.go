@@ -276,16 +276,7 @@ func (l *ldrShip) onMajorityCommit() {
 	// note: if majorityMatchIndex >= ldr.startIndex, it also mean
 	// majorityMatchIndex.term == currentTerm
 	if majorityMatchIndex > l.commitIndex && majorityMatchIndex >= l.startIndex {
-		configCommitted := l.setCommitIndex(majorityMatchIndex)
-		if configCommitted {
-			l.checkActions()
-			if l.configs.IsStable() {
-				for _, t := range l.waitStable {
-					t.reply(l.configs.Latest)
-				}
-				l.waitStable = nil
-			}
-		}
+		l.setCommitIndex(majorityMatchIndex)
 		l.applyCommitted()
 		l.notifyFlr(false) // we updated commit index
 	}

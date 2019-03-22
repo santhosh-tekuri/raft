@@ -386,6 +386,19 @@ func (l *ldrShip) onWaitForStableConfig(t waitForStableConfig) {
 
 // ---------------------------------------------------------
 
+func (l *ldrShip) setCommitIndex(index uint64) {
+	configCommitted := l.Raft.setCommitIndex(index)
+	if configCommitted {
+		l.checkActions()
+		if l.configs.IsStable() {
+			for _, t := range l.waitStable {
+				t.reply(l.configs.Latest)
+			}
+			l.waitStable = nil
+		}
+	}
+}
+
 func (r *Raft) setCommitIndex(index uint64) (configCommitted bool) {
 	r.commitIndex = index
 	debug(r, "commitIndex", r.commitIndex)
