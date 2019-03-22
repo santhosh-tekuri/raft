@@ -102,6 +102,22 @@ func (r *Raft) applyEntry(ne newEntry) {
 // --------------------------------------------------------------------------
 
 // todo: trace snapshot start and finish
+func (r *Raft) onTakeSnapshot(t takeSnapshot) {
+	if r.snapTakenCh != nil {
+		t.reply(InProgressError("takeSnapshot"))
+		return
+	}
+	r.snapTakenCh = make(chan snapTaken, 1)
+	go func(index uint64, config Config) { // tracked by r.snapTakenCh
+		meta, err := doTakeSnapshot(r.fsm, index, config)
+		r.snapTakenCh <- snapTaken{
+			req:  t,
+			meta: meta,
+			err:  err,
+		}
+	}(r.snapIndex+t.threshold, r.configs.Committed)
+}
+
 func doTakeSnapshot(fsm *stateMachine, index uint64, config Config) (meta SnapshotMeta, err error) {
 	// get fsm state
 	req := fsmSnapReq{task: newTask(), index: index}

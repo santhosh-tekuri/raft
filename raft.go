@@ -13,8 +13,10 @@ type Raft struct {
 	rpcCh chan *rpc
 
 	fsm           *stateMachine
-	snapTakenCh   chan snapTaken // non nil only when snapshot task is in progress
+	snapTimer     *safeTimer
+	snapInterval  time.Duration
 	snapThreshold uint64
+	snapTakenCh   chan snapTaken // non nil only when snapshot task is in progress
 
 	// persistent state
 	*storage
@@ -66,6 +68,8 @@ func New(opt Options, fsm FSM, storage Storage) (*Raft, error) {
 		timer:            newSafeTimer(),
 		rpcCh:            make(chan *rpc),
 		fsm:              sm,
+		snapTimer:        newSafeTimer(),
+		snapInterval:     opt.SnapshotInterval,
 		snapThreshold:    opt.SnapshotThreshold,
 		storage:          store,
 		state:            Follower,
@@ -167,7 +171,9 @@ func (r *Raft) stateLoop() (err error) {
 		ships[rstate].release()
 		r.release()
 	}()
-
+	if r.snapInterval > 0 {
+		r.snapTimer.reset(r.rtime.duration(r.snapInterval))
+	}
 	for {
 		rstate = r.state
 		ships[rstate].init()
@@ -175,6 +181,10 @@ func (r *Raft) stateLoop() (err error) {
 			select {
 			case <-r.close:
 				return ErrServerClosed
+
+			case <-r.snapTimer.C:
+				r.snapTimer.active = false
+				r.onTakeSnapshot(takeSnapshot{threshold: r.snapThreshold})
 
 			case rpc := <-r.rpcCh:
 				resetTimer := r.replyRPC(rpc)
@@ -204,6 +214,9 @@ func (r *Raft) stateLoop() (err error) {
 
 			case t := <-r.snapTakenCh:
 				r.onSnapshotTaken(t)
+				if r.snapInterval > 0 {
+					r.snapTimer.reset(r.rtime.duration(r.snapInterval))
+				}
 
 			// candidate --------------
 			case v := <-c.respCh:

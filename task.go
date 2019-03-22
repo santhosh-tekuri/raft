@@ -374,19 +374,7 @@ func (r *Raft) executeTask(t Task) {
 			r.bootstrap(t)
 		}
 	case takeSnapshot:
-		if r.snapTakenCh != nil {
-			t.reply(InProgressError("takeSnapshot"))
-			return
-		}
-		r.snapTakenCh = make(chan snapTaken, 1)
-		go func(index uint64, config Config) { // tracked by r.snapTakenCh
-			meta, err := doTakeSnapshot(r.fsm, index, config)
-			r.snapTakenCh <- snapTaken{
-				req:  t,
-				meta: meta,
-				err:  err,
-			}
-		}(r.snapIndex+t.threshold, r.configs.Committed)
+		r.onTakeSnapshot(t)
 	case inspect:
 		t.fn(r)
 		t.reply(nil)
