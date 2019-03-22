@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+// todo: add roundThreshold & promoteThreshold, minRoundDuration
+
 type Options struct {
 	HeartbeatTimeout  time.Duration
 	QuorumWait        time.Duration
