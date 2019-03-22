@@ -28,7 +28,8 @@ type ldrShip struct {
 	// to receive updates from replicators
 	fromReplsCh chan interface{}
 
-	transfer transfer
+	transfer   transfer
+	waitStable []waitForStableConfig
 }
 
 func (l *ldrShip) init() {
@@ -82,6 +83,10 @@ func (l *ldrShip) release() {
 		ne := l.newEntries.Remove(l.newEntries.Front()).(newEntry)
 		ne.reply(err)
 	}
+	for _, t := range l.waitStable {
+		t.reply(err)
+	}
+	l.waitStable = nil
 
 	// wait for replicators to finish
 	l.wg.Wait()
@@ -274,6 +279,12 @@ func (l *ldrShip) onMajorityCommit() {
 		configCommitted := l.setCommitIndex(majorityMatchIndex)
 		if configCommitted {
 			l.checkActions()
+			if l.configs.IsStable() {
+				for _, t := range l.waitStable {
+					t.reply(l.configs.Latest)
+				}
+				l.waitStable = nil
+			}
 		}
 		l.applyCommitted()
 		l.notifyFlr(false) // we updated commit index

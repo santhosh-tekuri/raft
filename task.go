@@ -328,6 +328,16 @@ func ChangeConfig(newConf Config) Task {
 	}
 }
 
+type waitForStableConfig struct {
+	*task
+}
+
+func WaitForStableConfig() Task {
+	return waitForStableConfig{task: newTask()}
+}
+
+// ------------------------------------------------------------------------
+
 // result is of type SnapshotMeta
 type takeSnapshot struct {
 	*task
@@ -395,6 +405,8 @@ func (l *ldrShip) executeTask(t Task) {
 		t.reply(errors.New("raft: use Raft.FSMTasks() for FSMTask"))
 	case changeConfig:
 		l.onChangeConfig(t)
+	case waitForStableConfig:
+		l.onWaitForStableConfig(t)
 	case transferLdr:
 		l.onTransfer(t)
 	default:

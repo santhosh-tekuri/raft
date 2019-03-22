@@ -278,6 +278,10 @@ func (c Configs) IsCommitted() bool {
 	return c.Latest.Index == c.Committed.Index
 }
 
+func (c Configs) IsStable() bool {
+	return c.IsCommitted() && c.Latest.IsStable()
+}
+
 // ---------------------------------------------------------
 
 func (r *Raft) bootstrap(t changeConfig) {
@@ -370,6 +374,14 @@ func (l *ldrShip) doChangeConfig(t *task, config Config) {
 		entry: config.encode(),
 		task:  t,
 	})
+}
+
+func (l *ldrShip) onWaitForStableConfig(t waitForStableConfig) {
+	if l.configs.IsStable() {
+		t.reply(l.configs.Latest)
+		return
+	}
+	l.waitStable = append(l.waitStable, t)
 }
 
 // ---------------------------------------------------------
