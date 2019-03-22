@@ -5,6 +5,8 @@ import (
 	"fmt"
 )
 
+// todo: retryable errors should implement canRetry()
+
 var (
 	// ErrServerClosed is returned by the Raft's Serve and ListenAndServe
 	// methods after a call to Shutdown
