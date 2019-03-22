@@ -10,15 +10,36 @@ import (
 
 // todo: add roundThreshold & promoteThreshold, minRoundDuration
 
+// Options contains necessary configuration for raft server.
+//
+// It is recommended that all servers in cluster use same options.
 type Options struct {
-	HeartbeatTimeout  time.Duration
-	QuorumWait        time.Duration
-	PromoteThreshold  time.Duration
-	SnapshotInterval  time.Duration
+	HeartbeatTimeout time.Duration
+	QuorumWait       time.Duration
+
+	// PromoteThreshold determines the minimum round duration required
+	// for promoting a nonvoter.
+	PromoteThreshold time.Duration
+
+	// SnapshotInterval determines how often snapshot is taken.
+	// The actual interval is staggered between this value and 2x of this value,
+	// to avoid entire cluster from performing snapshot at same time.
+	//
+	// Zero value means don't take any snapshots automatically.
+	SnapshotInterval time.Duration
+
+	// SnapshotThreshold determines minimum number of log entries since recent
+	// snapshot, in order to take snapshot.
+	//
+	// This is to avoid taking snapshot, for few additional entries.
 	SnapshotThreshold uint64
-	ShutdownOnRemove  bool
-	Trace             Trace
-	Resolver          Resolver
+
+	// If ShutdownOnRemove is true, server will shutdown
+	// when it is removed from the cluster.
+	ShutdownOnRemove bool
+
+	Trace    Trace
+	Resolver Resolver
 }
 
 func (o Options) validate() error {
@@ -31,6 +52,7 @@ func (o Options) validate() error {
 	return nil
 }
 
+// DefaultOptions returns an Options with usable defaults.
 func DefaultOptions() Options {
 	var mu sync.Mutex
 	logger := func(prefix string) func(v ...interface{}) {
