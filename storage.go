@@ -46,12 +46,17 @@ type SnapshotSink interface {
 
 // -----------------------------------------------------------------------------------
 
+// Storage contains all persistent state.
 type Storage struct {
 	Vars      Vars
 	Log       Log
 	Snapshots Snapshots
 }
 
+// GetIdentity returns the server identity.
+//
+// The identity includes clusterID and nodeID. Zero values
+// mean identity is not set yet.
 func (s Storage) GetIdentity() (cid, nid uint64, err error) {
 	cid, nid, err = s.Vars.GetIdentity()
 	if err != nil {
@@ -60,6 +65,10 @@ func (s Storage) GetIdentity() (cid, nid uint64, err error) {
 	return
 }
 
+// SetIdentity sets the server identity.
+//
+// If identity is already set and you are trying
+// to override it with different identity, it returns error.
 func (s Storage) SetIdentity(cid, nid uint64) error {
 	if cid == 0 {
 		return errors.New("raft: cid is zero")

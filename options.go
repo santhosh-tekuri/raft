@@ -31,7 +31,7 @@ type Options struct {
 	// SnapshotThreshold determines minimum number of log entries since recent
 	// snapshot, in order to take snapshot.
 	//
-	// This is to avoid taking snapshot, for few additional entries.
+	// This is to avoid taking snapshot, for just few additional entries.
 	SnapshotThreshold uint64
 
 	// If ShutdownOnRemove is true, server will shutdown
