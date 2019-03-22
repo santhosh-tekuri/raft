@@ -189,7 +189,7 @@ func (r *Raft) stateLoop() (err error) {
 			case t := <-r.fsmTaskCh:
 				ne := t.newEntry()
 				if r.state == Leader {
-					_ = l.storeEntry(ne)
+					l.storeEntry(ne)
 				} else {
 					ne.reply(NotLeaderError{r.leader, r.leaderAddr(), false})
 				}

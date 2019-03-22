@@ -11,7 +11,7 @@ func test_promote_newNode_singleRound(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
-	promoting := c.registerFor(promoting, ldr)
+	promoting := c.registerFor(configActionStarted, ldr)
 	defer c.unregister(promoting)
 
 	// add 2 new nodes with promote=true
@@ -29,6 +29,9 @@ func test_promote_newNode_singleRound(t *testing.T) {
 		}
 		if e.target != id {
 			t.Fatalf("promoted: got M%d, want M%d", e.target, id)
+		}
+		if e.action != Promote {
+			t.Fatalf("configAction: got %v, want Promote", e.action)
 		}
 		if e.numRounds != 1 {
 			t.Fatalf("M%d round: got %d, want %d", id, e.numRounds, 1)
@@ -80,7 +83,7 @@ func test_promote_newNode_uptodateButConfigChangeInProgress(t *testing.T) {
 	// add m3 as nonvoter with promote=true
 	roundCompleted := c.registerFor(roundFinished, ldr)
 	defer c.unregister(roundCompleted)
-	promoting := c.registerFor(promoting, ldr)
+	promoting := c.registerFor(configActionStarted, ldr)
 	defer c.unregister(promoting)
 	task := addNonvoter(ldr, 3, id2Addr(3), true)
 	select {
@@ -128,6 +131,9 @@ func test_promote_newNode_uptodateButConfigChangeInProgress(t *testing.T) {
 	}
 	if e.target != m3.nid {
 		t.Fatalf("promoted.target: got M%d, want M%d", e.target, m3.nid)
+	}
+	if e.action != Promote {
+		t.Fatalf("configAction: got %v, want Promote", e.action)
 	}
 	if e.numRounds != 1 {
 		t.Fatalf("M%d round: got %d, want %d", m3.nid, e.numRounds, 1)

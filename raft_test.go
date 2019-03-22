@@ -706,7 +706,11 @@ func waitBootstrap(r *Raft, c Config, timeout time.Duration) error {
 func addNonvoter(ldr *Raft, id uint64, addr string, promote bool) Task {
 	tdebug("addNonvoter:", host(ldr), id2Host(id), addr, promote)
 	newConf := ldr.Info().Configs().Latest
-	newConf.Nodes[id] = Node{ID: id, Addr: addr, Promote: promote}
+	action := None
+	if promote {
+		action = Promote
+	}
+	newConf.Nodes[id] = Node{ID: id, Addr: addr, Action: action}
 	t := ChangeConfig(newConf)
 	ldr.Tasks() <- t
 	return t
@@ -715,7 +719,11 @@ func addNonvoter(ldr *Raft, id uint64, addr string, promote bool) Task {
 func waitAddNonvoter(ldr *Raft, id uint64, addr string, promote bool) error {
 	tdebug("waitAddNonvoter:", host(ldr), id2Host(id), addr, promote)
 	newConf := ldr.Info().Configs().Latest
-	newConf.Nodes[id] = Node{ID: id, Addr: addr, Promote: promote}
+	action := None
+	if promote {
+		action = Promote
+	}
+	newConf.Nodes[id] = Node{ID: id, Addr: addr, Action: action}
 	t := ChangeConfig(newConf)
 	if _, err := waitTask(ldr, t, 0); err != nil {
 		return err
@@ -806,7 +814,7 @@ const (
 	unreachable
 	quorumUnreachable
 	roundFinished
-	promoting
+	configActionStarted
 	shuttingDown
 
 	configRelated
@@ -825,6 +833,7 @@ type event struct {
 	err       error
 	msgType   string
 	round     Round
+	action    ConfigAction
 	numRounds uint64
 }
 
@@ -1017,12 +1026,13 @@ func (ee *events) trace() (trace Trace) {
 		})
 	}
 
-	trace.Promoting = func(info Info, id, numRounds uint64) {
+	trace.ConfigActionStarted = func(info Info, id uint64, action ConfigAction) {
 		ee.sendEvent(event{
 			src:       info.NID(),
-			typ:       promoting,
+			typ:       configActionStarted,
 			target:    id,
-			numRounds: numRounds,
+			action:    action,
+			numRounds: info.Followers()[id].Round,
 		})
 	}
 	return

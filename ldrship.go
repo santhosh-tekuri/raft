@@ -44,10 +44,10 @@ func (l *ldrShip) init() {
 			l.addFlr(n)
 		}
 	}
-	l.beginCancelRounds()
+	l.onActionChange()
 
 	// add a blank no-op entry into log at the start of its term
-	_ = l.storeEntry(newEntry{entry: &entry{typ: entryNop}})
+	l.storeEntry(newEntry{entry: &entry{typ: entryNop}})
 }
 
 func (l *ldrShip) onTimeout() { l.checkQuorum(0) }
@@ -88,19 +88,19 @@ func (l *ldrShip) release() {
 	l.fromReplsCh = nil
 }
 
-func (l *ldrShip) storeEntry(ne newEntry) error {
+func (l *ldrShip) storeEntry(ne newEntry) {
 	ne.entry.index, ne.entry.term = l.lastLogIndex+1, l.term
 	elem := l.newEntries.PushBack(ne)
 
 	if ne.typ == entryRead || ne.typ == entryBarrier { // non-log entry
 		l.applyCommitted()
-		return nil
+		return
 	}
 
 	if l.transfer.inProgress() {
 		l.newEntries.Remove(elem)
 		ne.reply(InProgressError("transferLeadership"))
-		return InProgressError("transferLeadership")
+		return
 	}
 
 	debug(l, "log.append", ne.typ, ne.index)
@@ -110,12 +110,10 @@ func (l *ldrShip) storeEntry(ne newEntry) error {
 		if err := config.decode(ne.entry); err != nil {
 			panic(bug(1, "config.decode: %v", err))
 		}
-		l.voter = config.isVoter(l.nid)
-		l.Raft.changeConfig(config)
-		l.beginFinishedRounds()
+		l.changeConfig(config)
 	}
+	l.beginFinishedRounds()
 	l.notifyFlr(ne.typ == entryConfig)
-	return nil
 }
 
 func (l *ldrShip) addFlr(n Node) {
@@ -165,9 +163,7 @@ func (l *ldrShip) checkReplUpdates(u interface{}) {
 			debug(l, "<<", u)
 			matchUpdated = true
 			u.status.matchIndex = u.val
-			if u.status.round != nil {
-				l.checkPromotion(u.status)
-			}
+			l.checkActionStatus(u.status)
 		case noContact:
 			noContactUpdated = true
 			u.status.noContact, u.status.err = u.time, u.err
@@ -277,7 +273,7 @@ func (l *ldrShip) onMajorityCommit() {
 	if majorityMatchIndex > l.commitIndex && majorityMatchIndex >= l.startIndex {
 		configCommitted := l.setCommitIndex(majorityMatchIndex)
 		if configCommitted {
-			l.promotePending()
+			l.checkActions()
 		}
 		l.applyCommitted()
 		l.notifyFlr(false) // we updated commit index

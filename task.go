@@ -264,7 +264,11 @@ func (c *Config) AddVoter(id uint64, addr string) error {
 // nonvoter with promote turned on. once the node's log catches up,
 // leader promotes it to voter.
 func (c *Config) AddNonvoter(id uint64, addr string, promote bool) error {
-	return c.addNode(Node{ID: id, Addr: addr, Promote: promote})
+	action := None
+	if promote {
+		action = Promote
+	}
+	return c.addNode(Node{ID: id, Addr: addr, Action: action})
 }
 
 func (c *Config) addNode(n Node) error {
@@ -278,22 +282,24 @@ func (c *Config) addNode(n Node) error {
 	return nil
 }
 
-//RemoteNonvoter removes the given nonvoter.
-func (c *Config) RemoveNonvoter(id uint64) error {
-	if n, ok := c.Nodes[id]; !ok {
+func (c *Config) SetAction(id uint64, action ConfigAction) error {
+	n, ok := c.Nodes[id]
+	if !ok {
 		return fmt.Errorf("raft: node %d not found", id)
-	} else if n.Voter {
-		return fmt.Errorf("raft: only nonvoters can be removed")
 	}
-	delete(c.Nodes, id)
+	n.Action = action
+	if err := n.validate(); err != nil {
+		return err
+	}
+	c.Nodes[id] = n
 	return nil
 }
 
-// ChangeAddr changes address of given node.
+// SetAddr changes address of given node.
 //
 // If you have set Options.Resolver, the address resolved
 // by Resolver still takes precedence.
-func (c *Config) ChangeAddr(id uint64, addr string) error {
+func (c *Config) SetAddr(id uint64, addr string) error {
 	n, ok := c.Nodes[id]
 	if !ok {
 		return fmt.Errorf("raft: node %d not found", id)
@@ -306,37 +312,6 @@ func (c *Config) ChangeAddr(id uint64, addr string) error {
 	if ok && cn.ID != id {
 		return fmt.Errorf("raft: address %s is used by node %d", addr, cn.ID)
 	}
-	c.Nodes[id] = n
-	return nil
-}
-
-// Promote turns on promote flag for given nonvoter.
-//
-// This does not promote the node to voter immediately. Once the node's
-// log catches up, leader promotes it to voter.
-func (c *Config) Promote(id uint64) error {
-	n, ok := c.Nodes[id]
-	if !ok {
-		return fmt.Errorf("raft: node %d not found", id)
-	}
-	if n.Voter {
-		return errors.New("raft: only nonvoters can be promoted")
-	}
-	n.Promote = true
-	c.Nodes[id] = n
-	return nil
-}
-
-// Demote changes the given node to nonvoter and turns off promote flag.
-//
-// This method can be called on both voters and nonvoters.
-func (c *Config) Demote(id uint64) error {
-	n, ok := c.Nodes[id]
-	if !ok {
-		return fmt.Errorf("raft: node %d not found", id)
-	}
-	n.Voter = false
-	n.Promote = false
 	c.Nodes[id] = n
 	return nil
 }
@@ -419,7 +394,7 @@ func (l *ldrShip) executeTask(t Task) {
 	case FSMTask:
 		t.reply(errors.New("raft: use Raft.FSMTasks() for FSMTask"))
 	case changeConfig:
-		l.changeConfig(t)
+		l.onChangeConfig(t)
 	case transferLdr:
 		l.onTransfer(t)
 	default:

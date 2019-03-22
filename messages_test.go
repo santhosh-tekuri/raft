@@ -19,7 +19,7 @@ func TestMessages(t *testing.T) {
 	nodes := make(map[uint64]Node)
 	nodes[1] = Node{ID: 1, Addr: "localhost:7000", Voter: true}
 	nodes[2] = Node{ID: 2, Addr: "localhost:8000", Voter: false}
-	nodes[3] = Node{ID: 3, Addr: "localhost:9000", Promote: true}
+	nodes[3] = Node{ID: 3, Addr: "localhost:9000", Action: Promote}
 
 	snapshot := "helloworld"
 	tests := []message{

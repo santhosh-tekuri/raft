@@ -9,6 +9,29 @@ import (
 	"strconv"
 )
 
+type ConfigAction uint8
+
+const (
+	None ConfigAction = iota
+	Promote
+	Demote
+	Remove
+)
+
+func (a ConfigAction) String() string {
+	switch a {
+	case None:
+		return "None"
+	case Promote:
+		return "Promote"
+	case Demote:
+		return "Demote"
+	case Remove:
+		return "Remove"
+	}
+	return fmt.Sprintf("Action(%d)", a)
+}
+
 // Node represents a single node in raft configuration.
 type Node struct {
 	// ID uniquely identifies this node in raft cluster.
@@ -21,35 +44,37 @@ type Node struct {
 	// is used in advancing leader's commitIndex.
 	Voter bool `json:"voter"`
 
-	// Promote determines whether this node should be promoted to
-	// voter. Leader promotes such node, when it has caught
-	// up with rest of cluster.
-	//
-	// This is applicable only if it is nonvoter.
-	Promote bool `json:"promote,omitempty"`
+	// Action tells the action to be taken by leader, when appropriate.
+	Action ConfigAction `json:"action,omitempty"`
+}
+
+func (n Node) IsStable() bool {
+	return n.Action == None
 }
 
 func (n Node) promote() bool {
-	if n.Voter {
-		return false
-	}
-	return n.Promote
+	return !n.Voter && n.Action == Promote
 }
 
-func (n Node) encode(w io.Writer) *entry {
+func (n Node) demote() bool {
+	return n.Voter && (n.Action == Demote || n.Action == Remove)
+}
+
+func (n Node) remove() bool {
+	return !n.Voter && n.Action == Remove
+}
+
+func (n Node) encode(w io.Writer) error {
 	if err := writeUint64(w, n.ID); err != nil {
-		panic(err)
+		return err
 	}
 	if err := writeString(w, n.Addr); err != nil {
-		panic(err)
+		return err
 	}
 	if err := writeBool(w, n.Voter); err != nil {
-		panic(err)
+		return err
 	}
-	if err := writeBool(w, n.promote()); err != nil {
-		panic(err)
-	}
-	return nil
+	return writeUint8(w, uint8(n.Action))
 }
 
 func (n *Node) decode(r io.Reader) error {
@@ -63,8 +88,10 @@ func (n *Node) decode(r io.Reader) error {
 	if n.Voter, err = readBool(r); err != nil {
 		return err
 	}
-	if n.Promote, err = readBool(r); err != nil {
+	if action, err := readUint8(r); err != nil {
 		return err
+	} else {
+		n.Action = ConfigAction(action)
 	}
 	return nil
 }
@@ -87,6 +114,12 @@ func (n Node) validate() error {
 	if port <= 0 {
 		return errors.New("invalid port")
 	}
+	if n.Action == Promote && n.Voter {
+		return errors.New("voter can't be promoted")
+	}
+	if n.Action == Demote && !n.Voter {
+		return errors.New("nonvoter can't be demoted")
+	}
 	return nil
 }
 
@@ -100,6 +133,15 @@ type Config struct {
 
 func (c Config) IsBootstrap() bool {
 	return c.Index == 0
+}
+
+func (c Config) IsStable() bool {
+	for _, n := range c.Nodes {
+		if !n.IsStable() {
+			return false
+		}
+	}
+	return true
 }
 
 func (c Config) nodeForAddr(addr string) (Node, bool) {
@@ -202,12 +244,14 @@ func (c Config) validate() error {
 func (c Config) String() string {
 	var voters, nonvoters []string
 	for _, n := range c.Nodes {
+		s := fmt.Sprintf("%d,%s", n.ID, n.Addr)
+		if n.Action != None {
+			s = fmt.Sprintf("%s,%s", s, n.Action)
+		}
 		if n.Voter {
-			voters = append(voters, fmt.Sprintf("%v(%s)", n.ID, n.Addr))
-		} else if n.promote() {
-			nonvoters = append(nonvoters, fmt.Sprintf("%v(%s,promote)", n.ID, n.Addr))
+			voters = append(voters, s)
 		} else {
-			nonvoters = append(nonvoters, fmt.Sprintf("%v(%s)", n.ID, n.Addr))
+			nonvoters = append(nonvoters, s)
 		}
 	}
 	return fmt.Sprintf("index: %d, voters: %v, nonvoters: %v", c.Index, voters, nonvoters)
@@ -254,16 +298,13 @@ func (r *Raft) bootstrap(t changeConfig) {
 		t.reply(fmt.Errorf("raft.bootstrap: invalid config: self %d must be voter", r.nid))
 		return
 	}
-
-	debug(r, "bootstrapping....")
-	t.newConf.Index, t.newConf.Term = 1, 1
-	// promote if requested
-	for id, n := range t.newConf.Nodes {
-		if n.promote() {
-			n.Voter, n.Promote = true, false
-			t.newConf.Nodes[id] = n
-		}
+	if !t.newConf.IsStable() {
+		t.reply(fmt.Errorf("raft.bootstrap: non-stable config"))
+		return
 	}
+
+	t.newConf.Index, t.newConf.Term = 1, 1
+	debug(r, "bootstrapping", t.newConf)
 	if err := r.storage.bootstrap(t.newConf); err != nil {
 		t.reply(err)
 		return
@@ -273,7 +314,7 @@ func (r *Raft) bootstrap(t changeConfig) {
 	r.setState(Candidate)
 }
 
-func (l *ldrShip) changeConfig(t changeConfig) {
+func (l *ldrShip) onChangeConfig(t changeConfig) {
 	if !l.configs.IsCommitted() {
 		t.reply(InProgressError("configChange"))
 		return
@@ -291,74 +332,44 @@ func (l *ldrShip) changeConfig(t changeConfig) {
 		return
 	}
 
-	voters, nonvoters := make(map[uint64]bool), make(map[uint64]bool)
 	for id, n := range l.configs.Latest.Nodes {
-		if n.Voter {
-			voters[id] = true
-		} else {
-			nonvoters[id] = true
+		nn, ok := t.newConf.Nodes[id]
+		if !ok {
+			t.reply(fmt.Errorf("raft.changeConfig: node %d is removed", id))
+			return
+		}
+		if n.Voter != nn.Voter {
+			t.reply(fmt.Errorf("raft.changeConfig: node %d voting right changed", id))
+			return
 		}
 	}
 	for id, n := range t.newConf.Nodes {
-		if n.Voter {
-			if !voters[id] {
-				t.reply(fmt.Errorf("raft.changeConfig: new voter %d found. please add it as nonvoter with promote", id))
+		if _, ok := l.configs.Latest.Nodes[id]; !ok {
+			if n.Voter {
+				t.reply(fmt.Errorf("raft.changeConfig: new node %d must be nonvoter", id))
 				return
 			}
-			delete(voters, id)
-		} else {
-			delete(nonvoters, id)
 		}
 	}
-	if len(voters) > 1 {
-		t.reply(fmt.Errorf("raft.changeConfig: numVoters can be decreased at most by one"))
+
+	var voter uint64
+	for id, n := range t.newConf.Nodes {
+		if n.Voter && n.Action == None {
+			voter = id
+		}
+	}
+	if voter == 0 {
+		t.reply(fmt.Errorf("raft.changeConfig: at least one voter must remain in cluster"))
 		return
-	}
-	if len(voters) == 1 {
-		for id := range voters {
-			if _, ok := t.newConf.Nodes[id]; !ok {
-				t.reply(fmt.Errorf("raft.changeConfig: voter %d removed. please demote it and then remove", id))
-				return
-			}
-		}
-	}
-	for id := range nonvoters {
-		if l.flrs[id].status.matchIndex < l.configs.Latest.Index {
-			t.reply(fmt.Errorf("raft.changeConfig: nonvoter %d is not yet ready for removal", id))
-			return
-		}
 	}
 	l.doChangeConfig(t.task, t.newConf)
 }
 
 func (l *ldrShip) doChangeConfig(t *task, config Config) {
-	// store config, and update our latest config
-	err := l.storeEntry(newEntry{
+	l.storeEntry(newEntry{
 		entry: config.encode(),
 		task:  t,
 	})
-	if err != nil {
-		return
-	}
-
-	// remove flrs
-	for id, f := range l.flrs {
-		if _, ok := config.Nodes[id]; !ok {
-			close(f.stopCh)
-			delete(l.flrs, id)
-		}
-	}
-
-	// add new flrs
-	for id, n := range config.Nodes {
-		if id == l.nid {
-			continue
-		}
-		if _, ok := l.flrs[id]; !ok {
-			l.addFlr(n)
-		}
-	}
-	l.beginCancelRounds()
 }
 
 // ---------------------------------------------------------
@@ -382,10 +393,33 @@ func (r *Raft) setCommitIndex(index uint64) (configCommitted bool) {
 	return
 }
 
-func (r *Raft) changeConfig(new Config) {
-	debug(r, "changeConfig", new)
+func (l *ldrShip) changeConfig(config Config) {
+	l.voter = config.isVoter(l.nid)
+	l.Raft.changeConfig(config)
+
+	// remove flrs
+	for id, f := range l.flrs {
+		if _, ok := config.Nodes[id]; !ok {
+			close(f.stopCh)
+			delete(l.flrs, id)
+		}
+	}
+
+	// add new flrs
+	for id, n := range config.Nodes {
+		if id != l.nid {
+			if _, ok := l.flrs[id]; !ok {
+				l.addFlr(n)
+			}
+		}
+	}
+	l.onActionChange()
+}
+
+func (r *Raft) changeConfig(config Config) {
+	debug(r, "changeConfig", config)
 	r.configs.Committed = r.configs.Latest
-	r.setLatest(new)
+	r.setLatest(config)
 	if r.trace.ConfigChanged != nil {
 		r.trace.ConfigChanged(r.liveInfo())
 	}

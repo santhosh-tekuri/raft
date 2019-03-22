@@ -48,20 +48,20 @@ func DefaultOptions() Options {
 // trace ----------------------------------------------------------
 
 type Trace struct {
-	Error             func(err error)
-	Starting          func(info Info)
-	StateChanged      func(info Info)
-	LeaderChanged     func(info Info)
-	ElectionStarted   func(info Info)
-	ElectionAborted   func(info Info, reason string)
-	ConfigChanged     func(info Info)
-	ConfigCommitted   func(info Info)
-	ConfigReverted    func(info Info)
-	RoundCompleted    func(info Info, id uint64, round Round)
-	Promoting         func(info Info, id, numRounds uint64)
-	Unreachable       func(info Info, id uint64, since time.Time, err error)
-	QuorumUnreachable func(info Info, since time.Time)
-	ShuttingDown      func(info Info, reason error)
+	Error               func(err error)
+	Starting            func(info Info)
+	StateChanged        func(info Info)
+	LeaderChanged       func(info Info)
+	ElectionStarted     func(info Info)
+	ElectionAborted     func(info Info, reason string)
+	ConfigChanged       func(info Info)
+	ConfigCommitted     func(info Info)
+	ConfigReverted      func(info Info)
+	RoundCompleted      func(info Info, id uint64, round Round)
+	ConfigActionStarted func(info Info, id uint64, action ConfigAction)
+	Unreachable         func(info Info, id uint64, since time.Time, err error)
+	QuorumUnreachable   func(info Info, since time.Time)
+	ShuttingDown        func(info Info, reason error)
 }
 
 func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
@@ -100,8 +100,15 @@ func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
 	trace.RoundCompleted = func(rinfo Info, id uint64, r Round) {
 		info("raft: nonVoter", id, "completed round", r.Ordinal, "in", r.Duration(), ", its lastIndex:", r.LastIndex)
 	}
-	trace.Promoting = func(rinfo Info, id, numRounds uint64) {
-		info("raft: promoting node", id, "to voter, after", numRounds, "rounds")
+	trace.ConfigActionStarted = func(rinfo Info, id uint64, action ConfigAction) {
+		switch action {
+		case Promote:
+			info("raft: promoting nonvoter ", id, ", after", rinfo.Followers()[id].Round, "round(s)")
+		case Demote:
+			info("raft: demoting voter", id)
+		case Remove:
+			info("raft: removing nonvoter", id)
+		}
 	}
 	trace.Unreachable = func(rinfo Info, id uint64, since time.Time, err error) {
 		if since.IsZero() {

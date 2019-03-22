@@ -100,7 +100,7 @@ func (l *ldrShip) doTransfer(target uint64) {
 
 func (l *ldrShip) onTransferTimeout() {
 	l.transfer.reply(TimeoutError("transferLeadership"))
-	l.promotePending()
+	l.checkActions()
 }
 
 func (l *ldrShip) onTimeoutNowResult(rpc rpcResponse) {

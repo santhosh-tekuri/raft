@@ -6,7 +6,7 @@ import (
 )
 
 // called on ldrShip.init and configChange
-func (l *ldrShip) beginCancelRounds() {
+func (l *ldrShip) onActionChange() {
 	for id, f := range l.flrs {
 		n := l.configs.Latest.Nodes[id]
 		if !n.promote() {
@@ -15,9 +15,10 @@ func (l *ldrShip) beginCancelRounds() {
 			// start first round
 			f.status.round = new(Round)
 			f.status.round.begin(f.ldrLastIndex)
-			debug(f, id, "started:", f.status.round)
+			debug(l, id, "started:", f.status.round)
 		}
 	}
+	l.checkActions()
 }
 
 // called on lastLogIndex update
@@ -26,72 +27,91 @@ func (l *ldrShip) beginFinishedRounds() {
 		r := f.status.round
 		if r != nil && r.finished() {
 			r.begin(f.ldrLastIndex)
-			debug(f, id, "started:", r)
+			debug(l, id, "started:", r)
 		}
 	}
 }
 
-// promotePending finishes any postponed promotions
+// checkActions finishes any postponed promotions
 //
 // called on configCommit and transferLdr.timout
-func (l *ldrShip) promotePending() {
+func (l *ldrShip) checkActions() {
 	for _, f := range l.flrs {
-		r := f.status.round
-		if r != nil && r.finished() {
-			l.checkPromotion(&f.status)
-		}
+		l.checkActionStatus(&f.status)
 	}
 }
 
 // checks whether round is completed, if so
 // promotes if threshold is satisfied.
 //
-// called when f.matchIndex is updated or by promotePending
-func (l *ldrShip) checkPromotion(status *flrStatus) {
-	r := status.round
-	if !r.finished() && status.matchIndex >= r.LastIndex {
-		r.finish()
-		debug(l, status.id, "completed:", r)
-		if l.trace.RoundCompleted != nil {
-			l.trace.RoundCompleted(l.liveInfo(), status.id, *r)
+// called when f.matchIndex is updated or by checkActions
+func (l *ldrShip) checkActionStatus(status *flrStatus) {
+	if status.round != nil {
+		r := status.round
+		if !r.finished() && status.matchIndex >= r.LastIndex {
+			r.finish()
+			debug(l, status.id, "completed:", r)
+			if l.trace.RoundCompleted != nil {
+				l.trace.RoundCompleted(l.liveInfo(), status.id, *r)
+			}
+		}
+		if !r.finished() {
+			return
+		}
+		hasNewEntries := l.lastLogIndex > status.matchIndex
+		if hasNewEntries && r.Duration() > l.promoteThreshold {
+			debug(l, "best of luck for next round")
+			r.begin(l.lastLogIndex)
+			debug(l, status.id, "started:", r)
+			return
 		}
 	}
-	if !r.finished() {
-		return
-	}
-	n, ok := l.configs.Latest.Nodes[status.id]
-	if !ok || !n.promote() {
-		debug(l, "this node should not be promoted")
-		status.round = nil
-		return
-	}
-	hasNewEntries := l.lastLogIndex > status.matchIndex
-	if hasNewEntries && r.Duration() > l.promoteThreshold {
-		debug(l, "best of luck for next round")
-		r.begin(l.lastLogIndex)
-		debug(l, status.id, "started:", r)
+
+	if !l.canChangeConfig() {
+		n := l.configs.Latest.Nodes[status.id]
+		if n.Action != None {
+			debug(l, status.id, "cannot", n.Action, "now")
+		}
 		return
 	}
 
-	// can promote ?
-	if l.transfer.inProgress() {
-		debug(l, "cannot promote: transferLeadership in progress")
-		return
+	n := l.configs.Latest.Nodes[status.id]
+	if n.promote() {
+		debug(l, "promoting", n.ID)
+		config := l.configs.Latest.clone()
+		n.Voter, n.Action = true, None
+		config.Nodes[n.ID] = n
+		if l.trace.ConfigActionStarted != nil {
+			l.trace.ConfigActionStarted(l.liveInfo(), n.ID, Promote)
+		}
+		l.doChangeConfig(nil, config)
+	} else if n.remove() {
+		if status.matchIndex >= l.configs.Latest.Index {
+			debug(l, "removing", n.ID)
+			config := l.configs.Latest.clone()
+			delete(config.Nodes, n.ID)
+			if l.trace.ConfigActionStarted != nil {
+				l.trace.ConfigActionStarted(l.liveInfo(), n.ID, Remove)
+			}
+			l.doChangeConfig(nil, config)
+		}
+	} else if n.demote() {
+		debug(l, "demoting", n.ID)
+		config := l.configs.Latest.clone()
+		n.Voter = false
+		if n.Action == Demote {
+			n.Action = None
+		}
+		config.Nodes[n.ID] = n
+		if l.trace.ConfigActionStarted != nil {
+			l.trace.ConfigActionStarted(l.liveInfo(), n.ID, Demote)
+		}
+		l.doChangeConfig(nil, config)
 	}
-	if !l.configs.IsCommitted() {
-		debug(l, "cannot promote: config not committed")
-		return
-	}
+}
 
-	// promoting flr
-	debug(l, "promoting", n.ID)
-	config := l.configs.Latest.clone()
-	n.Voter, n.Promote = true, false
-	config.Nodes[n.ID] = n
-	if l.trace.Promoting != nil {
-		l.trace.Promoting(l.liveInfo(), n.ID, r.Ordinal)
-	}
-	l.doChangeConfig(nil, config)
+func (l *ldrShip) canChangeConfig() bool {
+	return l.configs.IsCommitted() && !l.transfer.inProgress()
 }
 
 // Round ------------------------------------------------
