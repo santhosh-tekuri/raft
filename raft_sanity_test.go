@@ -2,7 +2,6 @@ package raft
 
 import (
 	"errors"
-	"fmt"
 	"math/rand"
 	"testing"
 	"time"
@@ -225,20 +224,17 @@ func test_behindFollower(t *testing.T) {
 	behind := c.followers()[0]
 	c.disconnect(behind)
 
+	// wait until leader detects that follower is unreachable
+	c.waitUnreachableDetected(ldr, behind)
+
 	// commit a lot of things
-	for i := 0; i < 100; i++ {
-		ldr.FSMTasks() <- UpdateFSM([]byte(fmt.Sprintf("test%d", i)))
-	}
-	if _, err := waitUpdate(ldr, "test100", c.longTimeout); err != nil {
-		t.Fatal(err)
-	}
+	c.sendUpdates(ldr, 1, 10)
 
 	// reconnect the behind node
 	c.connect()
-	c.waitForHealthy()
 
 	// ensure all the logs are the same
-	c.waitFSMLen(101)
+	c.waitFSMLen(10)
 	c.ensureFSMSame(nil)
 
 	// Ensure one leader
