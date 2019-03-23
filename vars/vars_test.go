@@ -1,13 +1,15 @@
-package filestore
+package vars_test
 
 import (
 	"fmt"
 	"io/ioutil"
 	"os"
 	"testing"
+
+	"github.com/santhosh-tekuri/raft/vars"
 )
 
-func TestNewVars(t *testing.T) {
+func TestNew(t *testing.T) {
 	tests := []struct {
 		name    string
 		content []byte
@@ -29,7 +31,7 @@ func TestNewVars(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer os.Remove(fname)
-			v, err := NewVars(fname)
+			v, err := vars.New(fname)
 			if valid := err == nil; valid != test.valid {
 				t.Fatalf("valid: got %v, want %v : %v", valid, test.valid, err)
 			}
@@ -40,6 +42,62 @@ func TestNewVars(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestVars_identity(t *testing.T) {
+	file, err := tempFile(".vars", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := vars.New(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := uint64(1); i <= 10; i++ {
+		if err = v.SetIdentity(i*2, i*2+1); err != nil {
+			t.Fatal(err)
+		}
+		if err = ensureVars(v, i*2, i*2+1, 0, 0); err != nil {
+			t.Fatal(err)
+		}
+		if err = v.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if v, err = vars.New(file); err != nil {
+			t.Fatal(err)
+		}
+		if err = ensureVars(v, i*2, i*2+1, 0, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestVars_vote(t *testing.T) {
+	file, err := tempFile(".vars", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := vars.New(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := uint64(1); i <= 10; i++ {
+		if err = v.SetVote(i*2, i*2+1); err != nil {
+			t.Fatal(err)
+		}
+		if err = ensureVars(v, 0, 0, i*2, i*2+1); err != nil {
+			t.Fatal(err)
+		}
+		if err = v.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if v, err = vars.New(file); err != nil {
+			t.Fatal(err)
+		}
+		if err = ensureVars(v, 0, 0, i*2, i*2+1); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -72,7 +130,7 @@ func tempFile(pattern string, content []byte) (string, error) {
 	return f.Name(), nil
 }
 
-func ensureVars(vars *Vars, cid, nid, term, vote uint64) error {
+func ensureVars(vars *vars.Vars, cid, nid, term, vote uint64) error {
 	c, n, err := vars.GetIdentity()
 	if err != nil {
 		return fmt.Errorf("getIdentity: %v", err)
