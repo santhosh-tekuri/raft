@@ -9,48 +9,13 @@ import (
 	"github.com/santhosh-tekuri/raft/vars"
 )
 
-func TestNew(t *testing.T) {
-	tests := []struct {
-		name    string
-		content []byte
-		valid   bool
-	}{
-		{"noFile", nil, true},
-		{"zeroSize", make([]byte, 0), false},
-		{"smallSize", make([]byte, 20), false},
-		{"bigSize", make([]byte, 100), false},
-		{"zeroOff", slice65(0), false},
-		{"wrongOff", slice65(5), false},
-		{"off1", slice65(1), true},
-		{"off33", slice65(33), true},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			fname, err := tempFile(".vars", test.content)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer os.Remove(fname)
-			v, err := vars.New(fname)
-			if valid := err == nil; valid != test.valid {
-				t.Fatalf("valid: got %v, want %v : %v", valid, test.valid, err)
-			}
-			if test.valid {
-				defer v.Close()
-				if err = ensureVars(v, 0, 0, 0, 0); err != nil {
-					t.Fatal(err)
-				}
-			}
-		})
-	}
-}
-
 func TestVars_identity(t *testing.T) {
-	file, err := tempFile(".vars", nil)
+	dir, err := ioutil.TempDir("", ".vars")
 	if err != nil {
 		t.Fatal(err)
 	}
-	v, err := vars.New(file)
+	defer os.RemoveAll(dir)
+	v, err := vars.New(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +29,7 @@ func TestVars_identity(t *testing.T) {
 		if err = v.Close(); err != nil {
 			t.Fatal(err)
 		}
-		if v, err = vars.New(file); err != nil {
+		if v, err = vars.New(dir); err != nil {
 			t.Fatal(err)
 		}
 		if err = ensureVars(v, i*2, i*2+1, 0, 0); err != nil {
@@ -74,11 +39,12 @@ func TestVars_identity(t *testing.T) {
 }
 
 func TestVars_vote(t *testing.T) {
-	file, err := tempFile(".vars", nil)
+	dir, err := ioutil.TempDir("", ".vars")
 	if err != nil {
 		t.Fatal(err)
 	}
-	v, err := vars.New(file)
+	defer os.RemoveAll(dir)
+	v, err := vars.New(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +58,7 @@ func TestVars_vote(t *testing.T) {
 		if err = v.Close(); err != nil {
 			t.Fatal(err)
 		}
-		if v, err = vars.New(file); err != nil {
+		if v, err = vars.New(dir); err != nil {
 			t.Fatal(err)
 		}
 		if err = ensureVars(v, 0, 0, i*2, i*2+1); err != nil {
@@ -102,33 +68,6 @@ func TestVars_vote(t *testing.T) {
 }
 
 // helpers ------------------------------------------------------------
-
-// slice65 returns a slice of length 65, with first byte initialized to given value.
-func slice65(first byte) []byte {
-	b := [65]byte{first}
-	return b[:]
-}
-
-// tempFile creates a tempFile with given content, and returns its name.
-// if content is nil, it does not create file, but returns free name.
-func tempFile(pattern string, content []byte) (string, error) {
-	f, err := ioutil.TempFile("", pattern)
-	if err != nil {
-		return "", fmt.Errorf("create tempFile: %v", err)
-	}
-	if content == nil {
-		_ = f.Close()
-		_ = os.Remove(f.Name())
-	} else {
-		defer f.Close()
-		if _, err := f.Write(content); err != nil {
-			_ = f.Close()
-			_ = os.Remove(f.Name())
-			return "", fmt.Errorf("init tempFile: %v", err)
-		}
-	}
-	return f.Name(), nil
-}
 
 func ensureVars(vars *vars.Vars, cid, nid, term, vote uint64) error {
 	c, n, err := vars.GetIdentity()
