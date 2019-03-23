@@ -13,21 +13,21 @@ func TestSegment(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(dir)
-	off, cap := uint64(5), 6
-	s, err := newSegment(dir, off, cap)
+	off, cap := uint64(5), uint64(6)
+	s, err := newSegment(dir, off, cap, 1024*1024)
 	if err != nil {
 		t.Fatal(err)
 	}
-	n, dataSize, data := 0, int64(0), []string{"a", "bb", "ccc", "dddd", "eeeee", "ffffff"}
+	n, dataSize, data := uint64(0), int64(0), []string{"a", "bb", "ccc", "dddd", "eeeee", "ffffff"}
 	check := func(t *testing.T) {
 		t.Helper()
 		if s.idx.n != n {
 			t.Fatalf("s.idx.n: got %d, want %d", s.idx.n, n)
 		}
-		if s.idx.dataSize() != dataSize {
-			t.Fatalf("idx.dataSize: got %d, want %d", s.idx.dataSize(), dataSize)
+		if s.idx.dataSize != dataSize {
+			t.Fatalf("idx.dataSize: got %d, want %d", s.idx.dataSize, dataSize)
 		}
-		for i := 0; i < n; i++ {
+		for i := uint64(0); i < n; i++ {
 			j := off + uint64(i)
 			b, err := s.get(j)
 			if err != nil {
@@ -47,7 +47,7 @@ func TestSegment(t *testing.T) {
 		if err := s.close(); err != nil {
 			t.Fatal(err)
 		}
-		s, err = newSegment(dir, off, cap)
+		s, err = newSegment(dir, off, cap, 1024*1024)
 		if err != nil {
 			t.Fatal(err)
 		}
