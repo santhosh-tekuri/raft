@@ -18,7 +18,7 @@ type Vars struct {
 func NewVars(file string) (*Vars, error) {
 	if _, err := os.Stat(file); os.IsNotExist(err) {
 		b := [1 + 4*8 + 4*8]byte{1}
-		if err := ioutil.WriteFile(file, b[:], 644); err != nil {
+		if err := ioutil.WriteFile(file, b[:], 0600); err != nil {
 			return nil, err
 		}
 	}
