@@ -15,7 +15,8 @@ func TestIndex(t *testing.T) {
 	if err := os.Remove(f.Name()); err != nil {
 		t.Fatalf("removeTempFile: %v", err)
 	}
-	idx, err := newIndex(f.Name(), 6)
+	cap := 6
+	idx, err := newIndex(f.Name(), cap)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +36,7 @@ func TestIndex(t *testing.T) {
 			}
 			off += sizes[i]
 		}
-		full := n == 6
+		full := n == cap
 		if got := idx.isFull(); got != full {
 			t.Fatalf("idx.isFull: got %v, want %v", got, full)
 		}
@@ -45,7 +46,7 @@ func TestIndex(t *testing.T) {
 		if err := idx.close(); err != nil {
 			t.Fatal(err)
 		}
-		idx, err = newIndex(f.Name(), 6)
+		idx, err = newIndex(f.Name(), cap)
 		if err != nil {
 			t.Fatal(err)
 		}
