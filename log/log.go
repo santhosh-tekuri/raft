@@ -203,9 +203,6 @@ func (l *Log) RemoveLTE(i uint64) error {
 
 	s = l.seg
 	if s.prev == nil && s.idx.n > 0 && s.lastIndex() <= i { // clear this segment
-		if s != l.seg {
-			panic("s should be last segment")
-		}
 		next, err := newSegment(l.dir, s.lastIndex()+1, l.maxCount, l.maxSize)
 		if err != nil {
 			return err
