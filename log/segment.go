@@ -53,7 +53,7 @@ func (s *segment) lastIndex() uint64 {
 		}
 		return s.off - 1
 	}
-	return s.off + uint64(s.idx.n-1)
+	return s.off + (s.idx.n - 1)
 }
 
 func (s *segment) isFull(newEntrySize int) bool {

@@ -101,6 +101,56 @@ func TestLog_RemoveGTE(t *testing.T) {
 	}
 }
 
+func TestLog_RemoveLTE(t *testing.T) {
+	tests := []struct {
+		name        string
+		lte         uint64
+		numSegments int
+		count       uint64
+	}{
+		{"greaterThanLastIndex", 30, 1, 0},
+		{"equalToLastIndex", 29, 1, 0},
+		{"insideLastSegment", 25, 1, 10},
+		{"lastSegmentOffset", 20, 1, 10},
+		{"prevSegmentLastIndex", 19, 1, 10},
+		{"insidePrevSegment", 15, 2, 20},
+		{"prevSegmentOffset", 10, 2, 20},
+		{"firstSegmentLastIndex", 9, 2, 20},
+		{"insideFirstSegment", 5, 3, 30},
+		{"firstSegmentOffset", 0, 3, 30},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			l := newLog(t, 10, 1024*1024)
+			defer os.RemoveAll(l.dir)
+			appendEntries(t, l, 0, 29)
+			if err := l.RemoveLTE(test.lte); err != nil {
+				t.Fatal(err)
+			}
+			last, err := l.LastIndex()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if last != 29 {
+				t.Fatalf("last: got %d, want %d", last, 29)
+			}
+			count, err := l.Count()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if count != test.count {
+				t.Fatalf("count: got %d, want %d", count, test.count)
+			}
+			if test.count > 0 {
+				checkGet(t, l, 29-test.count+1, 29)
+			}
+			if got := numSegments(l); got != test.numSegments {
+				t.Fatalf("numSegments: got %d, want %d", got, test.numSegments)
+			}
+		})
+	}
+}
+
 // helpers ---------------------------------------------------------------------------
 
 func newLog(t *testing.T, maxCount uint64, maxSize int64) *Log {
