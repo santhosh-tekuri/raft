@@ -58,6 +58,7 @@ func TestLog_RemoveGTE(t *testing.T) {
 		lastIndex   uint64
 		count       uint64
 	}{
+		{"largerThanLastIndex", 100, 3, 29, 30},
 		{"greaterThanLastIndex", 30, 3, 29, 30},
 		{"equalToLastIndex", 29, 3, 28, 29},
 		{"insideLastSegment", 25, 3, 24, 25},
@@ -92,7 +93,7 @@ func TestLog_RemoveGTE(t *testing.T) {
 				t.Fatalf("count: got %d, want %d", count, test.count)
 			}
 			if test.count > 0 {
-				checkGet(t, l, 0, test.gte-1)
+				checkGet(t, l, 0, test.lastIndex)
 			}
 			if got := numSegments(l); got != test.numSegments {
 				t.Fatalf("numSegments: got %d, want %d", got, test.numSegments)
@@ -108,6 +109,7 @@ func TestLog_RemoveLTE(t *testing.T) {
 		numSegments int
 		count       uint64
 	}{
+		{"largerThanLastIndex", 100, 1, 0},
 		{"greaterThanLastIndex", 30, 1, 0},
 		{"equalToLastIndex", 29, 1, 0},
 		{"insideLastSegment", 25, 1, 10},

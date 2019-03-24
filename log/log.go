@@ -230,3 +230,8 @@ func (l *Log) Close() error {
 	}
 	return err
 }
+
+func (l *Log) isNotFound(err error) bool {
+	_, ok := err.(NotFoundError)
+	return ok
+}
