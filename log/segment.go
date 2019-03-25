@@ -14,14 +14,14 @@ type segment struct {
 	dirty bool
 }
 
-func newSegment(dir string, off uint64, cap uint64, maxSize int64) (*segment, error) {
+func newSegment(dir string, off uint64, opt Options) (*segment, error) {
 	file := filepath.Join(dir, fmt.Sprintf("%d.log", off))
 	exists, err := fileExists(file)
 	if err != nil {
 		return nil, err
 	}
 	if !exists {
-		if err = createFile(file, maxSize, nil); err != nil {
+		if err = createFile(file, opt.MaxSegmentSize, nil); err != nil {
 			return nil, err
 		}
 	}
@@ -31,7 +31,7 @@ func newSegment(dir string, off uint64, cap uint64, maxSize int64) (*segment, er
 		return nil, err
 	}
 
-	idx, err := newIndex(filepath.Join(dir, fmt.Sprintf("%d.index", off)), cap)
+	idx, err := newIndex(filepath.Join(dir, fmt.Sprintf("%d.index", off)), opt.MaxSegmentEntries)
 	if err != nil {
 		return nil, err
 	}

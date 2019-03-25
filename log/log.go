@@ -15,23 +15,34 @@ func (e NotFoundError) Error() string {
 	return fmt.Sprintf("log: entry %d not found", uint64(e))
 }
 
+type Options struct {
+	MaxSegmentEntries uint64
+	MaxSegmentSize    int64
+}
+
+func (o Options) validate() error {
+	if o.MaxSegmentEntries <= 0 {
+		return fmt.Errorf("log: maxSegmentEntries is <=0")
+	}
+	if o.MaxSegmentSize <= 0 {
+		return fmt.Errorf("log: maxSegmentSize is <=0")
+	}
+	return nil
+}
+
 // -------------------------------------------------------------------------------
 
 type Log struct {
-	dir      string
-	seg      *segment
-	maxCount uint64
-	maxSize  int64
+	dir string
+	seg *segment
+	opt Options
 }
 
-func New(dir string, maxSegmentEntries uint64, maxSegmentSize int64) (*Log, error) {
-	if maxSegmentSize <= 0 {
-		return nil, fmt.Errorf("log: maxSegmentEntries is <=0")
+func New(dir string, opt Options) (*Log, error) {
+	if err := opt.validate(); err != nil {
+		return nil, err
 	}
-	if maxSegmentSize <= 0 {
-		return nil, fmt.Errorf("log: maxSegmentSize is <=0")
-	}
-	seg, err := openSegments(dir, maxSegmentEntries, maxSegmentSize)
+	seg, err := openSegments(dir, opt)
 	if err != nil {
 		for seg != nil {
 			_ = seg.close()
@@ -41,10 +52,9 @@ func New(dir string, maxSegmentEntries uint64, maxSegmentSize int64) (*Log, erro
 	}
 
 	return &Log{
-		dir:      dir,
-		seg:      seg,
-		maxCount: maxSegmentEntries,
-		maxSize:  maxSegmentSize,
+		dir: dir,
+		seg: seg,
+		opt: opt,
 	}, nil
 }
 
@@ -77,7 +87,7 @@ func (l *Log) Get(i uint64) ([]byte, error) {
 
 func (l *Log) Append(d []byte) (err error) {
 	if l.seg.isFull(len(d)) {
-		s, err := newSegment(l.dir, l.seg.lastIndex()+1, l.maxCount, l.maxSize)
+		s, err := newSegment(l.dir, l.seg.lastIndex()+1, l.opt)
 		if err != nil {
 			return err
 		}
@@ -107,7 +117,7 @@ func (l *Log) RemoveGTE(i uint64) error {
 		if l.seg.off > i { // remove it
 			prev := l.seg.prev
 			if prev == nil {
-				prev, err = newSegment(l.dir, i, l.maxCount, l.maxSize)
+				prev, err = newSegment(l.dir, i, l.opt)
 				if err != nil {
 					return err
 				}
@@ -136,7 +146,7 @@ func (l *Log) RemoveLTE(i uint64) error {
 		// now s is first segment
 		if s.idx.n > 0 && s.lastIndex() <= i {
 			if next == nil {
-				l.seg, err = newSegment(l.dir, s.lastIndex()+1, l.maxCount, l.maxSize)
+				l.seg, err = newSegment(l.dir, s.lastIndex()+1, l.opt)
 				if err != nil {
 					_ = removeSegment(l.dir, s.lastIndex()+1)
 					return err
@@ -194,14 +204,14 @@ func segments(dir string) ([]uint64, error) {
 	return offs, nil
 }
 
-func openSegments(dir string, maxEntries uint64, maxSize int64) (*segment, error) {
+func openSegments(dir string, opt Options) (*segment, error) {
 	offs, err := segments(dir)
 	if err != nil {
 		return nil, err
 	}
 
 	loaded := make(map[uint64]bool)
-	seg, err := newSegment(dir, offs[0], maxEntries, maxSize)
+	seg, err := newSegment(dir, offs[0], opt)
 	if err != nil {
 		return nil, err
 	}
@@ -219,7 +229,7 @@ func openSegments(dir string, maxEntries uint64, maxSize int64) (*segment, error
 		if !exists {
 			break
 		}
-		s, err := newSegment(dir, off, maxEntries, maxSize)
+		s, err := newSegment(dir, off, opt)
 		if err != nil {
 			return seg, err
 		}

@@ -14,7 +14,8 @@ func TestSegment(t *testing.T) {
 	}
 	defer os.RemoveAll(dir)
 	off, cap := uint64(5), uint64(6)
-	s, err := newSegment(dir, off, cap, 1024*1024)
+	opt := Options{cap, 1024 * 1024}
+	s, err := newSegment(dir, off, opt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +48,7 @@ func TestSegment(t *testing.T) {
 		if err := s.close(); err != nil {
 			t.Fatal(err)
 		}
-		s, err = newSegment(dir, off, cap, 1024*1024)
+		s, err = newSegment(dir, off, opt)
 		if err != nil {
 			t.Fatal(err)
 		}
