@@ -103,13 +103,13 @@ func (idx *index) truncate(n uint64) error {
 
 func (idx *index) sync() error {
 	if idx.dirty {
-		if err := idx.f.Sync(); err != nil {
+		if err := idx.f.fdatasync(); err != nil {
 			return err
 		}
 		if err := idx.f.writeUint64(idx.n, 0); err != nil {
 			return err
 		}
-		if err := idx.f.Sync(); err != nil {
+		if err := idx.f.fdatasync(); err != nil {
 			return err
 		}
 		idx.dirty = false
