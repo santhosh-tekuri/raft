@@ -2,12 +2,11 @@ package log
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
-
-	"github.com/santhosh-tekuri/raft/vars"
 )
 
 type NotFoundError uint64
@@ -20,7 +19,6 @@ func (e NotFoundError) Error() string {
 
 type Log struct {
 	dir      string
-	ref      *vars.Var
 	seg      *segment
 	maxCount uint64
 	maxSize  int64
@@ -33,64 +31,17 @@ func New(dir string, maxSegmentEntries uint64, maxSegmentSize int64) (*Log, erro
 	if maxSegmentSize <= 0 {
 		return nil, fmt.Errorf("log: maxSegmentSize is <=0")
 	}
-	ref, err := vars.NewVar(filepath.Join(dir, "segments.ref"))
+	seg, err := openSegments(dir, maxSegmentEntries, maxSegmentSize)
 	if err != nil {
+		for seg != nil {
+			_ = seg.close()
+			seg = seg.prev
+		}
 		return nil, err
 	}
-	success := false
-	var seg *segment
-	defer func() {
-		if !success {
-			_ = ref.Close()
-			s := seg
-			for s != nil {
-				_ = s.close()
-				s = s.prev
-			}
-		}
-	}()
-	first, last, err := ref.Get()
-	if err != nil {
-		return nil, err
-	}
-	matches, err := filepath.Glob(filepath.Join(dir, "*.index"))
-	if err != nil {
-		return nil, err
-	}
-	var offs []uint64
-	for _, m := range matches {
-		m = strings.TrimSuffix(m, ".index")
-		i, err := strconv.ParseUint(m, 10, 64)
-		if err != nil {
-			return nil, err
-		}
-		if i >= first && i <= last {
-			offs = append(offs, i)
-		}
-	}
-	sort.Slice(offs, func(i, j int) bool {
-		return offs[i] < offs[j]
-	})
-	if len(offs) == 0 && first == 0 && last == 0 {
-		offs = append(offs, 0)
-	}
-	if offs[0] != first {
-		return nil, fmt.Errorf("log: %d.index is missing in %s", first, dir)
-	}
-	if offs[len(offs)-1] != last {
-		return nil, fmt.Errorf("log: %d.index is missing in %s", last, dir)
-	}
-	for _, off := range offs {
-		s, err := newSegment(dir, off, maxSegmentEntries, maxSegmentSize)
-		if err != nil {
-			return nil, err
-		}
-		s.prev, seg = seg, s
-	}
-	success = true
+
 	return &Log{
 		dir:      dir,
-		ref:      ref,
 		seg:      seg,
 		maxCount: maxSegmentEntries,
 		maxSize:  maxSegmentSize,
@@ -105,10 +56,11 @@ func (l *Log) Count() (uint64, error) {
 	if l.seg.prev == nil {
 		return l.seg.idx.n, nil
 	}
-	first, _, err := l.ref.Get()
-	if err != nil {
-		return 0, err
+	s := l.seg
+	for s.prev != nil {
+		s = s.prev
 	}
+	first := s.off
 	return (l.seg.off - first) + uint64(l.seg.idx.n), nil
 }
 
@@ -135,18 +87,11 @@ func (l *Log) Append(d []byte) (err error) {
 }
 
 func (l *Log) RemoveGTE(i uint64) error {
-	first, last, err := l.ref.Get()
-	if err != nil {
-		return err
-	}
 	for {
 		if l.seg.off > i { // has to remove this segment
 			if l.seg.prev == nil {
 				prev, err := newSegment(l.dir, i, l.maxCount, l.maxSize)
 				if err != nil {
-					return err
-				}
-				if err := l.ref.Set(i, i); err != nil {
 					return err
 				}
 				_ = l.seg.close()
@@ -155,10 +100,6 @@ func (l *Log) RemoveGTE(i uint64) error {
 				return nil
 			} else {
 				prev := l.seg.prev
-				last = prev.off
-				if err := l.ref.Set(first, last); err != nil {
-					return err
-				}
 				_ = l.seg.close()
 				_ = l.seg.remove()
 				l.seg.prev = nil
@@ -171,10 +112,6 @@ func (l *Log) RemoveGTE(i uint64) error {
 }
 
 func (l *Log) RemoveLTE(i uint64) error {
-	first, last, err := l.ref.Get()
-	if err != nil {
-		return err
-	}
 	s := l.seg
 	for s != nil {
 		if s.off <= i+1 {
@@ -188,10 +125,6 @@ func (l *Log) RemoveLTE(i uint64) error {
 
 	// remove all segments prior to s
 	if s.prev != nil {
-		first = s.off
-		if err := l.ref.Set(first, last); err != nil {
-			return err
-		}
 		prev := s.prev
 		s.prev = nil
 		for prev != nil {
@@ -207,9 +140,6 @@ func (l *Log) RemoveLTE(i uint64) error {
 		if err != nil {
 			return err
 		}
-		if err := l.ref.Set(i, i); err != nil {
-			return err
-		}
 		_ = l.seg.close()
 		_ = l.seg.remove()
 		l.seg = next
@@ -218,13 +148,11 @@ func (l *Log) RemoveLTE(i uint64) error {
 	return nil
 }
 
-func (l *Log) Close() error {
-	err := l.ref.Close()
+func (l *Log) Close() (err error) {
 	s := l.seg
 	for s != nil {
-		err1 := s.close()
-		if err != nil {
-			err = err1
+		if e := s.close(); err != nil {
+			err = e
 		}
 		s = s.prev
 	}
@@ -234,4 +162,83 @@ func (l *Log) Close() error {
 func (l *Log) isNotFound(err error) bool {
 	_, ok := err.(NotFoundError)
 	return ok
+}
+
+// helpers --------------------------------------------------------
+
+func segments(dir string) ([]uint64, error) {
+	matches, err := filepath.Glob(filepath.Join(dir, "*.index"))
+	if err != nil {
+		return nil, err
+	}
+	var offs []uint64
+	for _, m := range matches {
+		m = strings.TrimSuffix(m, ".index")
+		i, err := strconv.ParseUint(m, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		offs = append(offs, i)
+	}
+	sort.Slice(offs, func(i, j int) bool {
+		return offs[i] < offs[j]
+	})
+	if len(offs) == 0 {
+		offs = append(offs, 0)
+	}
+	return offs, nil
+}
+
+func openSegments(dir string, maxEntries uint64, maxSize int64) (*segment, error) {
+	offs, err := segments(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	loaded := make(map[uint64]bool)
+	seg, err := newSegment(dir, offs[0], maxEntries, maxSize)
+	if err != nil {
+		return nil, err
+	}
+	loaded[offs[0]] = true
+
+	for {
+		if seg.idx.n == 0 {
+			break
+		}
+		off := seg.lastIndex() + 1
+		exists, err := fileExists(filepath.Join(dir, fmt.Sprintf("%d.index", off)))
+		if err != nil {
+			return seg, err
+		}
+		if !exists {
+			break
+		}
+		s, err := newSegment(dir, off, maxEntries, maxSize)
+		if err != nil {
+			return seg, err
+		}
+		s.prev = seg
+		seg = s
+		loaded[off] = true
+	}
+
+	// remove dangling segments if any
+	for _, off := range offs {
+		if !loaded[off] {
+			if e := removeSegment(dir, off); e != nil {
+				err = e
+			}
+		}
+	}
+	return seg, err
+}
+
+func removeSegment(dir string, off uint64) error {
+	index := filepath.Join(dir, fmt.Sprintf("%d.index", off))
+	if err := os.RemoveAll(index); err != nil {
+		return err
+	}
+	data := filepath.Join(dir, fmt.Sprintf("%d.log", off))
+	return os.RemoveAll(data)
 }

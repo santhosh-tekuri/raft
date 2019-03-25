@@ -20,7 +20,7 @@ func newSegment(dir string, off uint64, cap uint64, maxSize int64) (*segment, er
 		return nil, err
 	}
 
-	file := filepath.Join(dir, fmt.Sprintf("%d.data", off))
+	file := filepath.Join(dir, fmt.Sprintf("%d.log", off))
 	exists, err := fileExists(file)
 	if err != nil {
 		return nil, err
