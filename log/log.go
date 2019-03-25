@@ -33,9 +33,9 @@ func (o Options) validate() error {
 // -------------------------------------------------------------------------------
 
 type Log struct {
-	dir string
-	seg *segment
-	opt Options
+	dir  string
+	last *segment
+	opt  Options
 }
 
 func New(dir string, opt Options) (*Log, error) {
@@ -52,25 +52,25 @@ func New(dir string, opt Options) (*Log, error) {
 	}
 
 	return &Log{
-		dir: dir,
-		seg: seg,
-		opt: opt,
+		dir:  dir,
+		last: seg,
+		opt:  opt,
 	}, nil
 }
 
 func (l *Log) LastIndex() (uint64, error) {
-	return l.seg.lastIndex(), nil
+	return l.last.lastIndex(), nil
 }
 
 func (l *Log) Count() (uint64, error) {
-	if l.seg.prev == nil {
-		return l.seg.idx.n, nil
+	if l.last.prev == nil {
+		return l.last.idx.n, nil
 	}
-	return (l.seg.off - first(l.seg).off) + l.seg.idx.n, nil
+	return (l.last.off - first(l.last).off) + l.last.idx.n, nil
 }
 
 func (l *Log) Get(i uint64) ([]byte, error) {
-	s := l.seg
+	s := l.last
 	for s != nil {
 		if i >= s.off {
 			return s.get(i)
@@ -81,20 +81,20 @@ func (l *Log) Get(i uint64) ([]byte, error) {
 }
 
 func (l *Log) Append(d []byte) (err error) {
-	if l.seg.isFull(len(d)) {
-		s, err := newSegment(l.dir, l.seg.lastIndex()+1, l.opt)
+	if l.last.isFull(len(d)) {
+		s, err := newSegment(l.dir, l.last.lastIndex()+1, l.opt)
 		if err != nil {
 			return err
 		}
-		s.dirty = l.seg.dirty
-		connect(l.seg, s)
-		l.seg = s
+		s.dirty = l.last.dirty
+		connect(l.last, s)
+		l.last = s
 	}
-	return l.seg.append(d)
+	return l.last.append(d)
 }
 
 func (l *Log) Sync() error {
-	s := l.seg
+	s := l.last
 	for s != nil && s.idx.dirty {
 		if err := s.sync(); err != nil {
 			return err
@@ -110,21 +110,21 @@ func (l *Log) RemoveGTE(i uint64) error {
 	}
 	var err error
 	for {
-		if l.seg.off > i { // remove it
-			prev := l.seg.prev
+		if l.last.off > i { // remove it
+			prev := l.last.prev
 			if prev == nil {
 				prev, err = newSegment(l.dir, i, l.opt)
 				if err != nil {
 					return err
 				}
 			} else {
-				disconnect(prev, l.seg)
+				disconnect(prev, l.last)
 			}
-			_ = l.seg.close()
-			_ = l.seg.remove()
-			l.seg = prev
-		} else if l.seg.off <= i { // do rtrim
-			return l.seg.removeGTE(i)
+			_ = l.last.close()
+			_ = l.last.remove()
+			l.last = prev
+		} else if l.last.off <= i { // do rtrim
+			return l.last.removeGTE(i)
 		}
 	}
 }
@@ -134,7 +134,7 @@ func (l *Log) RemoveLTE(i uint64) error {
 		return err
 	}
 	var err error
-	f := first(l.seg)
+	f := first(l.last)
 	for {
 		if f.idx.n > 0 && f.lastIndex() <= i {
 			next := f.next
@@ -144,7 +144,7 @@ func (l *Log) RemoveLTE(i uint64) error {
 					_ = removeSegment(l.dir, f.lastIndex()+1)
 					return err
 				}
-				l.seg = next
+				l.last = next
 			} else {
 				disconnect(f, f.next)
 			}
@@ -159,7 +159,7 @@ func (l *Log) RemoveLTE(i uint64) error {
 
 func (l *Log) Close() error {
 	err := l.Sync()
-	s := l.seg
+	s := l.last
 	for s != nil {
 		if e := s.close(); err == nil {
 			err = e

@@ -215,7 +215,7 @@ func restart(t *testing.T, l *Log) *Log {
 }
 
 func numSegments(l *Log) int {
-	i, s := 0, l.seg
+	i, s := 0, l.last
 	for s != nil {
 		i++
 		s = s.prev
