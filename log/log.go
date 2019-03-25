@@ -33,28 +33,30 @@ func (o Options) validate() error {
 // -------------------------------------------------------------------------------
 
 type Log struct {
-	dir  string
-	last *segment
-	opt  Options
+	dir   string
+	first *segment
+	last  *segment
+	opt   Options
 }
 
 func New(dir string, opt Options) (*Log, error) {
 	if err := opt.validate(); err != nil {
 		return nil, err
 	}
-	seg, err := openSegments(dir, opt)
+	first, last, err := openSegments(dir, opt)
 	if err != nil {
-		for seg != nil {
-			_ = seg.close()
-			seg = seg.prev
+		for last != nil {
+			_ = last.close()
+			last = last.prev
 		}
 		return nil, err
 	}
 
 	return &Log{
-		dir:  dir,
-		last: seg,
-		opt:  opt,
+		dir:   dir,
+		first: first,
+		last:  last,
+		opt:   opt,
 	}, nil
 }
 
@@ -66,7 +68,7 @@ func (l *Log) Count() (uint64, error) {
 	if l.last.prev == nil {
 		return l.last.idx.n, nil
 	}
-	return (l.last.off - first(l.last).off) + l.last.idx.n, nil
+	return (l.last.off - l.first.off) + l.last.idx.n, nil
 }
 
 func (l *Log) Get(i uint64) ([]byte, error) {
@@ -117,6 +119,7 @@ func (l *Log) RemoveGTE(i uint64) error {
 				if err != nil {
 					return err
 				}
+				l.first = prev
 			} else {
 				disconnect(prev, l.last)
 			}
@@ -134,23 +137,22 @@ func (l *Log) RemoveLTE(i uint64) error {
 		return err
 	}
 	var err error
-	f := first(l.last)
 	for {
-		if f.idx.n > 0 && f.lastIndex() <= i {
-			next := f.next
+		if l.first.idx.n > 0 && l.first.lastIndex() <= i {
+			next := l.first.next
 			if next == nil {
-				next, err = newSegment(l.dir, f.lastIndex()+1, l.opt)
+				next, err = newSegment(l.dir, l.first.lastIndex()+1, l.opt)
 				if err != nil {
-					_ = removeSegment(l.dir, f.lastIndex()+1)
+					_ = removeSegment(l.dir, l.first.lastIndex()+1)
 					return err
 				}
 				l.last = next
 			} else {
-				disconnect(f, f.next)
+				disconnect(l.first, next)
 			}
-			_ = f.close()
-			_ = f.remove()
-			f = next
+			_ = l.first.close()
+			_ = l.first.remove()
+			l.first = next
 		} else {
 			return nil
 		}
@@ -199,37 +201,39 @@ func segments(dir string) ([]uint64, error) {
 	return offs, nil
 }
 
-func openSegments(dir string, opt Options) (*segment, error) {
+func openSegments(dir string, opt Options) (first, last *segment, err error) {
 	offs, err := segments(dir)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	loaded := make(map[uint64]bool)
-	seg, err := newSegment(dir, offs[0], opt)
+	first, err = newSegment(dir, offs[0], opt)
 	if err != nil {
-		return nil, err
+		return
 	}
 	loaded[offs[0]] = true
 
+	last = first
+	s, exists := (*segment)(nil), false
 	for {
-		if seg.idx.n == 0 {
+		if last.idx.n == 0 {
 			break
 		}
-		off := seg.lastIndex() + 1
-		exists, err := fileExists(filepath.Join(dir, fmt.Sprintf("%d.index", off)))
+		off := last.lastIndex() + 1
+		exists, err = fileExists(filepath.Join(dir, fmt.Sprintf("%d.index", off)))
 		if err != nil {
-			return seg, err
+			return
 		}
 		if !exists {
 			break
 		}
-		s, err := newSegment(dir, off, opt)
+		s, err = newSegment(dir, off, opt)
 		if err != nil {
-			return seg, err
+			return
 		}
-		connect(seg, s)
-		seg = s
+		connect(last, s)
+		last = s
 		loaded[off] = true
 	}
 
@@ -241,7 +245,7 @@ func openSegments(dir string, opt Options) (*segment, error) {
 			}
 		}
 	}
-	return seg, err
+	return
 }
 
 func removeSegment(dir string, off uint64) error {
@@ -263,11 +267,4 @@ func connect(s1, s2 *segment) {
 func disconnect(s1, s2 *segment) {
 	s1.next = nil
 	s2.prev = nil
-}
-
-func first(s *segment) *segment {
-	for s.prev != nil {
-		s = s.prev
-	}
-	return s
 }
