@@ -2,6 +2,6 @@
 
 package log
 
-func (f *mmapFile) fdatasync() error {
+func (f *mmapFile) syncData() error {
 	return f.Sync()
 }

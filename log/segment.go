@@ -74,7 +74,7 @@ func (s *segment) append(b []byte) error {
 
 func (s *segment) sync() error {
 	if s.idx.dirty {
-		if err := s.f.fdatasync(); err != nil {
+		if err := s.f.syncData(); err != nil {
 			return err
 		}
 		return s.idx.sync()

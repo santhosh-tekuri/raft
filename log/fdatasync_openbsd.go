@@ -13,7 +13,7 @@ const (
 )
 
 // Based on: https://github.com/boltdb/bolt
-func (f *mmapFile) fdatasync() error {
+func (f *mmapFile) syncData() error {
 	bh := (*reflect.SliceHeader)(unsafe.Pointer(&f.data))
 	addr := bh.Data
 	sz := int(f.size())
