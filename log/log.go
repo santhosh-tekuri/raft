@@ -109,40 +109,28 @@ func (l *Log) RemoveGTE(i uint64) error {
 }
 
 func (l *Log) RemoveLTE(i uint64) error {
-	s := l.seg
-	for s != nil {
-		if s.off <= i+1 {
-			break
+	var err error
+	for {
+		s, next := l.seg, (*segment)(nil)
+		for s.prev != nil {
+			s, next = s.prev, s
 		}
-		s = s.prev
-	}
-	if s == nil {
-		return nil
-	}
-
-	// remove all segments prior to s
-	if s.prev != nil {
-		prev := s.prev
-		s.prev = nil
-		for prev != nil {
-			_ = prev.close()
-			_ = prev.remove()
-			prev = prev.prev
+		// now s is first segment
+		if s.idx.n > 0 && s.lastIndex() <= i {
+			if next == nil {
+				l.seg, err = newSegment(l.dir, s.lastIndex()+1, l.maxCount, l.maxSize)
+				if err != nil {
+					return err
+				}
+			} else {
+				next.prev = nil
+			}
+			_ = s.close()
+			_ = s.remove()
+		} else {
+			return nil
 		}
 	}
-
-	s = l.seg
-	if s.prev == nil && s.idx.n > 0 && s.lastIndex() <= i { // clear this segment
-		next, err := newSegment(l.dir, s.lastIndex()+1, l.maxCount, l.maxSize)
-		if err != nil {
-			return err
-		}
-		_ = l.seg.close()
-		_ = l.seg.remove()
-		l.seg = next
-	}
-
-	return nil
 }
 
 func (l *Log) Close() (err error) {
