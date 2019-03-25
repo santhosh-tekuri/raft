@@ -20,8 +20,8 @@ func newIndex(file string, cap uint64) (*index, error) {
 	if err != nil {
 		return nil, err
 	}
-	fileSize := (int64(cap) + 2) * 8
 	if !exists {
+		fileSize := (int64(cap) + 2) * 8
 		if err = createFile(file, fileSize, make([]byte, 16)); err != nil {
 			return nil, err
 		}

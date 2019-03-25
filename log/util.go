@@ -43,6 +43,7 @@ func createFile(name string, size int64, contents []byte) (err error) {
 			err = e
 		}
 		if err != nil {
+			_ = os.Remove(name)
 			err = fmt.Errorf("log: createFile %s: %v", name, err)
 		}
 	}()
@@ -52,9 +53,7 @@ func createFile(name string, size int64, contents []byte) (err error) {
 	if err = f.Truncate(size); err != nil {
 		return
 	}
-	if err = f.Sync(); err != nil {
-		return
-	}
+	err = f.Sync()
 	return
 }
 

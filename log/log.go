@@ -61,7 +61,7 @@ func (l *Log) Count() (uint64, error) {
 		s = s.prev
 	}
 	first := s.off
-	return (l.seg.off - first) + uint64(l.seg.idx.n), nil
+	return (l.seg.off - first) + l.seg.idx.n, nil
 }
 
 func (l *Log) Get(i uint64) ([]byte, error) {
@@ -120,6 +120,7 @@ func (l *Log) RemoveLTE(i uint64) error {
 			if next == nil {
 				l.seg, err = newSegment(l.dir, s.lastIndex()+1, l.maxCount, l.maxSize)
 				if err != nil {
+					_ = removeSegment(l.dir, s.lastIndex()+1)
 					return err
 				}
 			} else {
