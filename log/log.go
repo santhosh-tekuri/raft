@@ -66,12 +66,7 @@ func (l *Log) Count() (uint64, error) {
 	if l.seg.prev == nil {
 		return l.seg.idx.n, nil
 	}
-	s := l.seg
-	for s.prev != nil {
-		s = s.prev
-	}
-	first := s.off
-	return (l.seg.off - first) + l.seg.idx.n, nil
+	return (l.seg.off - first(l.seg).off) + l.seg.idx.n, nil
 }
 
 func (l *Log) Get(i uint64) ([]byte, error) {
@@ -92,7 +87,8 @@ func (l *Log) Append(d []byte) (err error) {
 			return err
 		}
 		s.dirty = l.seg.dirty
-		s.prev, l.seg = l.seg, s
+		connect(l.seg, s)
+		l.seg = s
 	}
 	return l.seg.append(d)
 }
@@ -122,7 +118,7 @@ func (l *Log) RemoveGTE(i uint64) error {
 					return err
 				}
 			} else {
-				l.seg.prev = nil
+				disconnect(prev, l.seg)
 			}
 			_ = l.seg.close()
 			_ = l.seg.remove()
@@ -138,24 +134,23 @@ func (l *Log) RemoveLTE(i uint64) error {
 		return err
 	}
 	var err error
+	f := first(l.seg)
 	for {
-		s, next := l.seg, (*segment)(nil)
-		for s.prev != nil {
-			s, next = s.prev, s
-		}
-		// now s is first segment
-		if s.idx.n > 0 && s.lastIndex() <= i {
+		if f.idx.n > 0 && f.lastIndex() <= i {
+			next := f.next
 			if next == nil {
-				l.seg, err = newSegment(l.dir, s.lastIndex()+1, l.opt)
+				next, err = newSegment(l.dir, f.lastIndex()+1, l.opt)
 				if err != nil {
-					_ = removeSegment(l.dir, s.lastIndex()+1)
+					_ = removeSegment(l.dir, f.lastIndex()+1)
 					return err
 				}
+				l.seg = next
 			} else {
-				next.prev = nil
+				disconnect(f, f.next)
 			}
-			_ = s.close()
-			_ = s.remove()
+			_ = f.close()
+			_ = f.remove()
+			f = next
 		} else {
 			return nil
 		}
@@ -233,7 +228,7 @@ func openSegments(dir string, opt Options) (*segment, error) {
 		if err != nil {
 			return seg, err
 		}
-		s.prev = seg
+		connect(seg, s)
 		seg = s
 		loaded[off] = true
 	}
@@ -256,4 +251,23 @@ func removeSegment(dir string, off uint64) error {
 	}
 	data := filepath.Join(dir, fmt.Sprintf("%d.log", off))
 	return os.RemoveAll(data)
+}
+
+// linked list ----------------------------------------------
+
+func connect(s1, s2 *segment) {
+	s1.next = s2
+	s2.prev = s1
+}
+
+func disconnect(s1, s2 *segment) {
+	s1.next = nil
+	s2.prev = nil
+}
+
+func first(s *segment) *segment {
+	for s.prev != nil {
+		s = s.prev
+	}
+	return s
 }

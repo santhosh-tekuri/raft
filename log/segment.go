@@ -11,6 +11,7 @@ type segment struct {
 	idx   *index
 	f     *mmapFile
 	prev  *segment
+	next  *segment
 	dirty bool
 }
 
