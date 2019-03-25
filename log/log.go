@@ -76,6 +76,9 @@ func (l *Log) segment(i uint64) *segment {
 	s := l.last
 	for s != nil {
 		if i >= s.off {
+			if i >= s.off+s.idx.cap {
+				return nil
+			}
 			return s
 		}
 		s = s.prev
@@ -200,7 +203,7 @@ func (l *Log) Close() error {
 	return err
 }
 
-func (l *Log) isNotFound(err error) bool {
+func (l *Log) IsNotFound(err error) bool {
 	_, ok := err.(NotFoundError)
 	return ok
 }

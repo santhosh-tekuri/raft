@@ -153,6 +153,73 @@ func TestLog_RemoveLTE(t *testing.T) {
 	}
 }
 
+func TestLog_Get_notFoundError(t *testing.T) {
+	l := newLog(t, 10, 1024*1024)
+	defer os.RemoveAll(l.dir)
+	appendEntries(t, l, 0, 35)
+	checkGet(t, l, 0, 35)
+
+	type test struct {
+		i        uint64
+		notFound bool
+		b        []byte
+	}
+	tests := []test{
+		{100, true, nil},
+		{40, true, nil},
+		{39, false, nil},
+		{36, false, nil},
+	}
+	runTest := func(test test) {
+		t.Run(fmt.Sprintf("get(%d)", test.i), func(t *testing.T) {
+			b, err := l.Get(test.i)
+			if l.IsNotFound(err) != test.notFound {
+				t.Fatalf("isNotFound: got %v, want %v", l.IsNotFound(err), test.notFound)
+			}
+			if !test.notFound {
+				if !bytes.Equal(b, test.b) {
+					t.Fatalf("entry: got %v, want %v", b, test.b)
+				}
+			}
+		})
+	}
+	for _, test := range tests {
+		runTest(test)
+	}
+
+	if err := l.RemoveGTE(33); err != nil {
+		t.Fatal(err)
+	}
+	checkGet(t, l, 0, 32)
+	tests = []test{
+		{100, true, nil},
+		{40, true, nil},
+		{39, false, nil},
+		{33, false, message(33)},
+	}
+	for _, test := range tests {
+		runTest(test)
+	}
+
+	if err := l.RemoveLTE(15); err != nil {
+		t.Fatal(err)
+	}
+	checkGet(t, l, 10, 32)
+	tests = []test{
+		{100, true, nil},
+		{40, true, nil},
+		{39, false, nil},
+		{33, false, message(33)},
+		{0, true, nil},
+		{9, true, nil},
+		{10, false, message(10)},
+		{13, false, message(13)},
+	}
+	for _, test := range tests {
+		runTest(test)
+	}
+}
+
 // helpers ---------------------------------------------------------------------------
 
 func newLog(t *testing.T, maxCount uint64, maxSize int64) *Log {
