@@ -87,25 +87,22 @@ func (l *Log) Append(d []byte) (err error) {
 }
 
 func (l *Log) RemoveGTE(i uint64) error {
+	var err error
 	for {
-		if l.seg.off > i { // has to remove this segment
-			if l.seg.prev == nil {
-				prev, err := newSegment(l.dir, i, l.maxCount, l.maxSize)
+		if l.seg.off > i { // remove it
+			prev := l.seg.prev
+			if prev == nil {
+				prev, err = newSegment(l.dir, i, l.maxCount, l.maxSize)
 				if err != nil {
 					return err
 				}
-				_ = l.seg.close()
-				_ = l.seg.remove()
-				l.seg = prev
-				return nil
 			} else {
-				prev := l.seg.prev
-				_ = l.seg.close()
-				_ = l.seg.remove()
 				l.seg.prev = nil
-				l.seg = prev
 			}
-		} else if l.seg.off <= i {
+			_ = l.seg.close()
+			_ = l.seg.remove()
+			l.seg = prev
+		} else if l.seg.off <= i { // do rtrim
 			return l.seg.removeGTE(i)
 		}
 	}
