@@ -12,7 +12,7 @@ type index struct {
 	cap      uint64
 	n        uint64
 	dataSize int64
-	f        *os.File
+	f        *mmapFile
 	dirty    bool
 }
 
@@ -41,11 +41,7 @@ func newIndex(file string, cap uint64) (*index, error) {
 	if err != nil {
 		return nil, err
 	}
-	n, err := readUint64(f, 0)
-	if err != nil {
-		_ = f.Close()
-		return nil, err
-	}
+	n := f.readUint64(0)
 
 	idx := &index{cap: cap, n: n, f: f}
 	idx.dataSize, err = idx.offset(idx.n)
@@ -72,11 +68,7 @@ func (idx *index) entry(i uint64) (int64, int, error) {
 }
 
 func (idx *index) offset(i uint64) (int64, error) {
-	off, err := readUint64(idx.f, int64((i+1)*8))
-	if err != nil {
-		return 0, err
-	}
-	return int64(off), err
+	return int64(idx.f.readUint64((i + 1) * 8)), nil
 }
 
 func (idx *index) isFull() bool {
@@ -85,7 +77,7 @@ func (idx *index) isFull() bool {
 
 func (idx *index) append(newEntrySize int) error {
 	off := idx.dataSize + int64(newEntrySize)
-	if err := writeUint64(idx.f, uint64(off), int64((idx.n+2)*8)); err != nil {
+	if err := idx.f.writeUint64(uint64(off), int64((idx.n+2)*8)); err != nil {
 		return err
 	}
 	idx.n++
@@ -96,7 +88,7 @@ func (idx *index) append(newEntrySize int) error {
 
 func (idx *index) truncate(n uint64) error {
 	if n >= 0 && n < idx.n {
-		if err := writeUint64(idx.f, n, 0); err != nil {
+		if err := idx.f.writeUint64(n, 0); err != nil {
 			return err
 		}
 		off, err := idx.offset(n)
@@ -114,7 +106,7 @@ func (idx *index) sync() error {
 		if err := idx.f.Sync(); err != nil {
 			return err
 		}
-		if err := writeUint64(idx.f, idx.n, 0); err != nil {
+		if err := idx.f.writeUint64(idx.n, 0); err != nil {
 			return err
 		}
 		if err := idx.f.Sync(); err != nil {

@@ -7,12 +7,11 @@ import (
 )
 
 type segment struct {
-	off     uint64
-	idx     *index
-	f       *os.File
-	maxSize int64
-	prev    *segment
-	dirty   bool
+	off   uint64
+	idx   *index
+	f     *mmapFile
+	prev  *segment
+	dirty bool
 }
 
 func newSegment(dir string, off uint64, cap uint64, maxSize int64) (*segment, error) {
@@ -27,13 +26,6 @@ func newSegment(dir string, off uint64, cap uint64, maxSize int64) (*segment, er
 		}
 	}
 
-	// fix maxSize if necessary
-	info, err := os.Stat(file)
-	if err != nil {
-		return nil, fmt.Errorf("log: stat %s: %v", file, err)
-	}
-	maxSize = info.Size()
-
 	f, err := openFile(file)
 	if err != nil {
 		return nil, err
@@ -44,7 +36,7 @@ func newSegment(dir string, off uint64, cap uint64, maxSize int64) (*segment, er
 		return nil, err
 	}
 
-	return &segment{off: off, idx: idx, f: f, maxSize: maxSize}, nil
+	return &segment{off: off, idx: idx, f: f}, nil
 }
 
 func (s *segment) lastIndex() uint64 {
@@ -58,7 +50,7 @@ func (s *segment) lastIndex() uint64 {
 }
 
 func (s *segment) isFull(newEntrySize int) bool {
-	return s.idx.isFull() || s.idx.dataSize+int64(newEntrySize) > s.maxSize
+	return s.idx.isFull() || s.idx.dataSize+int64(newEntrySize) > s.f.size()
 }
 
 func (s *segment) get(i uint64) ([]byte, error) {
@@ -69,11 +61,7 @@ func (s *segment) get(i uint64) ([]byte, error) {
 	if n == 0 {
 		return nil, nil
 	}
-	b := make([]byte, n)
-	if err = readFull(s.f, b, off); err != nil {
-		return nil, err
-	}
-	return b, nil
+	return s.f.data[off : off+int64(n)], nil
 }
 
 func (s *segment) append(b []byte) error {

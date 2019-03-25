@@ -2,7 +2,6 @@ package log
 
 import (
 	"fmt"
-	"io"
 	"os"
 )
 
@@ -57,31 +56,49 @@ func createFile(name string, size int64, contents []byte) (err error) {
 	return
 }
 
-func openFile(name string) (*os.File, error) {
-	f, err := os.OpenFile(name, os.O_RDWR, 0600)
-	if err != nil {
-		return nil, fmt.Errorf("log: openFile %s: %v", name, err)
-	}
-	return f, nil
+// mmapFile ---------------------------------------------------
+
+type mmapFile struct {
+	*os.File
+	data []byte
 }
 
-func readUint64(f *os.File, off int64) (uint64, error) {
-	b := make([]byte, 8)
-	if err := readFull(f, b, off); err != nil {
-		return 0, err
-	}
-	return byteOrder.Uint64(b), nil
+func (f *mmapFile) size() int64 {
+	return int64(len(f.data))
 }
 
-func writeUint64(f *os.File, v uint64, off int64) error {
+func (f *mmapFile) Close() error {
+	err := munmap(f.data)
+	if e := f.File.Close(); err == nil {
+		err = e
+	}
+	return err
+}
+
+func (f *mmapFile) readUint64(off uint64) uint64 {
+	return byteOrder.Uint64(f.data[off:])
+}
+
+func (f *mmapFile) writeUint64(v uint64, off int64) error {
 	b := make([]byte, 8)
 	byteOrder.PutUint64(b, v)
 	_, err := f.WriteAt(b, off)
 	return err
 }
 
-func readFull(f *os.File, b []byte, off int64) error {
-	r := io.NewSectionReader(f, off, int64(len(b)))
-	_, err := io.ReadFull(r, b)
-	return err
+func openFile(name string) (*mmapFile, error) {
+	f, err := os.OpenFile(name, os.O_RDWR, 0600)
+	if err != nil {
+		return nil, fmt.Errorf("log: openFile %s: %v", name, err)
+	}
+
+	info, err := os.Stat(name)
+	if err != nil {
+		return nil, err
+	}
+	data, err := mmap(f, int(info.Size()))
+	if err != nil {
+		return nil, err
+	}
+	return &mmapFile{f, data}, nil
 }
