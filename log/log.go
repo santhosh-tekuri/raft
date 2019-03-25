@@ -2,6 +2,7 @@ package log
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -71,15 +72,43 @@ func (l *Log) Count() (uint64, error) {
 	return (l.last.off - l.first.off) + l.last.idx.n, nil
 }
 
-func (l *Log) Get(i uint64) ([]byte, error) {
+func (l *Log) segment(i uint64) *segment {
 	s := l.last
 	for s != nil {
 		if i >= s.off {
-			return s.get(i), nil
+			return s
 		}
 		s = s.prev
 	}
-	return nil, NotFoundError(i)
+	return nil
+}
+
+func (l *Log) Get(i uint64) ([]byte, error) {
+	s := l.segment(i)
+	if s == nil {
+		return nil, NotFoundError(i)
+	}
+	return s.get(i), nil
+}
+
+func (l *Log) WriteTo(w io.Writer, i uint64, n uint64) error {
+	s := l.segment(i)
+	if s == nil {
+		return NotFoundError(i)
+	}
+	for n > 0 {
+		sn := s.idx.cap - (i - s.off)
+		if sn > n {
+			sn = n
+		}
+		if err := s.writeTo(w, i, sn); err != nil {
+			return err
+		}
+		n -= sn
+		i += sn
+		s = s.next
+	}
+	return nil
 }
 
 func (l *Log) Append(d []byte) (err error) {

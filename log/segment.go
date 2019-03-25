@@ -2,6 +2,7 @@ package log
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 )
@@ -60,6 +61,15 @@ func (s *segment) get(i uint64) []byte {
 		return nil
 	}
 	return s.f.data[off : off+int64(n)]
+}
+
+func (s *segment) writeTo(w io.Writer, i uint64, n uint64) error {
+	from, to := s.idx.offset(i), s.idx.offset(i+n)
+	if to < from {
+		return nil
+	}
+	_, err := w.Write(s.f.data[from : to-from])
+	return err
 }
 
 func (s *segment) append(b []byte) error {
