@@ -81,6 +81,7 @@ func (l *Log) Append(d []byte) (err error) {
 		if err != nil {
 			return err
 		}
+		s.dirty = l.seg.dirty
 		s.prev, l.seg = l.seg, s
 	}
 	return l.seg.append(d)
