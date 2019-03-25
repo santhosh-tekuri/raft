@@ -75,7 +75,7 @@ func (l *Log) Get(i uint64) ([]byte, error) {
 	s := l.last
 	for s != nil {
 		if i >= s.off {
-			return s.get(i)
+			return s.get(i), nil
 		}
 		s = s.prev
 	}

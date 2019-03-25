@@ -30,10 +30,7 @@ func TestSegment(t *testing.T) {
 		}
 		for i := uint64(0); i < n; i++ {
 			j := off + uint64(i)
-			b, err := s.get(j)
-			if err != nil {
-				t.Fatalf("s.get(%d): %v", j, err)
-			}
+			b := s.get(j)
 			if string(b) != data[i] {
 				t.Fatalf("s.get(%d): got %s, want %s", j, string(b), data[i])
 			}

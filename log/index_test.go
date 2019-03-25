@@ -31,10 +31,7 @@ func TestIndex(t *testing.T) {
 		}
 		off := int64(0)
 		for i := uint64(0); i < n; i++ {
-			eoff, elen, err := idx.entry(i)
-			if err != nil {
-				t.Fatalf("idx.entry(%d): %v", i, err)
-			}
+			eoff, elen := idx.entry(i)
 			if eoff != off {
 				t.Fatalf("offset(%d): got %d, want %d", i, eoff, off)
 			}

@@ -54,15 +54,12 @@ func (s *segment) isFull(newEntrySize int) bool {
 	return s.idx.isFull() || s.idx.dataSize+int64(newEntrySize) > s.f.size()
 }
 
-func (s *segment) get(i uint64) ([]byte, error) {
-	off, n, err := s.idx.entry(i - s.off)
-	if err != nil {
-		return nil, err
-	}
+func (s *segment) get(i uint64) []byte {
+	off, n := s.idx.entry(i - s.off)
 	if n == 0 {
-		return nil, nil
+		return nil
 	}
-	return s.f.data[off : off+int64(n)], nil
+	return s.f.data[off : off+int64(n)]
 }
 
 func (s *segment) append(b []byte) error {

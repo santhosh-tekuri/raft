@@ -44,31 +44,20 @@ func newIndex(file string, cap uint64) (*index, error) {
 	n := f.readUint64(0)
 
 	idx := &index{cap: cap, n: n, f: f}
-	idx.dataSize, err = idx.offset(idx.n)
-	if err != nil {
-		_ = f.Close()
-		return nil, err
-	}
+	idx.dataSize = idx.offset(idx.n)
 	return idx, nil
 }
 
-func (idx *index) entry(i uint64) (int64, int, error) {
-	off, err := idx.offset(i)
-	if err != nil {
-		return 0, 0, err
-	}
-	limit, err := idx.offset(i + 1)
-	if err != nil {
-		return 0, 0, err
-	}
+func (idx *index) entry(i uint64) (off int64, len int) {
+	off, limit := idx.offset(i), idx.offset(i+1)
 	if limit < off {
-		return off, 0, nil
+		return off, 0
 	}
-	return off, int(limit - off), nil
+	return off, int(limit - off)
 }
 
-func (idx *index) offset(i uint64) (int64, error) {
-	return int64(idx.f.readUint64((i + 1) * 8)), nil
+func (idx *index) offset(i uint64) int64 {
+	return int64(idx.f.readUint64((i + 1) * 8))
 }
 
 func (idx *index) isFull() bool {
@@ -91,10 +80,7 @@ func (idx *index) truncate(n uint64) error {
 		if err := idx.f.writeUint64(n, 0); err != nil {
 			return err
 		}
-		off, err := idx.offset(n)
-		if err != nil {
-			return err
-		}
+		off := idx.offset(n)
 		idx.n = n
 		idx.dataSize = off
 	}
