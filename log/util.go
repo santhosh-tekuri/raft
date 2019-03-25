@@ -65,13 +65,6 @@ func openFile(name string) (*os.File, error) {
 	return f, nil
 }
 
-func writeAt(f *os.File, b []byte, off int64) error {
-	if _, err := f.WriteAt(b, off); err != nil {
-		return err
-	}
-	return f.Sync()
-}
-
 func readUint64(f *os.File, off int64) (uint64, error) {
 	b := make([]byte, 8)
 	if err := readFull(f, b, off); err != nil {
@@ -83,7 +76,8 @@ func readUint64(f *os.File, off int64) (uint64, error) {
 func writeUint64(f *os.File, v uint64, off int64) error {
 	b := make([]byte, 8)
 	byteOrder.PutUint64(b, v)
-	return writeAt(f, b, off)
+	_, err := f.WriteAt(b, off)
+	return err
 }
 
 func readFull(f *os.File, b []byte, off int64) error {

@@ -12,6 +12,7 @@ type segment struct {
 	f       *os.File
 	maxSize int64
 	prev    *segment
+	dirty   bool
 }
 
 func newSegment(dir string, off uint64, cap uint64, maxSize int64) (*segment, error) {
@@ -76,18 +77,31 @@ func (s *segment) get(i uint64) ([]byte, error) {
 }
 
 func (s *segment) append(b []byte) error {
-	if err := writeAt(s.f, b, s.idx.dataSize); err != nil {
+	if _, err := s.f.WriteAt(b, s.idx.dataSize); err != nil {
 		return err
 	}
 	return s.idx.append(len(b))
 }
 
-func (s *segment) close() error {
-	if err := s.idx.close(); err != nil {
-		return err
+func (s *segment) sync() error {
+	if s.idx.dirty {
+		if err := s.f.Sync(); err != nil {
+			return err
+		}
+		return s.idx.sync()
 	}
-	_ = s.f.Close()
 	return nil
+}
+
+func (s *segment) close() error {
+	err := s.sync()
+	if e := s.idx.close(); err == nil {
+		err = e
+	}
+	if e := s.f.Close(); err == nil {
+		err = e
+	}
+	return err
 }
 
 func (s *segment) removeGTE(i uint64) error {

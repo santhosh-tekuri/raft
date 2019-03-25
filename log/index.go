@@ -13,6 +13,7 @@ type index struct {
 	n        uint64
 	dataSize int64
 	f        *os.File
+	dirty    bool
 }
 
 func newIndex(file string, cap uint64) (*index, error) {
@@ -87,11 +88,9 @@ func (idx *index) append(newEntrySize int) error {
 	if err := writeUint64(idx.f, uint64(off), int64((idx.n+2)*8)); err != nil {
 		return err
 	}
-	if err := writeUint64(idx.f, idx.n+1, 0); err != nil {
-		return err
-	}
 	idx.n++
 	idx.dataSize = off
+	idx.dirty = true
 	return nil
 }
 
@@ -110,8 +109,28 @@ func (idx *index) truncate(n uint64) error {
 	return nil
 }
 
+func (idx *index) sync() error {
+	if idx.dirty {
+		if err := idx.f.Sync(); err != nil {
+			return err
+		}
+		if err := writeUint64(idx.f, idx.n, 0); err != nil {
+			return err
+		}
+		if err := idx.f.Sync(); err != nil {
+			return err
+		}
+		idx.dirty = false
+	}
+	return nil
+}
+
 func (idx *index) close() error {
-	return idx.f.Close()
+	err := idx.sync()
+	if e := idx.f.Close(); err == nil {
+		err = e
+	}
+	return err
 }
 
 func (idx *index) remove() error {

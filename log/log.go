@@ -86,7 +86,21 @@ func (l *Log) Append(d []byte) (err error) {
 	return l.seg.append(d)
 }
 
+func (l *Log) Sync() error {
+	s := l.seg
+	for s != nil && s.idx.dirty {
+		if err := s.sync(); err != nil {
+			return err
+		}
+		s = s.prev
+	}
+	return nil
+}
+
 func (l *Log) RemoveGTE(i uint64) error {
+	if err := l.Sync(); err != nil {
+		return err
+	}
 	var err error
 	for {
 		if l.seg.off > i { // remove it
@@ -109,6 +123,9 @@ func (l *Log) RemoveGTE(i uint64) error {
 }
 
 func (l *Log) RemoveLTE(i uint64) error {
+	if err := l.Sync(); err != nil {
+		return err
+	}
 	var err error
 	for {
 		s, next := l.seg, (*segment)(nil)
@@ -134,10 +151,11 @@ func (l *Log) RemoveLTE(i uint64) error {
 	}
 }
 
-func (l *Log) Close() (err error) {
+func (l *Log) Close() error {
+	err := l.Sync()
 	s := l.seg
 	for s != nil {
-		if e := s.close(); err != nil {
+		if e := s.close(); err == nil {
 			err = e
 		}
 		s = s.prev
