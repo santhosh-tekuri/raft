@@ -2,13 +2,11 @@ package log
 
 import (
 	"fmt"
+
+	"github.com/pkg/errors"
 )
 
-type NotFoundError uint64
-
-func (e NotFoundError) Error() string {
-	return fmt.Sprintf("log: entry %d not found", uint64(e))
-}
+var ErrNotFound = errors.New("log: entry not found")
 
 type Options struct {
 	MaxSegmentEntries int
@@ -89,7 +87,7 @@ func (l *Log) segment(i uint64) *segment {
 func (l *Log) Get(i uint64) ([]byte, error) {
 	s := l.segment(i)
 	if s == nil {
-		return nil, NotFoundError(i)
+		return nil, ErrNotFound
 	}
 	return s.get(i, 1), nil
 }
@@ -97,7 +95,10 @@ func (l *Log) Get(i uint64) ([]byte, error) {
 func (l *Log) GetN(i, n uint64) ([][]byte, error) {
 	s := l.segment(i)
 	if s == nil {
-		return nil, NotFoundError(i)
+		return nil, ErrNotFound
+	}
+	if n > 1 && l.segment(i+n-1) == nil {
+		return nil, ErrNotFound
 	}
 	var buffs [][]byte
 	for n > 0 {
@@ -202,11 +203,6 @@ func (l *Log) Close() error {
 		s = s.prev
 	}
 	return err
-}
-
-func (l *Log) IsNotFound(err error) bool {
-	_, ok := err.(NotFoundError)
-	return ok
 }
 
 // helpers --------------------------------------------------------

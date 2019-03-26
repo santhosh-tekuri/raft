@@ -201,24 +201,24 @@ func TestLog_Get_notFoundError(t *testing.T) {
 	checkGet(t, l, 0, 35)
 
 	type test struct {
-		i        uint64
-		notFound bool
-		b        []byte
+		i   uint64
+		err error
+		b   []byte
 	}
 	tests := []test{
-		{100, true, nil},
-		{40, true, nil},
-		{39, false, nil},
-		{36, false, nil},
+		{100, ErrNotFound, nil},
+		{40, ErrNotFound, nil},
+		{39, nil, nil},
+		{36, nil, nil},
 	}
 	runTest := func(test test) {
 		t.Run(fmt.Sprintf("get(%d)", test.i), func(t *testing.T) {
 			for i := 0; i <= 1; i++ {
 				b, err := l.Get(test.i)
-				if l.IsNotFound(err) != test.notFound {
-					t.Fatalf("isNotFound: got %v, want %v", l.IsNotFound(err), test.notFound)
+				if err != test.err {
+					t.Fatalf("err: got %v, want %v", err, test.err)
 				}
-				if !test.notFound {
+				if test.err == nil {
 					if !bytes.Equal(b, test.b) {
 						t.Fatalf("entry: got %v, want %v", b, test.b)
 					}
@@ -236,10 +236,10 @@ func TestLog_Get_notFoundError(t *testing.T) {
 	}
 	checkGet(t, l, 0, 32)
 	tests = []test{
-		{100, true, nil},
-		{40, true, nil},
-		{39, false, nil},
-		{33, false, message(33)},
+		{100, ErrNotFound, nil},
+		{40, ErrNotFound, nil},
+		{39, nil, nil},
+		{33, nil, message(33)},
 	}
 	for _, test := range tests {
 		runTest(test)
@@ -250,14 +250,14 @@ func TestLog_Get_notFoundError(t *testing.T) {
 	}
 	checkGet(t, l, 10, 32)
 	tests = []test{
-		{100, true, nil},
-		{40, true, nil},
-		{39, false, nil},
-		{33, false, message(33)},
-		{0, true, nil},
-		{9, true, nil},
-		{10, false, message(10)},
-		{13, false, message(13)},
+		{100, ErrNotFound, nil},
+		{40, ErrNotFound, nil},
+		{39, nil, nil},
+		{33, nil, message(33)},
+		{0, ErrNotFound, nil},
+		{9, ErrNotFound, nil},
+		{10, nil, message(10)},
+		{13, nil, message(13)},
 	}
 	for _, test := range tests {
 		runTest(test)
