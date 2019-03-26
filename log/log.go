@@ -7,12 +7,24 @@ import (
 	"github.com/pkg/errors"
 )
 
+// ErrNotFound is the error returned by Get and GetN when requested
+// entry does not exist in log.
 var ErrNotFound = errors.New("log: entry not found")
 
+// Options contains necessary configuration for Log.
 type Options struct {
-	fileMode          os.FileMode
+	// FileMode used for creating and opening files.
+	FileMode os.FileMode
+
+	// MaxSegmentEntries is max number of entries allowed
+	// in a segment. This applies only to newly created
+	// indexes. Index file is pre-allocated based on this.
 	MaxSegmentEntries int
-	MaxSegmentSize    int
+
+	// MaxSegmentSize is the maximum size of segment file.
+	// This applies only to newly created segments. Segment
+	// file is pre-allocated based on this.
+	MaxSegmentSize int
 }
 
 func (o Options) validate() error {
@@ -71,10 +83,16 @@ func Open(dir string, dirMode os.FileMode, opt Options) (*Log, error) {
 	}, nil
 }
 
+// LastIndex returns index of last entry.
+// Note that there will be no entry at this
+// index if Count is zero.
 func (l *Log) LastIndex() uint64 {
 	return l.last.lastIndex()
 }
 
+// Count returns number of entries available in log.
+// Note that Count changes when you do removeLTE
+// or removeGTE.
 func (l *Log) Count() uint64 {
 	if l.last.prev == nil {
 		return l.last.idx.n
@@ -82,6 +100,8 @@ func (l *Log) Count() uint64 {
 	return (l.last.off - l.first.off) + l.last.idx.n
 }
 
+// segment returns the segment where the given index
+// lies. Note that this method does not check lastIndex.
 func (l *Log) segment(i uint64) *segment {
 	s := l.last
 	for s != nil {
@@ -141,6 +161,13 @@ func (l *Log) Append(d []byte) (err error) {
 	return l.last.append(d)
 }
 
+// Sync flushes any newly appended entries to disk.
+//
+// Sync is automatically called by removeLTE, removeGTE and Close.
+// Append does not call Sync. if process/system crashes any newly
+// appended entries after last Sync will be lost.
+//
+// It is recommended to call Sync after batch of Appends.
 func (l *Log) Sync() error {
 	s := l.last
 	for s != nil && s.idx.dirty {
@@ -152,6 +179,11 @@ func (l *Log) Sync() error {
 	return nil
 }
 
+// RemoveGTE removes all entries greater than or equal to
+// given index.
+//
+// If i>lastIndex this does nothing and does not return error.
+// If i<=lastIndex after this operation, lastIndex becomes max(i-1, 0).
 func (l *Log) RemoveGTE(i uint64) error {
 	if err := l.Sync(); err != nil {
 		return err
@@ -178,6 +210,12 @@ func (l *Log) RemoveGTE(i uint64) error {
 	}
 }
 
+// RemoveLTE hints to remove all entries less than or equal to
+// given index. It might not remove all requested entries.
+//
+// This does not change lastIndex of log.
+// If i>=lastIndex, all entries are removed and count becomes zero.
+// If i<lastIndex, it removes only segments whose lastIndex<=i.
 func (l *Log) RemoveLTE(i uint64) error {
 	if err := l.Sync(); err != nil {
 		return err
@@ -205,6 +243,7 @@ func (l *Log) RemoveLTE(i uint64) error {
 	}
 }
 
+// Close syncs and closes the log.
 func (l *Log) Close() error {
 	err := l.Sync()
 	s := l.last
