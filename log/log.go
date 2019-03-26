@@ -1,10 +1,9 @@
 package log
 
 import (
+	"errors"
 	"fmt"
 	"os"
-
-	"github.com/pkg/errors"
 )
 
 // ErrNotFound is the error returned by Get and GetN when requested

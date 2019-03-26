@@ -2,12 +2,11 @@ package raft
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"reflect"
 	"testing"
-
-	"github.com/pkg/errors"
 )
 
 func TestMessages(t *testing.T) {

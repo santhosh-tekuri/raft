@@ -2,12 +2,11 @@ package raft
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"sync"
-
-	"github.com/pkg/errors"
 )
 
 type Vars interface {
