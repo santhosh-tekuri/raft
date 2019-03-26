@@ -48,14 +48,6 @@ func newIndex(file string, cap uint64) (*index, error) {
 	return idx, nil
 }
 
-func (idx *index) entry(i uint64) (off int64, len int) {
-	off, limit := idx.offset(i), idx.offset(i+1)
-	if limit < off {
-		return off, 0
-	}
-	return off, int(limit - off)
-}
-
 func (idx *index) offset(i uint64) int64 {
 	return int64(idx.f.readUint64((i + 1) * 8))
 }

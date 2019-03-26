@@ -31,14 +31,13 @@ func TestIndex(t *testing.T) {
 		}
 		off := int64(0)
 		for i := uint64(0); i < n; i++ {
-			eoff, elen := idx.entry(i)
-			if eoff != off {
-				t.Fatalf("offset(%d): got %d, want %d", i, eoff, off)
-			}
-			if elen != sizes[i] {
-				t.Fatalf("size(%d): got %d, want %d", i, elen, sizes[i])
+			if got := idx.offset(i); got != off {
+				t.Fatalf("offset(%d): got %d, want %d", i, got, off)
 			}
 			off += int64(sizes[i])
+		}
+		if got := idx.offset(n); got != off {
+			t.Fatalf("offset(%d): got %d, want %d", n, got, off)
 		}
 		full := n == cap
 		if got := idx.isFull(); got != full {

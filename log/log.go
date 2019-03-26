@@ -61,15 +61,15 @@ func New(dir string, opt Options) (*Log, error) {
 	}, nil
 }
 
-func (l *Log) LastIndex() (uint64, error) {
-	return l.last.lastIndex(), nil
+func (l *Log) LastIndex() uint64 {
+	return l.last.lastIndex()
 }
 
-func (l *Log) Count() (uint64, error) {
+func (l *Log) Count() uint64 {
 	if l.last.prev == nil {
-		return l.last.idx.n, nil
+		return l.last.idx.n
 	}
-	return (l.last.off - l.first.off) + l.last.idx.n, nil
+	return (l.last.off - l.first.off) + l.last.idx.n
 }
 
 func (l *Log) segment(i uint64) *segment {
@@ -91,7 +91,7 @@ func (l *Log) Get(i uint64) ([]byte, error) {
 	if s == nil {
 		return nil, NotFoundError(i)
 	}
-	return s.get(i), nil
+	return s.get(i, 1), nil
 }
 
 func (l *Log) WriteTo(w io.Writer, i uint64, n uint64) error {
@@ -104,7 +104,7 @@ func (l *Log) WriteTo(w io.Writer, i uint64, n uint64) error {
 		if sn > n {
 			sn = n
 		}
-		if err := s.writeTo(w, i, sn); err != nil {
+		if _, err := w.Write(s.get(i, sn)); err != nil {
 			return err
 		}
 		n -= sn
@@ -113,6 +113,8 @@ func (l *Log) WriteTo(w io.Writer, i uint64, n uint64) error {
 	}
 	return nil
 }
+
+// todo: handle the case where entry size is > maxSegmentSize
 
 func (l *Log) Append(d []byte) (err error) {
 	if l.last.isFull(len(d)) {
@@ -217,6 +219,7 @@ func segments(dir string) ([]uint64, error) {
 	}
 	var offs []uint64
 	for _, m := range matches {
+		m = filepath.Base(m)
 		m = strings.TrimSuffix(m, ".index")
 		i, err := strconv.ParseUint(m, 10, 64)
 		if err != nil {

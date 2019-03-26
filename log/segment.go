@@ -2,7 +2,6 @@ package log
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 )
@@ -55,21 +54,13 @@ func (s *segment) isFull(newEntrySize int) bool {
 	return s.idx.isFull() || s.idx.dataSize+int64(newEntrySize) > s.f.size()
 }
 
-func (s *segment) get(i uint64) []byte {
-	off, n := s.idx.entry(i - s.off)
-	if n == 0 {
-		return nil
-	}
-	return s.f.data[off : off+int64(n)]
-}
-
-func (s *segment) writeTo(w io.Writer, i uint64, n uint64) error {
+func (s *segment) get(i uint64, n uint64) []byte {
+	i -= s.off
 	from, to := s.idx.offset(i), s.idx.offset(i+n)
 	if to < from {
 		return nil
 	}
-	_, err := w.Write(s.f.data[from : to-from])
-	return err
+	return s.f.data[from:to]
 }
 
 func (s *segment) append(b []byte) error {
