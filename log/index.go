@@ -20,19 +20,20 @@ type index struct {
 	dirty    bool
 }
 
-func newIndex(file string, cap uint64) (*index, error) {
+func newIndex(file string, opt Options) (*index, error) {
 	exists, err := fileExists(file)
 	if err != nil {
 		return nil, err
 	}
 	if !exists {
-		fileSize := (int64(cap) + 2) * 8
-		if err = createFile(file, fileSize, make([]byte, 16)); err != nil {
+		fileSize := indexFileSize(opt.MaxSegmentEntries)
+		if err = createFile(file, opt.fileMode, fileSize, make([]byte, 16)); err != nil {
 			return nil, err
 		}
 	}
 
 	// fix cap if necessary
+	cap := uint64(opt.MaxSegmentEntries)
 	info, err := os.Stat(file)
 	if err != nil {
 		return nil, fmt.Errorf("log: stat %s: %v", file, err)
@@ -41,7 +42,7 @@ func newIndex(file string, cap uint64) (*index, error) {
 		cap = fcap
 	}
 
-	f, err := openFile(file)
+	f, err := openFile(file, opt.fileMode)
 	if err != nil {
 		return nil, err
 	}
@@ -141,4 +142,8 @@ func indexes(dir string) ([]uint64, error) {
 
 func indexCap(fileSize int) int {
 	return fileSize/8 - 2
+}
+
+func indexFileSize(cap int) int64 {
+	return (int64(cap) + 2) * 8
 }

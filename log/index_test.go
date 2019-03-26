@@ -15,8 +15,8 @@ func TestIndex(t *testing.T) {
 	if err := os.Remove(f.Name()); err != nil {
 		t.Fatalf("removeTempFile: %v", err)
 	}
-	cap := uint64(6)
-	idx, err := newIndex(f.Name(), cap)
+	opt := Options{0600, 6, 1024 * 1024}
+	idx, err := newIndex(f.Name(), opt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestIndex(t *testing.T) {
 		if got := idx.offset(n); got != off {
 			t.Fatalf("offset(%d): got %d, want %d", n, got, off)
 		}
-		full := n == cap
+		full := n == uint64(opt.MaxSegmentEntries)
 		if got := idx.isFull(); got != full {
 			t.Fatalf("idx.isFull: got %v, want %v", got, full)
 		}
@@ -49,7 +49,7 @@ func TestIndex(t *testing.T) {
 		if err := idx.close(); err != nil {
 			t.Fatal(err)
 		}
-		idx, err = newIndex(f.Name(), cap)
+		idx, err = newIndex(f.Name(), opt)
 		if err != nil {
 			t.Fatal(err)
 		}

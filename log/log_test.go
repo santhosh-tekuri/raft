@@ -326,7 +326,7 @@ func newLog(t *testing.T, maxCount, maxSize int) *Log {
 	if err != nil {
 		t.Fatal(err)
 	}
-	l, err := New(dir, Options{maxCount, maxSize})
+	l, err := Open(dir, 0700, Options{0600, maxCount, maxSize})
 	if err != nil {
 		_ = os.RemoveAll(dir)
 		t.Fatal(err)
@@ -381,7 +381,7 @@ func restart(t *testing.T, l *Log) *Log {
 	if err := l.Close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}
-	l, err := New(l.dir, l.opt)
+	l, err := Open(l.dir, 0700, l.opt)
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}

@@ -18,8 +18,8 @@ func fileExists(name string) (bool, error) {
 	return true, nil
 }
 
-func createFile(name string, size int64, contents []byte) (err error) {
-	f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE, 0600)
+func createFile(name string, mode os.FileMode, size int64, contents []byte) (err error) {
+	f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE, mode)
 	if err != nil {
 		return
 	}
@@ -73,8 +73,8 @@ func (f *mmapFile) writeUint64(v uint64, off int64) error {
 	return err
 }
 
-func openFile(name string) (*mmapFile, error) {
-	f, err := os.OpenFile(name, os.O_RDWR, 0600)
+func openFile(name string, mode os.FileMode) (*mmapFile, error) {
+	f, err := os.OpenFile(name, os.O_RDWR, mode)
 	if err != nil {
 		return nil, fmt.Errorf("log: openFile %s: %v", name, err)
 	}

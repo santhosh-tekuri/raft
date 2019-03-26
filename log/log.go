@@ -2,6 +2,7 @@ package log
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/pkg/errors"
 )
@@ -9,6 +10,7 @@ import (
 var ErrNotFound = errors.New("log: entry not found")
 
 type Options struct {
+	fileMode          os.FileMode
 	MaxSegmentEntries int
 	MaxSegmentSize    int
 }
@@ -31,6 +33,11 @@ func (o Options) validate() error {
 
 // -------------------------------------------------------------------------------
 
+// Log is storage abstraction of an append-only,
+// totally ordered sequence of records ordered by time.
+//
+// Log entries start from zero index. The entry is opaque
+// []byte
 type Log struct {
 	dir   string
 	first *segment
@@ -38,8 +45,13 @@ type Log struct {
 	opt   Options
 }
 
-func New(dir string, opt Options) (*Log, error) {
+// Open creates and opens log at the given path.
+// If the dir does not exist then it will be created automatically.
+func Open(dir string, dirMode os.FileMode, opt Options) (*Log, error) {
 	if err := opt.validate(); err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(dir, dirMode); err != nil {
 		return nil, err
 	}
 	first, last, err := openSegments(dir, opt)
