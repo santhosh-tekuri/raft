@@ -4,6 +4,10 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
 )
 
 var byteOrder = binary.LittleEndian
@@ -105,4 +109,32 @@ func (idx *index) close() error {
 
 func (idx *index) remove() error {
 	return os.Remove(idx.f.Name())
+}
+
+// helpers -------------------------------------
+
+func indexFile(dir string, off uint64) string {
+	return filepath.Join(dir, fmt.Sprintf("%d.index", off))
+}
+
+// indexes return list of indexes by its offset in increasing order.
+func indexes(dir string) ([]uint64, error) {
+	matches, err := filepath.Glob(filepath.Join(dir, "*.index"))
+	if err != nil {
+		return nil, err
+	}
+	var offs []uint64
+	for _, m := range matches {
+		m = filepath.Base(m)
+		m = strings.TrimSuffix(m, ".index")
+		i, err := strconv.ParseUint(m, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		offs = append(offs, i)
+	}
+	sort.Slice(offs, func(i, j int) bool {
+		return offs[i] < offs[j]
+	})
+	return offs, nil
 }

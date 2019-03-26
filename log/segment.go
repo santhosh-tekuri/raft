@@ -103,3 +103,16 @@ func (s *segment) remove() error {
 	}
 	return err2
 }
+
+// helpers -------------------------------------
+
+func segmentFile(dir string, off uint64) string {
+	return filepath.Join(dir, fmt.Sprintf("%d.log", off))
+}
+
+func removeSegment(dir string, off uint64) error {
+	if err := os.RemoveAll(indexFile(dir, off)); err != nil {
+		return err
+	}
+	return os.RemoveAll(segmentFile(dir, off))
+}

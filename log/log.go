@@ -2,11 +2,6 @@ package log
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
-	"sort"
-	"strconv"
-	"strings"
 )
 
 type NotFoundError uint64
@@ -210,34 +205,13 @@ func (l *Log) IsNotFound(err error) bool {
 
 // helpers --------------------------------------------------------
 
-func segments(dir string) ([]uint64, error) {
-	matches, err := filepath.Glob(filepath.Join(dir, "*.index"))
-	if err != nil {
-		return nil, err
-	}
-	var offs []uint64
-	for _, m := range matches {
-		m = filepath.Base(m)
-		m = strings.TrimSuffix(m, ".index")
-		i, err := strconv.ParseUint(m, 10, 64)
-		if err != nil {
-			return nil, err
-		}
-		offs = append(offs, i)
-	}
-	sort.Slice(offs, func(i, j int) bool {
-		return offs[i] < offs[j]
-	})
-	if len(offs) == 0 {
-		offs = append(offs, 0)
-	}
-	return offs, nil
-}
-
 func openSegments(dir string, opt Options) (first, last *segment, err error) {
-	offs, err := segments(dir)
+	offs, err := indexes(dir)
 	if err != nil {
 		return
+	}
+	if len(offs) == 0 {
+		offs = append(offs, 0)
 	}
 
 	loaded := make(map[uint64]bool)
@@ -254,11 +228,9 @@ func openSegments(dir string, opt Options) (first, last *segment, err error) {
 			break
 		}
 		off := last.lastIndex() + 1
-		exists, err = fileExists(filepath.Join(dir, fmt.Sprintf("%d.index", off)))
-		if err != nil {
+		if exists, err = fileExists(indexFile(dir, off)); err != nil {
 			return
-		}
-		if !exists {
+		} else if !exists {
 			break
 		}
 		s, err = newSegment(dir, off, opt)
@@ -279,15 +251,6 @@ func openSegments(dir string, opt Options) (first, last *segment, err error) {
 		}
 	}
 	return
-}
-
-func removeSegment(dir string, off uint64) error {
-	index := filepath.Join(dir, fmt.Sprintf("%d.index", off))
-	if err := os.RemoveAll(index); err != nil {
-		return err
-	}
-	data := filepath.Join(dir, fmt.Sprintf("%d.log", off))
-	return os.RemoveAll(data)
 }
 
 // linked list ----------------------------------------------
