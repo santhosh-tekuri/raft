@@ -12,6 +12,7 @@ func TestIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tempFile: %v", err)
 	}
+	_ = f.Close()
 	if err := os.Remove(f.Name()); err != nil {
 		t.Fatalf("removeTempFile: %v", err)
 	}
