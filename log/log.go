@@ -122,6 +122,16 @@ func (l *Log) segment(i uint64) *segment {
 	return nil
 }
 
+// Get returns i-th entry.
+//
+// This method is supposed to be called for i<=lastIndex.
+// It returns ErrNotFound, if i < firstIndex or
+// index lies beyond last segment. This might
+// return nil error, for i > lastIndex.
+//
+// This method does not check for i>lastIndex, in order to
+// avoid synchronization. Caller of this method has to do
+// such check.
 func (l *Log) Get(i uint64) ([]byte, error) {
 	s := l.segment(i)
 	if s == nil {
@@ -130,6 +140,17 @@ func (l *Log) Get(i uint64) ([]byte, error) {
 	return s.get(i, 1), nil
 }
 
+// GetN returns N entries from i-th entry, inclusive.
+// This returns one []byte per segment.
+//
+// This method is supposed to be called for valid indexes.
+// It returns ErrNotFound, if i < firstIndex or
+// indexes lies beyond last segment. This might
+// return nil error, for entries > lastIndex
+//
+// This method does not check for entries >lastIndex, in order to
+// avoid synchronization. Caller of this method has to do
+// such check.
 func (l *Log) GetN(i, n uint64) ([][]byte, error) {
 	s := l.segment(i)
 	if s == nil {
