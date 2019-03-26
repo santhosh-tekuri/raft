@@ -37,7 +37,7 @@ func newIndex(file string, cap uint64) (*index, error) {
 	if err != nil {
 		return nil, fmt.Errorf("log: stat %s: %v", file, err)
 	}
-	if fcap := uint64(info.Size()/8 - 2); fcap > cap {
+	if fcap := uint64(indexCap(int(info.Size()))); fcap > cap {
 		cap = fcap
 	}
 
@@ -137,4 +137,8 @@ func indexes(dir string) ([]uint64, error) {
 		return offs[i] < offs[j]
 	})
 	return offs, nil
+}
+
+func indexCap(fileSize int) int {
+	return fileSize/8 - 2
 }

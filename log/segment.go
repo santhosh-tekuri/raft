@@ -22,7 +22,7 @@ func newSegment(dir string, off uint64, opt Options) (*segment, error) {
 		return nil, err
 	}
 	if !exists {
-		if err = createFile(file, opt.MaxSegmentSize, nil); err != nil {
+		if err = createFile(file, int64(opt.MaxSegmentSize), nil); err != nil {
 			return nil, err
 		}
 	}
@@ -32,7 +32,7 @@ func newSegment(dir string, off uint64, opt Options) (*segment, error) {
 		return nil, err
 	}
 
-	idx, err := newIndex(indexFile(dir, off), opt.MaxSegmentEntries)
+	idx, err := newIndex(indexFile(dir, off), uint64(opt.MaxSegmentEntries))
 	if err != nil {
 		return nil, err
 	}

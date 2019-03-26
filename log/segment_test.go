@@ -13,7 +13,7 @@ func TestSegment(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(dir)
-	off, cap := uint64(5), uint64(6)
+	off, cap := uint64(5), 6
 	opt := Options{cap, 1024 * 1024}
 	s, err := newSegment(dir, off, opt)
 	if err != nil {
@@ -35,7 +35,7 @@ func TestSegment(t *testing.T) {
 				t.Fatalf("s.get(%d): got %s, want %s", j, string(b), data[i])
 			}
 		}
-		full := n == cap
+		full := n == uint64(cap)
 		if got := s.idx.isFull(); got != full {
 			t.Fatalf("s.idx.isFull: got %v, want %v", got, full)
 		}

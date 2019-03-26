@@ -11,14 +11,20 @@ func (e NotFoundError) Error() string {
 }
 
 type Options struct {
-	MaxSegmentEntries uint64
-	MaxSegmentSize    int64
+	MaxSegmentEntries int
+	MaxSegmentSize    int
 }
 
 func (o Options) validate() error {
 	if o.MaxSegmentEntries <= 0 {
 		return fmt.Errorf("log: maxSegmentEntries is <=0")
 	}
+	maxInt := int(^uint(0) >> 1)
+	maxCap := indexCap(maxInt)
+	if o.MaxSegmentEntries > maxCap {
+		return fmt.Errorf("log: maxSegmentEntries is >%d", maxCap)
+	}
+
 	if o.MaxSegmentSize <= 0 {
 		return fmt.Errorf("log: maxSegmentSize is <=0")
 	}

@@ -320,7 +320,7 @@ func TestLog_GetN(t *testing.T) {
 
 // helpers ---------------------------------------------------------------------------
 
-func newLog(t *testing.T, maxCount uint64, maxSize int64) *Log {
+func newLog(t *testing.T, maxCount, maxSize int) *Log {
 	t.Helper()
 	dir, err := ioutil.TempDir("", "log")
 	if err != nil {
