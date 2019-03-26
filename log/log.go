@@ -2,7 +2,6 @@ package log
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -94,24 +93,23 @@ func (l *Log) Get(i uint64) ([]byte, error) {
 	return s.get(i, 1), nil
 }
 
-func (l *Log) WriteTo(w io.Writer, i uint64, n uint64) error {
+func (l *Log) GetN(i, n uint64) ([][]byte, error) {
 	s := l.segment(i)
 	if s == nil {
-		return NotFoundError(i)
+		return nil, NotFoundError(i)
 	}
+	var buffs [][]byte
 	for n > 0 {
 		sn := s.idx.cap - (i - s.off)
 		if sn > n {
 			sn = n
 		}
-		if _, err := w.Write(s.get(i, sn)); err != nil {
-			return err
-		}
+		buffs = append(buffs, s.get(i, sn))
 		n -= sn
 		i += sn
 		s = s.next
 	}
-	return nil
+	return buffs, nil
 }
 
 // todo: handle the case where entry size is > maxSegmentSize

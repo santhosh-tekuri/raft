@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math"
+	"net"
 	"os"
 	"testing"
 )
@@ -263,7 +264,7 @@ func TestLog_Get_notFoundError(t *testing.T) {
 	}
 }
 
-func TestLog_WriteTo(t *testing.T) {
+func TestLog_GetN(t *testing.T) {
 	l := newLog(t, 10, 1024*1024)
 	defer os.RemoveAll(l.dir)
 	appendEntries(t, l, 0, 35)
@@ -294,8 +295,13 @@ func TestLog_WriteTo(t *testing.T) {
 	runTest := func(test test) {
 		t.Run(test.name, func(t *testing.T) {
 			for i := 0; i <= 1; i++ {
+				buffs, err := l.GetN(test.i, test.n)
+				if err != nil {
+					t.Fatal(err)
+				}
+				nbuffs := net.Buffers(buffs)
 				buf := new(bytes.Buffer)
-				if err := l.WriteTo(buf, test.i, test.n); err != nil {
+				if _, err := nbuffs.WriteTo(buf); err != nil {
 					t.Fatal(err)
 				}
 				if !bytes.Equal(buf.Bytes(), test.b) {
