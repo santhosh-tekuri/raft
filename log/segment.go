@@ -16,7 +16,7 @@ type segment struct {
 }
 
 func newSegment(dir string, off uint64, opt Options) (*segment, error) {
-	file := filepath.Join(dir, fmt.Sprintf("%d.log", off))
+	file := segmentFile(dir, off)
 	exists, err := fileExists(file)
 	if err != nil {
 		return nil, err
@@ -32,7 +32,7 @@ func newSegment(dir string, off uint64, opt Options) (*segment, error) {
 		return nil, err
 	}
 
-	idx, err := newIndex(filepath.Join(dir, fmt.Sprintf("%d.index", off)), opt.MaxSegmentEntries)
+	idx, err := newIndex(indexFile(dir, off), opt.MaxSegmentEntries)
 	if err != nil {
 		return nil, err
 	}

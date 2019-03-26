@@ -18,19 +18,6 @@ func fileExists(name string) (bool, error) {
 	return true, nil
 }
 
-func dirExists(name string) (bool, error) {
-	info, err := os.Stat(name)
-	if os.IsNotExist(err) {
-		return false, nil
-	} else if err != nil {
-		return false, err
-	}
-	if !info.IsDir() {
-		return false, fmt.Errorf("log: file found at %s", name)
-	}
-	return true, nil
-}
-
 func createFile(name string, size int64, contents []byte) (err error) {
 	f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {

@@ -214,39 +214,25 @@ func openSegments(dir string, opt Options) (first, last *segment, err error) {
 		offs = append(offs, 0)
 	}
 
-	loaded := make(map[uint64]bool)
-	first, err = newSegment(dir, offs[0], opt)
-	if err != nil {
+	if first, err = newSegment(dir, offs[0], opt); err != nil {
 		return
 	}
-	loaded[offs[0]] = true
-
 	last = first
-	s, exists := (*segment)(nil), false
-	for {
-		if last.idx.n == 0 {
-			break
-		}
-		off := last.lastIndex() + 1
-		if exists, err = fileExists(indexFile(dir, off)); err != nil {
-			return
-		} else if !exists {
-			break
-		}
-		s, err = newSegment(dir, off, opt)
-		if err != nil {
-			return
-		}
-		connect(last, s)
-		last = s
-		loaded[off] = true
-	}
+	offs = offs[1:]
 
-	// remove dangling segments if any
+	var s *segment
 	for _, off := range offs {
-		if !loaded[off] {
-			if e := removeSegment(dir, off); e != nil {
-				err = e
+		if last.idx.n > 0 && off == last.lastIndex()+1 {
+			if s, err = newSegment(dir, off, opt); err != nil {
+				return
+			}
+			connect(last, s)
+			last = s
+			offs = offs[1:]
+		} else {
+			// dangling segment: remove it
+			if err = removeSegment(dir, off); err == nil {
+				return
 			}
 		}
 	}
