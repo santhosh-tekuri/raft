@@ -210,9 +210,7 @@ func (l *Log) RemoveGTE(i uint64) (err error) {
 		if err = s.removeGTE(i); err != nil {
 			return
 		}
-		if s != l.last {
-			err = closeSegments(s.next, l.last, true)
-		}
+		err = closeSegments(s.next, l.last, true)
 		l.last = s
 		s.next = nil
 		return
@@ -225,30 +223,29 @@ func (l *Log) RemoveGTE(i uint64) (err error) {
 // This does not change lastIndex of log.
 // If i>=lastIndex, all entries are removed and count becomes zero.
 // If i<lastIndex, it removes only segments whose lastIndex<=i.
-func (l *Log) RemoveLTE(i uint64) error {
-	if err := l.Sync(); err != nil {
-		return err
+func (l *Log) RemoveLTE(i uint64) (err error) {
+	if err = l.Sync(); err != nil {
+		return
 	}
-	var err error
-	for {
-		if l.first.idx.n > 0 && l.first.lastIndex() <= i {
-			next := l.first.next
-			if next == nil {
-				next, err = newSegment(l.dir, l.first.lastIndex()+1, l.opt)
-				if err != nil {
-					_ = removeSegment(l.dir, l.first.lastIndex()+1)
-					return err
-				}
-				l.last = next
-			} else {
-				disconnect(l.first, next)
+	var s *segment
+	switch {
+	case i < l.FirstIndex():
+		return nil
+	case i >= l.LastIndex():
+		if l.last.idx.n > 0 {
+			if s, err = newSegment(l.dir, l.LastIndex()+1, l.opt); err != nil {
+				return
 			}
-			_ = l.first.close()
-			_ = l.first.remove()
-			l.first = next
-		} else {
-			return nil
+			err = closeSegments(l.first, l.last, true)
+			l.first, l.last = s, s
 		}
+		return
+	default:
+		s := l.segment(i + 1)
+		err = closeSegments(l.first, s.prev, true)
+		l.first = s
+		s.prev = nil
+		return
 	}
 }
 
