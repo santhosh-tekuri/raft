@@ -68,10 +68,7 @@ func Open(dir string, dirMode os.FileMode, opt Options) (*Log, error) {
 	}
 	first, last, err := openSegments(dir, opt)
 	if err != nil {
-		for last != nil {
-			_ = last.close()
-			last = last.prev
-		}
+		_ = closeSegments(first, last, false)
 		return nil, err
 	}
 
@@ -83,7 +80,16 @@ func Open(dir string, dirMode os.FileMode, opt Options) (*Log, error) {
 	}, nil
 }
 
+// FirstIndex returns index of first entry.
+//
+// Note that there will be no entry at this
+// index if Count is zero.
+func (l *Log) FirstIndex() uint64 {
+	return l.first.off
+}
+
 // LastIndex returns index of last entry.
+//
 // Note that there will be no entry at this
 // index if Count is zero.
 func (l *Log) LastIndex() uint64 {
@@ -184,29 +190,32 @@ func (l *Log) Sync() error {
 //
 // If i>lastIndex this does nothing and does not return error.
 // If i<=lastIndex after this operation, lastIndex becomes max(i-1, 0).
-func (l *Log) RemoveGTE(i uint64) error {
-	if err := l.Sync(); err != nil {
-		return err
+func (l *Log) RemoveGTE(i uint64) (err error) {
+	if err = l.Sync(); err != nil {
+		return
 	}
-	var err error
-	for {
-		if l.last.off > i { // remove it
-			prev := l.last.prev
-			if prev == nil {
-				prev, err = newSegment(l.dir, i, l.opt)
-				if err != nil {
-					return err
-				}
-				l.first = prev
-			} else {
-				disconnect(prev, l.last)
-			}
-			_ = l.last.close()
-			_ = l.last.remove()
-			l.last = prev
-		} else if l.last.off <= i { // do rtrim
-			return l.last.removeGTE(i)
+	var s *segment
+	switch {
+	case i > l.LastIndex():
+		return
+	case i < l.FirstIndex():
+		if s, err = newSegment(l.dir, i, l.opt); err != nil {
+			return
 		}
+		err = closeSegments(l.first, l.last, true)
+		l.first, l.last = s, s
+		return
+	default:
+		s = l.segment(i)
+		if err = s.removeGTE(i); err != nil {
+			return
+		}
+		if s != l.last {
+			err = closeSegments(s.next, l.last, true)
+		}
+		l.last = s
+		s.next = nil
+		return
 	}
 }
 
@@ -290,6 +299,26 @@ func openSegments(dir string, opt Options) (first, last *segment, err error) {
 		}
 	}
 	return
+}
+
+func closeSegments(first, last *segment, remove bool) (err error) {
+	if first == nil || last == nil {
+		return
+	}
+	for {
+		if e := first.close(); err == nil {
+			err = e
+		}
+		if remove {
+			if e := first.remove(); err == nil {
+				err = e
+			}
+		}
+		if first == last {
+			return
+		}
+		first = first.next
+	}
 }
 
 // linked list ----------------------------------------------
