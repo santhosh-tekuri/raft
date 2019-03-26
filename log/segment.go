@@ -22,12 +22,12 @@ func newSegment(dir string, off uint64, opt Options) (*segment, error) {
 		return nil, err
 	}
 	if !exists {
-		if err = createFile(file, opt.fileMode, int64(opt.MaxSegmentSize), nil); err != nil {
+		if err = createFile(file, opt.FileMode, int64(opt.MaxSegmentSize), nil); err != nil {
 			return nil, err
 		}
 	}
 
-	f, err := openFile(file, opt.fileMode)
+	f, err := openFile(file, opt.FileMode)
 	if err != nil {
 		return nil, err
 	}

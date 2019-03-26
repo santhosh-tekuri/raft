@@ -27,7 +27,7 @@ func newIndex(file string, opt Options) (*index, error) {
 	}
 	if !exists {
 		fileSize := indexFileSize(opt.MaxSegmentEntries)
-		if err = createFile(file, opt.fileMode, fileSize, make([]byte, 16)); err != nil {
+		if err = createFile(file, opt.FileMode, fileSize, make([]byte, 16)); err != nil {
 			return nil, err
 		}
 	}
@@ -42,7 +42,7 @@ func newIndex(file string, opt Options) (*index, error) {
 		cap = fcap
 	}
 
-	f, err := openFile(file, opt.fileMode)
+	f, err := openFile(file, opt.FileMode)
 	if err != nil {
 		return nil, err
 	}
