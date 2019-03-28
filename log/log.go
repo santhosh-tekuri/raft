@@ -122,7 +122,7 @@ func (l *Log) GetN(i uint64, n uint64) ([][]byte, error) {
 }
 
 func (l *Log) Append(b []byte) error {
-	if !l.last.canAppend(b) {
+	if l.last.available() < len(b) {
 		s, err := openSegment(l.dir, l.LastIndex(), l.opt)
 		if err != nil {
 			return err

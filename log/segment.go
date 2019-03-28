@@ -67,9 +67,8 @@ func (s *segment) get(i uint64, n uint64) []byte {
 	return s.file.Data[from:to]
 }
 
-func (s *segment) canAppend(b []byte) bool {
-	avail := s.at(s.n+1) - s.size
-	return avail >= int64(len(b)+8)
+func (s *segment) available() int {
+	return int(s.at(s.n+2) - s.size)
 }
 
 func (s *segment) append(b []byte) error {

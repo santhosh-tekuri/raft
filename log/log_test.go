@@ -13,6 +13,7 @@ import (
 func TestOpen(t *testing.T) {
 	l := newLog(t, 1024)
 
+	assertInt(t, "available", l.last.available(), 1024-3*8)
 	assertInt(t, "numSegments", numSegments(l), 1)
 	assertUint64(t, "prevIndex", l.PrevIndex(), 0)
 	assertUint64(t, "lastIndex", l.LastIndex(), 0)
