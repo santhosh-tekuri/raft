@@ -54,6 +54,9 @@ func TestLog_Get(t *testing.T) {
 			n++
 			appendEntry(t, l)
 		}
+		if err := l.Sync(); err != nil {
+			t.Fatal(err)
+		}
 		numSeg += 2
 
 		for i := 0; i <= 1; i++ {
@@ -84,6 +87,9 @@ func TestLog_GetN(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		n++
 		appendEntry(t, l)
+	}
+	if err := l.Sync(); err != nil {
+		t.Fatal(err)
 	}
 
 	checkGetN(t, l, 1, 0, nil)
@@ -152,6 +158,9 @@ func TestLog_ViewAt(t *testing.T) {
 		n++
 		appendEntry(t, l)
 	}
+	if err := l.Sync(); err != nil {
+		t.Fatal(err)
+	}
 
 	checkView := func(v *Log, segsWant []uint64) {
 		t.Helper()
@@ -194,6 +203,9 @@ func TestLog_ViewAt(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if err := l.Sync(); err != nil {
+		t.Fatal(err)
+	}
 	stop <- struct{}{}
 	<-stop
 	checkGet(t, l)
@@ -212,6 +224,9 @@ func TestLog_RemoveLTE(t *testing.T) {
 		for i := 0; i < 10; i++ {
 			n++
 			appendEntry(t, l)
+		}
+		if err := l.Sync(); err != nil {
+			t.Fatal(err)
 		}
 		return l
 	}
@@ -306,6 +321,9 @@ func TestLog_RemoveGTE(t *testing.T) {
 		for i := 0; i < 10; i++ {
 			n++
 			appendEntry(t, l)
+		}
+		if err := l.Sync(); err != nil {
+			t.Fatal(err)
 		}
 		return l
 	}

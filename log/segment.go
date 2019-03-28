@@ -1,7 +1,9 @@
 package log
 
 import (
+	"bufio"
 	"encoding/binary"
+	"io"
 	"os"
 
 	"github.com/santhosh-tekuri/raft/mmap"
@@ -15,9 +17,10 @@ type segment struct {
 	next      *segment
 
 	file  *mmap.File // index file
-	n     uint64     // number of entries
-	size  int64      // log size
-	dirty bool       // is sync needed ?
+	bufw  *bufio.Writer
+	n     uint64 // number of entries
+	size  int64  // log size
+	dirty bool   // is sync needed ?
 	sync1 bool
 }
 
@@ -34,9 +37,18 @@ func openSegment(dir string, prevIndex uint64, opt Options) (*segment, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &segment{prevIndex: prevIndex, file: file, sync1: opt.SyncTogether}
+	s := &segment{
+		prevIndex: prevIndex,
+		file:      file,
+		bufw:      bufio.NewWriter(file.File),
+		sync1:     opt.SyncTogether,
+	}
 	s.n = uint64(s.offset(0))
 	s.size = int64(s.offset(s.n + 1))
+	if _, err := s.file.Seek(s.size, io.SeekStart); err != nil {
+		_ = s.close()
+		return s, err
+	}
 	return s, nil
 }
 
@@ -73,7 +85,7 @@ func (s *segment) available() int {
 }
 
 func (s *segment) append(b []byte) error {
-	if _, err := s.file.WriteAt(b, s.size); err != nil {
+	if _, err := s.bufw.Write(b); err != nil {
 		return err
 	}
 	size := s.size + int64(len(b))
@@ -91,12 +103,22 @@ func (s *segment) removeGTE(i uint64) error {
 			return err
 		}
 		s.n, s.size, s.dirty = n, int64(s.offset(n+1)), true
+		if _, err := s.file.Seek(s.size, io.SeekStart); err != nil {
+			return err
+		}
 	}
 	return s.sync()
 }
 
+func (s *segment) flush() error {
+	return s.bufw.Flush()
+}
+
 func (s *segment) sync() error {
 	if s.dirty {
+		if err := s.bufw.Flush(); err != nil {
+			return err
+		}
 		if !s.sync1 {
 			if err := s.file.SyncData(); err != nil {
 				return err
