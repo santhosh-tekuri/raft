@@ -207,10 +207,10 @@ func TestLog_RemoveLTE(t *testing.T) {
 	_, err = l.GetN(l.PrevIndex(), 50)
 	checkErrNotFound(t, err)
 
-	removeLTE(lastIndex+999, []uint64{lastIndex})
-	removeLTE(lastIndex+100, []uint64{lastIndex})
-	removeLTE(lastIndex+1, []uint64{lastIndex})
-	removeLTE(lastIndex, []uint64{lastIndex})
+	removeLTE(lastIndex+999, segs[nseg-1:])
+	removeLTE(lastIndex+100, segs[nseg-1:])
+	removeLTE(lastIndex+1, segs[nseg-1:])
+	removeLTE(lastIndex, segs[nseg-1:])
 
 	removeLTE(lastIndex-1, segs[nseg-1:])
 	removeLTE(lastIndex-10, segs[nseg-1:])

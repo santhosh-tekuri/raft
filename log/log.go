@@ -147,26 +147,15 @@ func (l *Log) RemoveLTE(i uint64) error {
 	if err := l.Sync(); err != nil {
 		return err
 	}
-	lastIndex := l.LastIndex()
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	for {
+	for l.first != l.last {
 		if l.first.n > 0 && l.first.lastIndex() <= i {
 			s := l.first
 			l.first = l.first.next
-			if l.first != nil {
-				disconnect(l.first.prev, l.first)
-			}
+			disconnect(l.first.prev, l.first)
 			if err := s.closeAndRemove(); err != nil {
 				return err
-			}
-			if l.first == nil {
-				s, err := openSegment(l.dir, lastIndex, l.opt)
-				if err != nil {
-					return err
-				}
-				l.first, l.last = s, s
-				break
 			}
 		} else {
 			break
