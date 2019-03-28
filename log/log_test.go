@@ -23,7 +23,7 @@ func TestOpen(t *testing.T) {
 	_, err := l.Get(0)
 	checkErrNotFound(t, err)
 	checkPanic(t, func() {
-		_, _ = l.Get(1000) // beyond last segment
+		_, _ = l.Get(1) // beyond last segment
 	})
 }
 
@@ -66,7 +66,7 @@ func TestLog_Get(t *testing.T) {
 			_, err := l.Get(0)
 			checkErrNotFound(t, err)
 			checkPanic(t, func() {
-				_, _ = l.Get(n + 1000) // beyond last segment
+				_, _ = l.Get(n + 1) // beyond last segment
 			})
 			l = reopen(t, l)
 		}
@@ -130,7 +130,7 @@ func TestLog_GetN(t *testing.T) {
 	checkGetN(t, l, from, to-from, msgs(from, to-from))
 
 	checkPanic(t, func() {
-		_, _ = l.GetN(l.LastIndex(), 1000)
+		_, _ = l.GetN(l.LastIndex(), 2)
 	})
 	checkPanic(t, func() {
 		_, _ = l.GetN(1, 100000)
@@ -508,6 +508,7 @@ func checkErrNotFound(t *testing.T, err error) {
 func checkPanic(t *testing.T, f func()) {
 	t.Helper()
 	defer func() {
+		t.Helper()
 		if recover() == nil {
 			t.Fatal("expected panic")
 		}

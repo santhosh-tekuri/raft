@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"sync"
 )
 
 var ErrNotFound = errors.New("log: entry not found")
@@ -26,9 +25,9 @@ type Log struct {
 	dir string
 	opt Options
 
-	mu    sync.RWMutex
-	first *segment
-	last  *segment
+	first     *segment
+	last      *segment
+	lastIndex *uint64
 }
 
 func Open(dir string, dirMode os.FileMode, opt Options) (*Log, error) {
@@ -57,35 +56,58 @@ func Open(dir string, dirMode os.FileMode, opt Options) (*Log, error) {
 	}, nil
 }
 
+func (l *Log) ViewAt(prevIndex, lastIndex uint64) *Log {
+	if prevIndex > lastIndex || prevIndex < l.PrevIndex() || lastIndex > l.LastIndex() {
+		return nil
+	}
+	first := l.first
+	for {
+		if prevIndex >= first.prevIndex {
+			break
+		}
+		first = first.next
+	}
+	return &Log{
+		dir:       l.dir,
+		opt:       l.opt,
+		first:     first,
+		last:      l.segment(lastIndex),
+		lastIndex: &lastIndex,
+	}
+}
+
+func (l *Log) View() *Log {
+	return l.ViewAt(l.PrevIndex(), l.LastIndex())
+}
+
 func (l *Log) PrevIndex() uint64 {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
 	return l.first.prevIndex
 }
 
 func (l *Log) LastIndex() uint64 {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
+	if l.lastIndex != nil {
+		return *l.lastIndex
+	}
 	return l.last.lastIndex()
 }
 
 func (l *Log) Count() uint64 {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-	return l.last.lastIndex() - l.first.prevIndex
+	return l.LastIndex() - l.PrevIndex()
 }
 
 func (l *Log) segment(i uint64) *segment {
-	l.mu.RLock()
-	s := l.last
-	for s != nil {
-		if i > s.prevIndex {
-			break
-		}
-		s = s.prev
+	if i > l.LastIndex() {
+		panic(fmt.Sprintf("log: %d>lastIndex(%d)", i, l.LastIndex()))
 	}
-	l.mu.RUnlock()
-	return s
+	if i <= l.PrevIndex() {
+		return nil
+	}
+	for s := l.last; s != nil; s = s.prev {
+		if i > s.prevIndex {
+			return s
+		}
+	}
+	return nil
 }
 
 func (l *Log) Get(i uint64) ([]byte, error) {
@@ -97,12 +119,13 @@ func (l *Log) Get(i uint64) ([]byte, error) {
 }
 
 func (l *Log) GetN(i uint64, n uint64) ([][]byte, error) {
+	if i+n-1 > l.LastIndex() {
+		panic(fmt.Sprintf("log: %d>lastIndex(%d)", i+n-1, l.LastIndex()))
+	}
 	s := l.segment(i)
 	if s == nil {
 		return nil, ErrNotFound
 	}
-	l.mu.RLock()
-	defer l.mu.RUnlock()
 	var buffs [][]byte
 	for n > 0 {
 		if s == l.last {
@@ -135,10 +158,8 @@ func (l *Log) Append(b []byte) error {
 			return err
 		}
 		s.dirty = l.last.dirty
-		l.mu.Lock()
 		connect(l.last, s)
 		l.last = s
-		l.mu.Unlock()
 	}
 	return l.last.append(b)
 }
@@ -147,8 +168,6 @@ func (l *Log) RemoveLTE(i uint64) error {
 	if err := l.Sync(); err != nil {
 		return err
 	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
 	for l.first != l.last {
 		if l.first.n > 0 && l.first.lastIndex() <= i {
 			s := l.first
@@ -168,8 +187,6 @@ func (l *Log) RemoveGTE(i uint64) error {
 	if err := l.Sync(); err != nil {
 		return err
 	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
 	for {
 		if i <= l.last.prevIndex+1 {
 			if l.last == l.first && i == l.last.prevIndex+1 {
