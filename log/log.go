@@ -76,13 +76,15 @@ func (l *Log) Count() uint64 {
 
 func (l *Log) segment(i uint64) *segment {
 	l.mu.RLock()
-	defer l.mu.RUnlock()
-	for s := l.last; s != nil; s = s.prev {
+	s := l.last
+	for s != nil {
 		if i > s.prevIndex {
-			return s
+			break
 		}
+		s = s.prev
 	}
-	return nil
+	l.mu.RUnlock()
+	return s
 }
 
 func (l *Log) Get(i uint64) ([]byte, error) {
