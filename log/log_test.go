@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"net"
 	"os"
 	"reflect"
@@ -24,6 +25,24 @@ func TestOpen(t *testing.T) {
 	checkPanic(t, func() {
 		_, _ = l.Get(1000) // beyond last segment
 	})
+}
+
+func TestSegmentSize(t *testing.T) {
+	l := newLog(t, 1024)
+
+	b := make([]byte, l.last.available()+1)
+	rand.Read(b)
+	if err := l.Append(b); err != ErrExceedsSegmentSize {
+		t.Fatalf("got %v, want ErrExceedsSegmentSize", err)
+	}
+	if err := l.Append(b[:len(b)-1]); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Append(b); err != nil {
+		t.Fatal(err)
+	}
+	assertInt(t, "numSegments", numSegments(l), 2)
+	assertInt(t, "segmentSize", l.opt.SegmentSize, 1025)
 }
 
 func TestLog_Get(t *testing.T) {

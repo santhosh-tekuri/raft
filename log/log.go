@@ -8,6 +8,7 @@ import (
 )
 
 var ErrNotFound = errors.New("log: entry not found")
+var ErrExceedsSegmentSize = errors.New("log: entry exceeds segment size")
 
 type Options struct {
 	FileMode    os.FileMode
@@ -15,7 +16,7 @@ type Options struct {
 }
 
 func (o Options) validate() error {
-	if o.SegmentSize <= 24 {
+	if o.SegmentSize < 1024 {
 		return fmt.Errorf("log: SegmentSize %d is too smal", o.SegmentSize)
 	}
 	return nil
@@ -123,6 +124,12 @@ func (l *Log) GetN(i uint64, n uint64) ([][]byte, error) {
 
 func (l *Log) Append(b []byte) error {
 	if l.last.available() < len(b) {
+		if l.last.n == 0 {
+			return ErrExceedsSegmentSize
+		}
+		if len(b) > l.opt.SegmentSize-3*8 {
+			l.opt.SegmentSize = len(b) + 3*8
+		}
 		s, err := openSegment(l.dir, l.LastIndex(), l.opt)
 		if err != nil {
 			return err
