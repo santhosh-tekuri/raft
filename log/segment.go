@@ -1,118 +1,133 @@
 package log
 
 import (
-	"fmt"
+	"encoding/binary"
 	"os"
-	"path/filepath"
+
+	"github.com/santhosh-tekuri/raft/mmap"
 )
 
+var byteOrder = binary.LittleEndian
+
 type segment struct {
-	off   uint64
-	idx   *index
-	f     *mmapFile
-	prev  *segment
-	next  *segment
-	dirty bool
+	prevIndex uint64
+	prev      *segment
+	next      *segment
+
+	file  *mmap.File // index file
+	n     uint64     // number of entries
+	size  int64      // log size
+	dirty bool       // is sync needed ?
 }
 
-func newSegment(dir string, off uint64, opt Options) (*segment, error) {
-	file := segmentFile(dir, off)
-	exists, err := fileExists(file)
-	if err != nil {
+func openSegment(dir string, prevIndex uint64, opt Options) (*segment, error) {
+	f := segmentFile(dir, prevIndex)
+	if exists, err := fileExists(f); err != nil {
 		return nil, err
-	}
-	if !exists {
-		if err = createFile(file, opt.FileMode, int64(opt.MaxSegmentSize), nil); err != nil {
+	} else if !exists {
+		if err = createSegment(f, opt); err != nil {
 			return nil, err
 		}
 	}
-
-	f, err := openFile(file, opt.FileMode)
+	file, err := mmap.OpenFile(f, os.O_RDWR, opt.FileMode)
 	if err != nil {
 		return nil, err
 	}
+	s := &segment{prevIndex: prevIndex, file: file}
+	s.n = uint64(s.offset(0))
+	s.size = int64(s.offset(s.n + 1))
+	return s, nil
+}
 
-	idx, err := newIndex(indexFile(dir, off), opt)
-	if err != nil {
-		return nil, err
-	}
+func (s *segment) at(i uint64) int64 {
+	return s.file.Size() - int64(i*8) - 8
+}
 
-	return &segment{off: off, idx: idx, f: f}, nil
+func (s *segment) offset(i uint64) int {
+	return int(byteOrder.Uint64(s.file.Data[s.at(i):]))
+}
+
+func (s *segment) setOffset(v uint64, i uint64) error {
+	b := make([]byte, 8)
+	byteOrder.PutUint64(b, v)
+	_, err := s.file.WriteAt(b, s.at(i))
+	return err
 }
 
 func (s *segment) lastIndex() uint64 {
-	if s.idx.n == 0 {
-		if s.off == 0 {
-			return 0
-		}
-		return s.off - 1
-	}
-	return s.off + (s.idx.n - 1)
-}
-
-func (s *segment) isFull(newEntrySize int) bool {
-	return s.idx.isFull() || s.idx.dataSize+int64(newEntrySize) > s.f.size()
+	return s.prevIndex + s.n
 }
 
 func (s *segment) get(i uint64, n uint64) []byte {
-	i -= s.off
-	from, to := s.idx.offset(i), s.idx.offset(i+n)
-	if to < from {
-		return nil
+	if i <= s.prevIndex {
+		panic("i<=prevIndex")
 	}
-	return s.f.data[from:to]
+	i -= s.prevIndex
+	from, to := s.offset(i), s.offset(i+n)
+	return s.file.Data[from:to]
+}
+
+func (s *segment) canAppend(b []byte) bool {
+	avail := s.at(s.n+1) - s.size
+	return avail >= int64(len(b)+8)
 }
 
 func (s *segment) append(b []byte) error {
-	if _, err := s.f.WriteAt(b, s.idx.dataSize); err != nil {
+	if _, err := s.file.WriteAt(b, s.size); err != nil {
 		return err
 	}
-	return s.idx.append(len(b))
+	size := s.size + int64(len(b))
+	if err := s.setOffset(uint64(size), s.n+2); err != nil {
+		return err
+	}
+	s.n, s.size, s.dirty = s.n+1, size, true
+	return nil
+}
+
+func (s *segment) removeGTE(i uint64) error {
+	n := i - s.prevIndex - 1
+	if n < s.n {
+		if err := s.setOffset(n, 0); err != nil {
+			return err
+		}
+		s.n, s.size, s.dirty = n, int64(s.offset(n+1)), true
+	}
+	return s.sync()
 }
 
 func (s *segment) sync() error {
-	if s.idx.dirty {
-		if err := s.f.syncData(); err != nil {
+	if s.dirty {
+		if err := s.file.SyncData(); err != nil {
 			return err
 		}
-		return s.idx.sync()
+		if err := s.setOffset(s.n, 0); err != nil {
+			return err
+		}
+		if err := s.file.SyncData(); err != nil {
+			return err
+		}
+		s.dirty = false
 	}
 	return nil
 }
 
 func (s *segment) close() error {
 	err := s.sync()
-	if e := s.idx.close(); err == nil {
-		err = e
-	}
-	if e := s.f.Close(); err == nil {
+	if e := s.file.Close(); err == nil {
 		err = e
 	}
 	return err
 }
 
-func (s *segment) removeGTE(i uint64) error {
-	return s.idx.truncate(i - s.off)
+func (s *segment) remove() error {
+	return os.Remove(s.file.Name())
 }
 
-func (s *segment) remove() error {
-	err1 := s.idx.remove()
-	err2 := os.Remove(s.f.Name())
+func (s *segment) closeAndRemove() error {
+	err1 := s.close()
+	err2 := s.remove()
 	if err1 != nil {
 		return err1
 	}
 	return err2
-}
-
-// helpers -------------------------------------
-
-func segmentFile(dir string, off uint64) string {
-	return filepath.Join(dir, fmt.Sprintf("%d.log", off))
-}
-
-func removeSegment(dir string, off uint64) error {
-	if err := os.RemoveAll(indexFile(dir, off)); err != nil {
-		return err
-	}
-	return os.RemoveAll(segmentFile(dir, off))
 }

@@ -3,6 +3,10 @@ package log
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
 )
 
 func fileExists(name string) (bool, error) {
@@ -18,74 +22,96 @@ func fileExists(name string) (bool, error) {
 	return true, nil
 }
 
-func createFile(name string, mode os.FileMode, size int64, contents []byte) (err error) {
-	f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE, mode)
+func createSegment(name string, opt Options) (err error) {
+	f, err := os.OpenFile(name, os.O_RDWR|os.O_CREATE, opt.FileMode)
 	if err != nil {
 		return
 	}
 	defer func() {
-		e := f.Close()
-		if err != nil {
+		if e := f.Close(); err == nil {
 			err = e
 		}
 		if err != nil {
-			_ = os.Remove(name)
-			err = fmt.Errorf("log: createFile %s: %v", name, err)
+			if e := os.Remove(name); err == nil {
+				err = e
+			}
 		}
 	}()
-	if _, err = f.Write(contents); err != nil {
+	size := int64(opt.SegmentSize)
+	if err = f.Truncate(size); err != nil {
 		return
 	}
-	if err = f.Truncate(size); err != nil {
+	if _, err = f.WriteAt(make([]byte, 16), size-16); err != nil {
 		return
 	}
 	err = f.Sync()
 	return
 }
 
-// mmapFile ---------------------------------------------------
-
-type mmapFile struct {
-	*os.File
-	data []byte
+func segmentFile(dir string, prevIndex uint64) string {
+	return filepath.Join(dir, fmt.Sprintf("%d.log", prevIndex))
 }
 
-func (f *mmapFile) size() int64 {
-	return int64(len(f.data))
-}
-
-func (f *mmapFile) Close() error {
-	err := munmap(f.data)
-	if e := f.File.Close(); err == nil {
-		err = e
-	}
-	return err
-}
-
-func (f *mmapFile) readUint64(off uint64) uint64 {
-	return byteOrder.Uint64(f.data[off:])
-}
-
-func (f *mmapFile) writeUint64(v uint64, off int64) error {
-	b := make([]byte, 8)
-	byteOrder.PutUint64(b, v)
-	_, err := f.WriteAt(b, off)
-	return err
-}
-
-func openFile(name string, mode os.FileMode) (*mmapFile, error) {
-	f, err := os.OpenFile(name, os.O_RDWR, mode)
-	if err != nil {
-		return nil, fmt.Errorf("log: openFile %s: %v", name, err)
-	}
-
-	info, err := os.Stat(name)
+func segments(dir string) ([]uint64, error) {
+	matches, err := filepath.Glob(filepath.Join(dir, "*.log"))
 	if err != nil {
 		return nil, err
 	}
-	data, err := mmap(f, int(info.Size()))
-	if err != nil {
-		return nil, err
+	var offs []uint64
+	for _, m := range matches {
+		m = filepath.Base(m)
+		m = strings.TrimSuffix(m, ".log")
+		i, err := strconv.ParseUint(m, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		offs = append(offs, i)
 	}
-	return &mmapFile{f, data}, nil
+	sort.Slice(offs, func(i, j int) bool {
+		return offs[i] < offs[j]
+	})
+	return offs, nil
+}
+
+func openSegments(dir string, opt Options) (first, last *segment, err error) {
+	offs, err := segments(dir)
+	if err != nil {
+		return
+	}
+	if len(offs) == 0 {
+		offs = append(offs, 0)
+	}
+
+	if first, err = openSegment(dir, offs[0], opt); err != nil {
+		return
+	}
+	last = first
+	offs = offs[1:]
+
+	var s *segment
+	for _, off := range offs {
+		if last.n > 0 && off == last.lastIndex() {
+			if s, err = openSegment(dir, off, opt); err != nil {
+				return
+			}
+			connect(last, s)
+			last = s
+		} else {
+			// dangling segment: remove it
+			if err = os.Remove(segmentFile(dir, off)); err == nil {
+				return
+			}
+		}
+	}
+	return
+}
+
+func connect(s1, s2 *segment) {
+	s1.next = s2
+	s2.prev = s1
+}
+
+func disconnect(s1, s2 *segment) {
+	s1.next = nil
+	s2.prev = nil
 }

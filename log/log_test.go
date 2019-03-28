@@ -4,395 +4,501 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
-	"math"
 	"net"
 	"os"
+	"reflect"
 	"testing"
 )
 
-func TestLog_Append_singleSegment(t *testing.T) {
-	l := newLog(t, 1000, 1024*1024)
-	defer os.RemoveAll(l.dir)
-	for i := uint64(0); i < 30; i++ {
-		if err := l.Append(message(i)); err != nil {
-			t.Fatal(err)
-		}
-		if (i+1)%10 == 0 {
-			checkGet(t, l, 0, i)
-			l = restart(t, l)
-			checkGet(t, l, 0, i)
-		}
-	}
-	if got := numSegments(l); got != 1 {
-		t.Fatalf("numSegments: got %d, want %d", got, 1)
-	}
+func TestOpen(t *testing.T) {
+	l := newLog(t, 1024)
+
+	assertInt(t, "numSegments", numSegments(l), 1)
+	assertUint64(t, "prevIndex", l.PrevIndex(), 0)
+	assertUint64(t, "lastIndex", l.LastIndex(), 0)
+	assertUint64(t, "count", l.Count(), 0)
+
+	_, err := l.Get(0)
+	checkErrNotFound(t, err)
+	checkPanic(t, func() {
+		_, _ = l.Get(1000) // beyond last segment
+	})
 }
 
-func TestLog_Append_multipleSegments(t *testing.T) {
-	l := newLog(t, 10, 1024*1024)
-	defer os.RemoveAll(l.dir)
-	for i := uint64(0); i < 30; i++ {
-		if err := l.Append(message(i)); err != nil {
-			t.Fatal(err)
+func TestLog_Get(t *testing.T) {
+	l := newLog(t, 1024)
+
+	n, numSeg := uint64(0), 1
+	for i := 0; i <= 1; i++ {
+		for numSegments(l) != numSeg+2 {
+			n++
+			appendEntry(t, l)
 		}
-		got, want := numSegments(l), int(math.Ceil(float64(i+1)/10.0))
-		if got != want {
-			t.Fatalf("numSegments after %d entries: got %d, want %d", i+1, got, want)
+		numSeg += 2
+
+		for i := 0; i <= 1; i++ {
+			assertInt(t, "numSegments", numSegments(l), numSeg)
+			assertUint64(t, "prevIndex", l.PrevIndex(), 0)
+			assertUint64(t, "lastIndex", l.LastIndex(), n)
+			assertUint64(t, "count", l.Count(), n)
+			checkGet(t, l)
+
+			_, err := l.Get(0)
+			checkErrNotFound(t, err)
+			checkPanic(t, func() {
+				_, _ = l.Get(n + 1000) // beyond last segment
+			})
+			l = reopen(t, l)
 		}
-		if (i+1)%10 == 0 {
-			checkGet(t, l, 0, i)
-			l = restart(t, l)
-			got, want := numSegments(l), int(math.Ceil(float64(i+1)/10.0))
-			if got != want {
-				t.Fatalf("numSegments after %d entries: got %d, want %d", i+1, got, want)
-			}
-			checkGet(t, l, 0, i)
-		}
-	}
-}
-
-func TestLog_RemoveGTE(t *testing.T) {
-	tests := []struct {
-		name        string
-		gte         uint64
-		numSegments int
-		lastIndex   uint64
-		count       uint64
-	}{
-		{"largerThanLastIndex", 100, 3, 29, 30},
-		{"greaterThanLastIndex", 30, 3, 29, 30},
-		{"equalToLastIndex", 29, 3, 28, 29},
-		{"insideLastSegment", 25, 3, 24, 25},
-		{"lastSegmentOffset", 20, 3, 19, 20},
-		{"prevSegmentLastIndex", 19, 2, 18, 19},
-		{"insidePrevSegment", 15, 2, 14, 15},
-		{"prevSegmentOffset", 10, 2, 9, 10},
-		{"firstSegmentLastIndex", 9, 1, 8, 9},
-		{"insideFirstSegment", 5, 1, 4, 5},
-		{"firstSegmentOffset", 0, 1, 0, 0},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			l := newLog(t, 10, 1024*1024)
-			defer os.RemoveAll(l.dir)
-			appendEntries(t, l, 0, 29)
-			if err := l.RemoveGTE(test.gte); err != nil {
-				t.Fatal(err)
-			}
-			for i := 0; i <= 1; i++ {
-				last := l.LastIndex()
-				if last != test.lastIndex {
-					t.Fatalf("last: got %d, want %d", last, test.lastIndex)
-				}
-				count := l.Count()
-				if count != test.count {
-					t.Fatalf("count: got %d, want %d", count, test.count)
-				}
-				if test.count > 0 {
-					checkGet(t, l, 0, test.lastIndex)
-				}
-				if got := numSegments(l); got != test.numSegments {
-					t.Fatalf("numSegments: got %d, want %d", got, test.numSegments)
-				}
-				l = restart(t, l)
-			}
-		})
-	}
-}
-
-func TestLog_RemoveLTE(t *testing.T) {
-	tests := []struct {
-		name        string
-		lte         uint64
-		numSegments int
-		count       uint64
-	}{
-		{"largerThanLastIndex", 100, 1, 0},
-		{"greaterThanLastIndex", 30, 1, 0},
-		{"equalToLastIndex", 29, 1, 0},
-		{"insideLastSegment", 25, 1, 10},
-		{"lastSegmentOffset", 20, 1, 10},
-		{"prevSegmentLastIndex", 19, 1, 10},
-		{"insidePrevSegment", 15, 2, 20},
-		{"prevSegmentOffset", 10, 2, 20},
-		{"firstSegmentLastIndex", 9, 2, 20},
-		{"insideFirstSegment", 5, 3, 30},
-		{"firstSegmentOffset", 0, 3, 30},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			l := newLog(t, 10, 1024*1024)
-			defer os.RemoveAll(l.dir)
-			appendEntries(t, l, 0, 29)
-			if err := l.RemoveLTE(test.lte); err != nil {
-				t.Fatal(err)
-			}
-			for i := 0; i <= 1; i++ {
-				last := l.LastIndex()
-				if last != 29 {
-					t.Fatalf("last: got %d, want %d", last, 29)
-				}
-				count := l.Count()
-				if count != test.count {
-					t.Fatalf("count: got %d, want %d", count, test.count)
-				}
-				if test.count > 0 {
-					checkGet(t, l, 29-test.count+1, 29)
-				}
-				if got := numSegments(l); got != test.numSegments {
-					t.Fatalf("numSegments: got %d, want %d", got, test.numSegments)
-				}
-				l = restart(t, l)
-			}
-		})
-	}
-}
-
-func TestLog_RemoveLTE_RemoveGTE(t *testing.T) {
-	tests := []struct {
-		name        string
-		lte         uint64
-		gte         uint64
-		numSegments int
-		lastIndex   uint64
-		count       uint64
-	}{
-		{"lte==gte", 9, 9, 1, 8, 0},
-		{"lte>gte", 9, 8, 1, 7, 0},
-		{"lte>>gte", 9, 5, 1, 4, 0},
-		{"lte==gte", 5, 7, 1, 6, 7},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			l := newLog(t, 10, 1024*1024)
-			defer os.RemoveAll(l.dir)
-			appendEntries(t, l, 0, 29)
-			if err := l.RemoveLTE(test.lte); err != nil {
-				t.Fatal(err)
-			}
-			if err := l.RemoveGTE(test.gte); err != nil {
-				t.Fatal(err)
-			}
-			for i := 0; i <= 1; i++ {
-				last := l.LastIndex()
-				if last != test.lastIndex {
-					t.Fatalf("last: got %d, want %d", last, test.lastIndex)
-				}
-				count := l.Count()
-				if count != test.count {
-					t.Fatalf("count: got %d, want %d", count, test.count)
-				}
-				if test.count > 0 {
-					checkGet(t, l, last-test.count+1, last)
-				}
-				if got := numSegments(l); got != test.numSegments {
-					t.Fatalf("numSegments: got %d, want %d", got, test.numSegments)
-				}
-				l = restart(t, l)
-			}
-		})
-	}
-}
-
-func TestLog_Get_notFoundError(t *testing.T) {
-	l := newLog(t, 10, 1024*1024)
-	defer os.RemoveAll(l.dir)
-	appendEntries(t, l, 0, 35)
-	checkGet(t, l, 0, 35)
-
-	type test struct {
-		i   uint64
-		err error
-		b   []byte
-	}
-	tests := []test{
-		{100, ErrNotFound, nil},
-		{40, ErrNotFound, nil},
-		{39, nil, nil},
-		{36, nil, nil},
-	}
-	runTest := func(test test) {
-		t.Run(fmt.Sprintf("get(%d)", test.i), func(t *testing.T) {
-			for i := 0; i <= 1; i++ {
-				b, err := l.Get(test.i)
-				if err != test.err {
-					t.Fatalf("err: got %v, want %v", err, test.err)
-				}
-				if test.err == nil {
-					if !bytes.Equal(b, test.b) {
-						t.Fatalf("entry: got %v, want %v", b, test.b)
-					}
-				}
-				l = restart(t, l)
-			}
-		})
-	}
-	for _, test := range tests {
-		runTest(test)
-	}
-
-	if err := l.RemoveGTE(33); err != nil {
-		t.Fatal(err)
-	}
-	checkGet(t, l, 0, 32)
-	tests = []test{
-		{100, ErrNotFound, nil},
-		{40, ErrNotFound, nil},
-		{39, nil, nil},
-		{33, nil, message(33)},
-	}
-	for _, test := range tests {
-		runTest(test)
-	}
-
-	if err := l.RemoveLTE(15); err != nil {
-		t.Fatal(err)
-	}
-	checkGet(t, l, 10, 32)
-	tests = []test{
-		{100, ErrNotFound, nil},
-		{40, ErrNotFound, nil},
-		{39, nil, nil},
-		{33, nil, message(33)},
-		{0, ErrNotFound, nil},
-		{9, ErrNotFound, nil},
-		{10, nil, message(10)},
-		{13, nil, message(13)},
-	}
-	for _, test := range tests {
-		runTest(test)
 	}
 }
 
 func TestLog_GetN(t *testing.T) {
-	l := newLog(t, 10, 1024*1024)
-	defer os.RemoveAll(l.dir)
-	appendEntries(t, l, 0, 35)
-	checkGet(t, l, 0, 35)
+	l := newLog(t, 1024)
 
-	last := l.LastIndex()
-	if last != 35 {
-		t.Fatalf("last=%d, want %d", last, 35)
+	var n uint64
+	for numSegments(l) != 4 {
+		n++
+		appendEntry(t, l)
 	}
-	count := l.Count()
-	if count != 36 {
-		t.Fatalf("count=%d, want %d", count, 36)
+	for i := 0; i < 10; i++ {
+		n++
+		appendEntry(t, l)
 	}
 
-	type test struct {
-		name string
-		i    uint64
-		n    uint64
-		b    []byte
-	}
-	tests := []test{
-		{"a", 0, count, messages(0, last)},
-		{"b", 5, count - 5, messages(5, last)},
-		{"c", 9, count - 9, messages(9, last)},
-		{"d", 10, count - 10, messages(10, last)},
-		{"e", 15, count - 15, messages(15, last)},
-	}
-	runTest := func(test test) {
-		t.Run(test.name, func(t *testing.T) {
-			for i := 0; i <= 1; i++ {
-				buffs, err := l.GetN(test.i, test.n)
-				if err != nil {
-					t.Fatal(err)
-				}
-				nbuffs := net.Buffers(buffs)
-				buf := new(bytes.Buffer)
-				if _, err := nbuffs.WriteTo(buf); err != nil {
-					t.Fatal(err)
-				}
-				if !bytes.Equal(buf.Bytes(), test.b) {
-					t.Log("got:", string(buf.Bytes()))
-					t.Log("want:", string(test.b))
-					t.Fatal()
-				}
-				l = restart(t, l)
-			}
-		})
-	}
-	for _, test := range tests {
-		runTest(test)
-	}
+	checkGetN(t, l, 1, 0, nil)
+	checkGetN(t, l, 5, 0, nil)
+
+	checkGetN(t, l, 1, 1, msg(1))
+	checkGetN(t, l, 5, 1, msg(5))
+	checkGetN(t, l, l.LastIndex(), 1, msg(l.LastIndex()))
+
+	checkGetN(t, l, 1, n, msgs(1, n))
+	checkGetN(t, l, 5, n-4, msgs(5, n-4))
+
+	_, err := l.GetN(0, 3)
+	checkErrNotFound(t, err)
+
+	segs := getSegments(l)
+	lastSeg := segs[len(segs)-1]
+
+	checkGetN(t, l, segs[1], 1, msg(segs[1]))
+	checkGetN(t, l, segs[1]+1, 1, msg(segs[1]+1))
+	checkGetN(t, l, segs[2], 1, msg(segs[2]))
+	checkGetN(t, l, segs[2]+1, 1, msg(segs[2]+1))
+	checkGetN(t, l, lastSeg, 1, msg(lastSeg))
+	checkGetN(t, l, lastSeg+1, 1, msg(lastSeg+1))
+
+	checkGetN(t, l, segs[1], 5, msgs(segs[1], 5))
+	checkGetN(t, l, segs[1]+1, 5, msgs(segs[1]+1, 5))
+	checkGetN(t, l, segs[2], 5, msgs(segs[2], 5))
+	checkGetN(t, l, segs[2]+1, 5, msgs(segs[2]+1, 5))
+	checkGetN(t, l, lastSeg, 5, msgs(lastSeg, 5))
+	checkGetN(t, l, lastSeg+1, 5, msgs(lastSeg+1, 5))
+
+	checkGetN(t, l, segs[1]-5, 10, msgs(segs[1]-5, 10))
+	checkGetN(t, l, segs[2]-5, 10, msgs(segs[2]-5, 10))
+	checkGetN(t, l, lastSeg-5, 10, msgs(lastSeg-5, 10))
+
+	from, to := segs[1], lastSeg
+	checkGetN(t, l, from, to-from, msgs(from, to-from))
+	from, to = segs[1], lastSeg+5
+	checkGetN(t, l, from, to-from, msgs(from, to-from))
+	from, to = segs[1]-5, lastSeg
+	checkGetN(t, l, from, to-from, msgs(from, to-from))
+	from, to = segs[1]-5, lastSeg+5
+	checkGetN(t, l, from, to-from, msgs(from, to-from))
+
+	checkPanic(t, func() {
+		_, _ = l.GetN(l.LastIndex(), 1000)
+	})
+	checkPanic(t, func() {
+		_, _ = l.GetN(1, 100000)
+	})
+	checkPanic(t, func() {
+		_, _ = l.GetN(20, 100000)
+	})
 }
 
-// helpers ---------------------------------------------------------------------------
+func TestLog_RemoveLTE(t *testing.T) {
+	newLog := func() *Log {
+		t.Helper()
+		l := newLog(t, 1024)
 
-func newLog(t testing.TB, maxCount, maxSize int) *Log {
-	t.Helper()
-	dir, err := ioutil.TempDir("", "log")
-	if err != nil {
+		var n uint64
+		for numSegments(l) != 4 {
+			n++
+			appendEntry(t, l)
+		}
+		for i := 0; i < 10; i++ {
+			n++
+			appendEntry(t, l)
+		}
+		return l
+	}
+	removeLTE := func(i uint64, want []uint64) {
+		t.Helper()
+		l := newLog()
+		segs := getSegments(l)
+		lastIndex := l.LastIndex()
+		err := l.RemoveLTE(i)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for j := 0; j <= 1; j++ {
+			if l.LastIndex() != lastIndex {
+				t.Fatalf("lastIndex=%d, want %d", l.LastIndex(), lastIndex)
+			}
+			got := getSegments(l)
+			if !reflect.DeepEqual(got, want) {
+				t.Logf("%v %d removeLTE(%d) -> %v", segs, lastIndex, i, got)
+				t.Log("want:", want)
+				t.Fatal()
+			}
+			t.Logf("%v %d removeLTE(%d) -> %v", segs, lastIndex, i, got)
+			l = reopen(t, l)
+		}
+	}
+
+	l := newLog()
+	segs := getSegments(l)
+	nseg := len(segs)
+	lastIndex := l.LastIndex()
+	if err := l.RemoveLTE(segs[nseg-2]); err != nil {
 		t.Fatal(err)
 	}
-	l, err := Open(dir, 0700, Options{0600, maxCount, maxSize})
+	// remaining segs[nseg-2:]
+	checkGet(t, l)
+	_, err := l.Get(0)
+	checkErrNotFound(t, err)
+	_, err = l.Get(25)
+	checkErrNotFound(t, err)
+	_, err = l.Get(l.PrevIndex())
+	checkErrNotFound(t, err)
+	checkPanic(t, func() {
+		_, _ = l.Get(l.LastIndex() + 1000) // beyond last segment
+	})
+
+	checkGetN(t, l, l.PrevIndex()+1, l.Count(), msgs(l.PrevIndex()+1, l.Count()))
+	_, err = l.GetN(0, 10)
+	checkErrNotFound(t, err)
+	_, err = l.GetN(l.PrevIndex()-10, 50)
+	checkErrNotFound(t, err)
+	_, err = l.GetN(l.PrevIndex(), 50)
+	checkErrNotFound(t, err)
+
+	removeLTE(lastIndex+999, []uint64{lastIndex})
+	removeLTE(lastIndex+100, []uint64{lastIndex})
+	removeLTE(lastIndex+1, []uint64{lastIndex})
+	removeLTE(lastIndex, []uint64{lastIndex})
+
+	removeLTE(lastIndex-1, segs[nseg-1:])
+	removeLTE(lastIndex-10, segs[nseg-1:])
+	removeLTE(segs[nseg-1]+10, segs[nseg-1:])
+	removeLTE(segs[nseg-1]+1, segs[nseg-1:])
+	removeLTE(segs[nseg-1], segs[nseg-1:])
+
+	removeLTE(segs[nseg-1]-1, segs[nseg-2:])
+	removeLTE(segs[nseg-1]-10, segs[nseg-2:])
+	removeLTE(segs[nseg-2]+10, segs[nseg-2:])
+	removeLTE(segs[nseg-2]+1, segs[nseg-2:])
+	removeLTE(segs[nseg-2], segs[nseg-2:])
+
+	removeLTE(segs[1]+1, segs[1:])
+	removeLTE(segs[1], segs[1:])
+
+	removeLTE(segs[1]-1, segs)
+	removeLTE(segs[1]-10, segs)
+	removeLTE(10, segs)
+	removeLTE(1, segs)
+	removeLTE(0, segs)
+}
+
+func TestLog_RemoveGTE(t *testing.T) {
+	newLog := func() *Log {
+		t.Helper()
+		l := newLog(t, 1024)
+
+		var n uint64
+		for numSegments(l) != 4 {
+			n++
+			appendEntry(t, l)
+		}
+		for i := 0; i < 10; i++ {
+			n++
+			appendEntry(t, l)
+		}
+		return l
+	}
+	removeGTE := func(i uint64, want []uint64, lastIndex uint64) {
+		t.Helper()
+		l := newLog()
+		segs := getSegments(l)
+		originalLastIndex := l.LastIndex()
+		err := l.RemoveGTE(i)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for j := 0; j <= 1; j++ {
+			if l.LastIndex() != lastIndex {
+				t.Fatalf("lastIndex=%d, want %d", l.LastIndex(), lastIndex)
+			}
+			got := getSegments(l)
+			if !reflect.DeepEqual(got, want) {
+				t.Logf("%v %d removeGTE(%d) -> %v %d", segs, originalLastIndex, i, got, l.LastIndex())
+				t.Log("want:", want)
+				t.Fatal()
+			}
+			t.Logf("%v %d removeGTE(%d) -> %v %d", segs, originalLastIndex, i, got, l.LastIndex())
+			l = reopen(t, l)
+		}
+	}
+
+	l := newLog()
+	segs := getSegments(l)
+	nseg := len(segs)
+	lastIndex := l.LastIndex()
+
+	removeGTE(lastIndex+999, segs, lastIndex)
+	removeGTE(lastIndex+100, segs, lastIndex)
+	removeGTE(lastIndex+1, segs, lastIndex)
+	removeGTE(lastIndex, segs, lastIndex-1)
+	removeGTE(lastIndex-1, segs, lastIndex-2)
+	removeGTE(lastIndex-5, segs, lastIndex-6)
+
+	removeGTE(segs[nseg-1]+5, segs, segs[nseg-1]+4)
+	removeGTE(segs[nseg-1]+1, segs[:nseg-1], segs[nseg-1])
+	removeGTE(segs[nseg-1], segs[:nseg-1], segs[nseg-1]-1)
+	removeGTE(segs[nseg-1]-5, segs[:nseg-1], segs[nseg-1]-6)
+
+	removeGTE(segs[nseg-2]+5, segs[:nseg-1], segs[nseg-2]+4)
+	removeGTE(segs[nseg-2]+1, segs[:nseg-2], segs[nseg-2])
+	removeGTE(segs[nseg-2], segs[:nseg-2], segs[nseg-2]-1)
+	removeGTE(segs[nseg-2]-5, segs[:nseg-2], segs[nseg-2]-6)
+
+	removeGTE(5, []uint64{0}, 4)
+	removeGTE(1, []uint64{0}, 0)
+	removeGTE(0, []uint64{0}, 0)
+}
+
+func TestLog_RemoveLTE_RemoveGTE(t *testing.T) {
+	newLog := func() *Log {
+		t.Helper()
+		l := newLog(t, 1024)
+
+		var n uint64
+		for numSegments(l) != 4 {
+			n++
+			appendEntry(t, l)
+		}
+		for i := 0; i < 10; i++ {
+			n++
+			appendEntry(t, l)
+		}
+		if err := l.RemoveLTE(100); err != nil {
+			t.Fatal(err)
+		}
+		return l
+	}
+	removeGTE := func(i uint64, want []uint64, lastIndex uint64) {
+		t.Helper()
+		l := newLog()
+		segs := getSegments(l)
+		originalLastIndex := l.LastIndex()
+		err := l.RemoveGTE(i)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for j := 0; j <= 1; j++ {
+			if l.LastIndex() != lastIndex {
+				t.Fatalf("lastIndex=%d, want %d", l.LastIndex(), lastIndex)
+			}
+			got := getSegments(l)
+			if !reflect.DeepEqual(got, want) {
+				t.Logf("%v %d removeGTE(%d) -> %v %d", segs, originalLastIndex, i, got, l.LastIndex())
+				t.Log("want:", want)
+				t.Fatal()
+			}
+			t.Logf("%v %d removeGTE(%d) -> %v %d", segs, originalLastIndex, i, got, l.LastIndex())
+			l = reopen(t, l)
+		}
+	}
+
+	l := newLog()
+	segs := getSegments(l)
+	nseg := len(segs)
+	lastIndex := l.LastIndex()
+
+	removeGTE(lastIndex+999, segs, lastIndex)
+	removeGTE(lastIndex+100, segs, lastIndex)
+	removeGTE(lastIndex+1, segs, lastIndex)
+	removeGTE(lastIndex, segs, lastIndex-1)
+	removeGTE(lastIndex-1, segs, lastIndex-2)
+	removeGTE(lastIndex-5, segs, lastIndex-6)
+
+	removeGTE(segs[nseg-1]+5, segs, segs[nseg-1]+4)
+	removeGTE(segs[nseg-1]+1, segs[:nseg-1], segs[nseg-1])
+	removeGTE(segs[nseg-1], segs[:nseg-1], segs[nseg-1]-1)
+	removeGTE(segs[nseg-1]-5, segs[:nseg-1], segs[nseg-1]-6)
+
+	removeGTE(segs[nseg-2]+5, segs[:nseg-1], segs[nseg-2]+4)
+	removeGTE(segs[nseg-2]+1, segs[:nseg-2], segs[nseg-2])
+	removeGTE(segs[nseg-2], segs[:nseg-2], segs[nseg-2]-1)
+	removeGTE(segs[nseg-2]-5, segs[:nseg-2], segs[nseg-2]-6)
+
+	removeGTE(segs[0]+5, segs[:1], segs[0]+4)
+	removeGTE(segs[0]+1, segs[:1], segs[0])
+	removeGTE(segs[0], []uint64{segs[0] - 1}, segs[0]-1)
+	removeGTE(segs[0]-5, []uint64{segs[0] - 6}, segs[0]-6)
+
+	removeGTE(5, []uint64{4}, 4)
+	removeGTE(1, []uint64{0}, 0)
+	removeGTE(0, []uint64{0}, 0)
+}
+
+var tempDir string
+
+func TestMain(M *testing.M) {
+	temp, err := ioutil.TempDir("", "log")
 	if err != nil {
-		_ = os.RemoveAll(dir)
+		os.Exit(1)
+	}
+	tempDir = temp
+	code := M.Run()
+	_ = os.RemoveAll(tempDir)
+	os.Exit(code)
+}
+
+// helpers -----------------------------------------
+
+func newLog(tb testing.TB, size int) *Log {
+	tb.Helper()
+	dir, err := ioutil.TempDir(tempDir, "log")
+	if err != nil {
+		tb.Fatal(err)
+	}
+	l, err := Open(dir, 0700, Options{0600, size})
+	if err != nil {
+		tb.Fatal(err)
+	}
+	return l
+}
+
+func reopen(t *testing.T, l *Log) *Log {
+	t.Helper()
+	t.Log("reopening...")
+	if err := l.Close(); err != nil {
+		t.Fatal(err)
+	}
+	l, err := Open(l.dir, 0700, l.opt)
+	if err != nil {
 		t.Fatal(err)
 	}
 	return l
 }
 
-func appendEntries(t *testing.T, l *Log, first, last uint64) {
-	t.Helper()
-	for first <= last {
-		err := l.Append(message(first))
-		if err != nil {
-			t.Fatalf("Append(%d): %v", first, err)
-		}
-		first++
-	}
-}
-
-func message(i uint64) []byte {
+func msg(i uint64) []byte {
 	if i%2 == 0 {
 		return []byte(fmt.Sprintf("even[%d]", i))
 	}
 	return []byte(fmt.Sprintf("odd[%d]", i))
 }
 
-func messages(first, last uint64) []byte {
+func msgs(i uint64, n uint64) []byte {
 	buf := new(bytes.Buffer)
-	for first <= last {
-		buf.Write(message(first))
-		first++
+	for n > 0 {
+		buf.Write(msg(i))
+		i++
+		n--
 	}
 	return buf.Bytes()
 }
 
-func checkGet(t *testing.T, l *Log, first, last uint64) {
+func numSegments(l *Log) int {
+	n := 0
+	for s := l.first; s != nil; s = s.next {
+		n++
+	}
+	return n
+}
+
+func appendEntry(t *testing.T, l *Log) {
 	t.Helper()
+	i := l.LastIndex() + 1
+	if err := l.Append(msg(i)); err != nil {
+		t.Fatalf("append(%d): %v", i, err)
+	}
+}
+
+func checkGet(t *testing.T, l *Log) {
+	t.Helper()
+	first, last := l.PrevIndex()+1, l.LastIndex()
 	for first <= last {
 		got, err := l.Get(first)
 		if err != nil {
 			t.Fatalf("get(%d): %v", first, err)
 		}
-		want := message(first)
+		want := msg(first)
 		if !bytes.Equal(got, want) {
-			t.Fatalf("get(%d): got %q, want %q", first, string(got), string(want))
+			t.Fatalf("get(%d)=%q, want %q", first, string(got), string(want))
 		}
 		first++
 	}
 }
 
-func restart(t *testing.T, l *Log) *Log {
+func checkGetN(t *testing.T, l *Log, i, n uint64, want []byte) {
 	t.Helper()
-	if err := l.Close(); err != nil {
-		t.Fatalf("close: %v", err)
-	}
-	l, err := Open(l.dir, 0700, l.opt)
+	buffs, err := l.GetN(i, n)
 	if err != nil {
-		t.Fatalf("new: %v", err)
+		t.Fatal(err)
 	}
-	return l
+	nbuffs := net.Buffers(buffs)
+	buf := new(bytes.Buffer)
+	if _, err := nbuffs.WriteTo(buf); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(buf.Bytes(), want) {
+		t.Log("got:", string(buf.Bytes()))
+		t.Log("want:", string(want))
+		t.Fatal()
+	}
 }
 
-func numSegments(l *Log) int {
-	i, s := 0, l.last
-	for s != nil {
-		i++
-		s = s.prev
+func assertUint64(t *testing.T, name string, got, want uint64) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("%s=%v, want %v", name, got, want)
 	}
-	return i
+}
+
+func assertInt(t *testing.T, name string, got, want int) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("%s=%v, want %v", name, got, want)
+	}
+}
+
+func checkErrNotFound(t *testing.T, err error) {
+	t.Helper()
+	if err != ErrNotFound {
+		t.Fatalf("got %v, want ErrNotFound", err)
+	}
+}
+
+func checkPanic(t *testing.T, f func()) {
+	t.Helper()
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected panic")
+		}
+	}()
+	f()
+}
+
+func getSegments(l *Log) []uint64 {
+	var segs []uint64
+	for s := l.first; s != nil; s = s.next {
+		segs = append(segs, s.prevIndex)
+	}
+	return segs
 }
