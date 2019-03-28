@@ -64,17 +64,17 @@ func (l *Log) ViewAt(prevIndex, lastIndex uint64) *Log {
 	if prevIndex > lastIndex || prevIndex < l.PrevIndex() {
 		return nil
 	}
-	first := l.first
+	s := l.last
 	for {
-		if prevIndex >= first.prevIndex {
+		if prevIndex >= s.prevIndex {
 			break
 		}
-		first = first.next
+		s = s.prev
 	}
 	return &Log{
 		dir:   l.dir,
 		opt:   l.opt,
-		first: first,
+		first: s,
 		last:  l.segment(lastIndex),
 		index: []uint64{prevIndex, lastIndex},
 	}

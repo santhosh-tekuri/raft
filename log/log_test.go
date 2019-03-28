@@ -140,6 +140,65 @@ func TestLog_GetN(t *testing.T) {
 	})
 }
 
+func TestLog_ViewAt(t *testing.T) {
+	l := newLog(t, 1024, true)
+
+	var n uint64
+	for numSegments(l) != 4 {
+		n++
+		appendEntry(t, l)
+	}
+	for i := 0; i < 10; i++ {
+		n++
+		appendEntry(t, l)
+	}
+
+	checkView := func(v *Log, segsWant []uint64) {
+		t.Helper()
+		segs := getSegments(v)
+		if !reflect.DeepEqual(segs, segsWant) {
+			t.Log("got:", segs)
+			t.Log("want:", segsWant)
+			t.Fatal()
+		}
+		checkGet(t, v)
+	}
+
+	segs := getSegments(l)
+	nseg := len(segs)
+	fmt.Println(getSegments(l))
+	checkView(l.View(), segs)
+	checkView(l.ViewAt(0, l.LastIndex()-10), segs)
+	checkView(l.ViewAt(0, segs[nseg-1]), segs[:nseg-1])
+	checkView(l.ViewAt(0, segs[nseg-1]-10), segs[:nseg-1])
+	checkView(l.ViewAt(5, segs[nseg-1]-10), segs[:nseg-1])
+	checkView(l.ViewAt(segs[1], segs[nseg-1]-10), segs[1:nseg-1])
+
+	v := l.View()
+	started, stop := make(chan struct{}), make(chan struct{})
+	go func() {
+		close(started)
+		for {
+			select {
+			case <-stop:
+				close(stop)
+				return
+			default:
+				checkGet(t, v)
+			}
+		}
+	}()
+	<-started
+	for i := l.LastIndex() + 1; i <= 1000; i++ {
+		if err := l.Append(msg(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stop <- struct{}{}
+	<-stop
+	checkGet(t, l)
+}
+
 func TestLog_RemoveLTE(t *testing.T) {
 	newLog := func() *Log {
 		t.Helper()
@@ -452,6 +511,14 @@ func appendEntry(t *testing.T, l *Log) {
 
 func checkGet(t *testing.T, l *Log) {
 	t.Helper()
+
+	_, err := l.Get(l.PrevIndex())
+	checkErrNotFound(t, err)
+
+	checkPanic(t, func() {
+		_, _ = l.Get(l.LastIndex() + 1)
+	})
+
 	first, last := l.PrevIndex()+1, l.LastIndex()
 	for first <= last {
 		got, err := l.Get(first)
@@ -518,8 +585,13 @@ func checkPanic(t *testing.T, f func()) {
 
 func getSegments(l *Log) []uint64 {
 	var segs []uint64
-	for s := l.first; s != nil; s = s.next {
+	s := l.first
+	for {
 		segs = append(segs, s.prevIndex)
+		if s == l.last {
+			break
+		}
+		s = s.next
 	}
 	return segs
 }
