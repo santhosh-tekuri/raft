@@ -18,6 +18,7 @@ type segment struct {
 	n     uint64     // number of entries
 	size  int64      // log size
 	dirty bool       // is sync needed ?
+	sync1 bool
 }
 
 func openSegment(dir string, prevIndex uint64, opt Options) (*segment, error) {
@@ -33,7 +34,7 @@ func openSegment(dir string, prevIndex uint64, opt Options) (*segment, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &segment{prevIndex: prevIndex, file: file}
+	s := &segment{prevIndex: prevIndex, file: file, sync1: opt.SyncTogether}
 	s.n = uint64(s.offset(0))
 	s.size = int64(s.offset(s.n + 1))
 	return s, nil
@@ -96,8 +97,10 @@ func (s *segment) removeGTE(i uint64) error {
 
 func (s *segment) sync() error {
 	if s.dirty {
-		if err := s.file.SyncData(); err != nil {
-			return err
+		if !s.sync1 {
+			if err := s.file.SyncData(); err != nil {
+				return err
+			}
 		}
 		if err := s.setOffset(s.n, 0); err != nil {
 			return err
