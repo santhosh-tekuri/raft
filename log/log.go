@@ -25,9 +25,9 @@ type Log struct {
 	dir string
 	opt Options
 
-	first     *segment
-	last      *segment
-	lastIndex *uint64
+	first *segment
+	last  *segment
+	index []uint64 // for view: index[0] is prevIndex, index[1] is lastIndex
 }
 
 func Open(dir string, dirMode os.FileMode, opt Options) (*Log, error) {
@@ -57,7 +57,10 @@ func Open(dir string, dirMode os.FileMode, opt Options) (*Log, error) {
 }
 
 func (l *Log) ViewAt(prevIndex, lastIndex uint64) *Log {
-	if prevIndex > lastIndex || prevIndex < l.PrevIndex() || lastIndex > l.LastIndex() {
+	if lastIndex > l.LastIndex() {
+		panic(fmt.Sprintf("log: %d>lastIndex(%d)", lastIndex, l.LastIndex()))
+	}
+	if prevIndex > lastIndex || prevIndex < l.PrevIndex() {
 		return nil
 	}
 	first := l.first
@@ -68,11 +71,11 @@ func (l *Log) ViewAt(prevIndex, lastIndex uint64) *Log {
 		first = first.next
 	}
 	return &Log{
-		dir:       l.dir,
-		opt:       l.opt,
-		first:     first,
-		last:      l.segment(lastIndex),
-		lastIndex: &lastIndex,
+		dir:   l.dir,
+		opt:   l.opt,
+		first: first,
+		last:  l.segment(lastIndex),
+		index: []uint64{prevIndex, lastIndex},
 	}
 }
 
@@ -81,12 +84,15 @@ func (l *Log) View() *Log {
 }
 
 func (l *Log) PrevIndex() uint64 {
+	if l.index != nil {
+		return l.index[0]
+	}
 	return l.first.prevIndex
 }
 
 func (l *Log) LastIndex() uint64 {
-	if l.lastIndex != nil {
-		return *l.lastIndex
+	if l.index != nil {
+		return l.index[1]
 	}
 	return l.last.lastIndex()
 }
@@ -102,12 +108,17 @@ func (l *Log) segment(i uint64) *segment {
 	if i <= l.PrevIndex() {
 		return nil
 	}
-	for s := l.last; s != nil; s = s.prev {
+
+	s := l.last
+	for {
 		if i > s.prevIndex {
 			return s
 		}
+		if s == l.first {
+			return nil
+		}
+		s = s.prev
 	}
-	return nil
 }
 
 func (l *Log) Get(i uint64) ([]byte, error) {
@@ -119,8 +130,8 @@ func (l *Log) Get(i uint64) ([]byte, error) {
 }
 
 func (l *Log) GetN(i uint64, n uint64) ([][]byte, error) {
-	if i+n-1 > l.LastIndex() {
-		panic(fmt.Sprintf("log: %d>lastIndex(%d)", i+n-1, l.LastIndex()))
+	if i+(n-1) > l.LastIndex() {
+		panic(fmt.Sprintf("log: %d>lastIndex(%d)", i+(n-1), l.LastIndex()))
 	}
 	s := l.segment(i)
 	if s == nil {
