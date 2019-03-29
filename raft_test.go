@@ -263,6 +263,8 @@ func (c *cluster) launch(n int, bootstrap bool) map[uint64]*Raft {
 		c.serverErrMu.Lock()
 		c.serveErr[r.NID()] = make(chan error, 1)
 		c.serverErrMu.Unlock()
+	}
+	for _, r := range launched {
 		c.serve(r)
 	}
 	return launched
