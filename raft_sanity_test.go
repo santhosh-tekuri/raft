@@ -110,7 +110,7 @@ func test_singleNode(t *testing.T) {
 	defer c.shutdown()
 
 	// should be able to apply
-	resp, err := waitUpdate(ldr, "test", c.heartbeatTimeout)
+	resp, err := waitUpdate(ldr, "test", c.longTimeout)
 	if err != nil {
 		t.Fatalf("apply failed: %v", err)
 	}
@@ -148,7 +148,7 @@ func test_tripleNode(t *testing.T) {
 	defer c.shutdown()
 
 	// should be able to apply
-	resp, err := waitUpdate(ldr, "test", c.heartbeatTimeout)
+	resp, err := waitUpdate(ldr, "test", c.longTimeout)
 	if err != nil {
 		t.Fatalf("apply failed: %v", err)
 	}
@@ -166,7 +166,7 @@ func test_leader_stepDown(t *testing.T) {
 	defer c.shutdown()
 
 	// should be able to apply
-	resp, err := waitUpdate(ldr, "test", c.heartbeatTimeout)
+	resp, err := waitUpdate(ldr, "test", c.longTimeout)
 	if err != nil {
 		t.Fatalf("apply failed: %v", err)
 	}
@@ -194,7 +194,7 @@ func test_leader_stepDown(t *testing.T) {
 	}
 
 	// apply should not work on old leader
-	_, err = waitUpdate(ldr, "reject", c.heartbeatTimeout)
+	_, err = waitUpdate(ldr, "reject", c.longTimeout)
 	if err, ok := err.(NotLeaderError); !ok {
 		t.Fatalf("got %v, want NotLeaderError", err)
 	} else if err.LeaderAddr != "" {
@@ -202,7 +202,7 @@ func test_leader_stepDown(t *testing.T) {
 	}
 
 	// apply should work on new leader
-	if _, err = waitUpdate(newLdr, "accept", c.heartbeatTimeout); err != nil {
+	if _, err = waitUpdate(newLdr, "accept", c.longTimeout); err != nil {
 		t.Fatalf("got %v, want nil", err)
 	}
 
@@ -229,7 +229,7 @@ func test_behindFollower(t *testing.T) {
 	c.waitUnreachableDetected(ldr, behind)
 
 	// commit a lot of things
-	c.sendUpdates(ldr, 1, 10)
+	<-c.sendUpdates(ldr, 1, 10).Done()
 
 	// reconnect the behind node
 	c.connect()
@@ -365,6 +365,7 @@ func test_opError_voteOther(t *testing.T) {
 	}
 
 	// shutdown leader, so that other two start election to chose new leader
+	tdebug("shutting down leader", ldr.nid)
 	c.shutdown(ldr)
 
 	// ensure that who ever votes for other, shuts down

@@ -15,7 +15,7 @@ func test_update_nonLeader(t *testing.T) {
 	ldrAddr := ldr.Info().Addr()
 	for _, r := range c.rr {
 		if r != ldr {
-			_, err := waitUpdate(r, "reject", c.commitTimeout)
+			_, err := waitUpdate(r, "reject", c.longTimeout)
 			if err, ok := err.(NotLeaderError); !ok {
 				t.Fatalf("got %v, want NotLeaderError", err)
 			} else if err.LeaderAddr != ldrAddr {
