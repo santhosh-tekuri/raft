@@ -114,7 +114,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq, reader io.Reader) (
 	r.setLeader(req.src)
 
 	// reply false if log at req.prevLogIndex does not match
-	if req.prevLogIndex > r.snapIndex {
+	if req.prevLogIndex > r.snaps.index {
 		if req.prevLogIndex > r.lastLogIndex {
 			return drain(prevEntryNotFound, nil)
 		}
@@ -149,7 +149,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq, reader io.Reader) (
 		}
 		prevTerm := term
 		index, term = ne.index, ne.term
-		if ne.index <= r.snapIndex {
+		if ne.index <= r.snaps.index {
 			continue
 		}
 		if ne.index <= r.lastLogIndex {
@@ -232,7 +232,7 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq, reader io.Reader) (rpcR
 	r.setLeader(req.src)
 
 	// store snapshot
-	sink, err := r.snapshots.new(req.lastIndex, req.lastTerm, req.lastConfig)
+	sink, err := r.snaps.new(req.lastIndex, req.lastTerm, req.lastConfig)
 	if err != nil {
 		return unexpectedErr, opError(err, "snapshots.new")
 	}
@@ -246,7 +246,6 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq, reader io.Reader) (rpcR
 	if err != nil {
 		return unexpectedErr, opError(err, "snapshotSink.done")
 	}
-	r.snapIndex, r.snapTerm = meta.Index, meta.Term
 
 	discardLog := true
 	metaIndexExists := meta.Index > r.prevLogIndex && meta.Index <= r.lastLogIndex

@@ -121,7 +121,7 @@ func (r *Raft) Serve(l net.Listener) error {
 	defer close(r.fsm.taskCh)
 
 	// restore fsm from last snapshot, if present
-	if r.snapIndex > 0 {
+	if r.snaps.index > 0 {
 		if err := r.restoreFSM(); err != nil {
 			return err
 		}

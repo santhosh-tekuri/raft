@@ -683,7 +683,7 @@ func (c *cluster) connect() {
 
 func (c *cluster) snaps(r *Raft) []uint64 {
 	c.Helper()
-	snaps, err := findSnapshots(r.snapshots.dir)
+	snaps, err := findSnapshots(r.snaps.dir)
 	if err != nil {
 		c.Fatal(err)
 	}

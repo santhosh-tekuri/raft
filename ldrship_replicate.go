@@ -197,9 +197,7 @@ func (f *flr) writeAppendEntriesReq(c *conn, req *appendEntriesReq, sendEntries 
 	f.storage.prevLogMu.RLock()
 	defer f.storage.prevLogMu.RUnlock()
 
-	f.storage.snapMu.RLock()
-	snapIndex, snapTerm := f.storage.snapIndex, f.storage.snapTerm
-	f.storage.snapMu.RUnlock()
+	snapIndex, snapTerm := f.storage.snaps.latest()
 
 	// fill req.prevLogXXX
 	req.prevLogIndex = f.nextIndex - 1
@@ -267,7 +265,7 @@ func (f *flr) onAppendEntriesResp(resp *appendEntriesResp, reqLastIndex uint64) 
 }
 
 func (f *flr) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
-	meta, snapshot, err := f.storage.snapshots.open()
+	meta, snapshot, err := f.storage.snaps.open()
 	if err != nil {
 		return opError(err, "snapshots.open")
 	}

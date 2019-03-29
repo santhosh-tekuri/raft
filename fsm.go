@@ -116,7 +116,7 @@ func (r *Raft) onTakeSnapshot(t takeSnapshot) {
 			meta: meta,
 			err:  err,
 		}
-	}(r.snapIndex+t.threshold, r.configs.Committed)
+	}(r.snaps.index+t.threshold, r.configs.Committed)
 }
 
 func doTakeSnapshot(fsm *stateMachine, index uint64, config Config) (meta SnapshotMeta, err error) {
@@ -168,10 +168,6 @@ func (r *Raft) onSnapshotTaken(t snapTaken) {
 		return
 	}
 
-	r.snapMu.Lock()
-	r.snapIndex, r.snapTerm = t.meta.Index, t.meta.Term
-	r.snapMu.Unlock()
-
 	// compact log
 	// todo: we can check flr status and accordingly decide how much to delete
 	metaIndexExists := t.meta.Index > r.prevLogIndex && t.meta.Index <= r.lastLogIndex
@@ -214,7 +210,7 @@ func (r *Raft) restoreFSM() error {
 	if req.Err() != nil {
 		return req.Err()
 	}
-	r.commitIndex, r.lastApplied = r.snapIndex, r.snapIndex
+	r.commitIndex, r.lastApplied = r.snaps.index, r.snaps.index
 	return nil
 }
 

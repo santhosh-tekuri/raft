@@ -87,19 +87,15 @@ type storage struct {
 	lastLogIndex uint64
 	lastLogTerm  uint64
 
-	snapshots *snapshots
-	snapMu    sync.RWMutex
-	snapIndex uint64
-	snapTerm  uint64
-
+	snaps   *snapshots
 	configs Configs
 }
 
 func newStorage(s Storage) *storage {
 	return &storage{
-		vars:      s.Vars,
-		log:       s.Log,
-		snapshots: s.Snapshots,
+		vars:  s.Vars,
+		log:   s.Log,
+		snaps: s.Snapshots,
 	}
 }
 
@@ -122,14 +118,13 @@ func (s *storage) init() error {
 	}
 
 	// init snapshots ---------------
-	if err = s.snapshots.init(); err != nil {
+	if err = s.snaps.init(); err != nil {
 		return opError(err, "snapshots.init")
 	}
-	meta, err := s.snapshots.meta()
+	meta, err := s.snaps.meta()
 	if err != nil {
 		return opError(err, "snapshots.meta")
 	}
-	s.snapIndex, s.snapTerm = meta.Index, meta.Term
 
 	// init log ---------------------
 	count, err := s.log.Count()
@@ -137,8 +132,8 @@ func (s *storage) init() error {
 		return opError(err, "Log.Count")
 	}
 	if count == 0 {
-		s.lastLogIndex, s.lastLogTerm = s.snapIndex, s.snapTerm
-		s.prevLogIndex = s.snapIndex
+		s.lastLogIndex, s.lastLogTerm = s.snaps.index, s.snaps.term
+		s.prevLogIndex = s.snaps.index
 	} else {
 		data, err := s.log.Get(count - 1)
 		if err != nil {
@@ -154,7 +149,7 @@ func (s *storage) init() error {
 
 	// load configs ----------------
 	need := 2
-	for i := s.lastLogIndex; i > s.snapIndex; i-- {
+	for i := s.lastLogIndex; i > s.snaps.index; i-- {
 		e := &entry{}
 		err = s.getEntry(i, e)
 		if err != nil {
@@ -291,8 +286,8 @@ func (s *storage) clearLog() error {
 	if err := s.log.DeleteFirst(count); err != nil {
 		return err
 	}
-	s.lastLogIndex, s.lastLogTerm = s.snapIndex, s.snapTerm
-	s.prevLogIndex = s.snapIndex
+	s.lastLogIndex, s.lastLogTerm = s.snaps.index, s.snaps.term
+	s.prevLogIndex = s.snaps.index
 	return nil
 }
 
