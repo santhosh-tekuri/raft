@@ -168,6 +168,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq, reader io.Reader) (
 			}
 		}
 		// new entry not in the log, append it
+		debug(r, "log.append", ne.typ, ne.index)
 		r.storage.appendEntry(ne)
 		if ne.typ == entryConfig {
 			var newConfig Config

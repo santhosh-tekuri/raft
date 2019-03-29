@@ -66,6 +66,7 @@ func (l *ldrShip) release() {
 		l.transfer.reply(err)
 	}
 
+	debug(l, "stopping followers")
 	for id, f := range l.flrs {
 		close(f.stopCh)
 		delete(l.flrs, id)
@@ -178,7 +179,6 @@ func (l *ldrShip) checkReplUpdates(u interface{}) {
 		case newTerm:
 			// if response contains term T > currentTerm:
 			// set currentTerm = T, convert to follower
-			debug(l, "leader -> follower")
 			l.setState(Follower)
 			l.setLeader(0)
 			l.setTerm(u.val)
@@ -341,6 +341,7 @@ func (l *ldrShip) notifyFlr(includeConfig bool) {
 		case <-f.fromLeaderCh:
 			f.fromLeaderCh <- update
 		}
+		debug(l, update, f.status.id)
 	}
 	if l.voter {
 		l.onMajorityCommit()
