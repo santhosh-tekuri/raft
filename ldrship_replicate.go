@@ -129,6 +129,7 @@ func (f *flr) replicate(c *conn, req *appendEntriesReq) (err error) {
 		)
 		go func() {
 			defer func() {
+				close(resultCh)
 				if v := recover(); v != nil {
 					select {
 					case <-stopCh:
@@ -136,7 +137,6 @@ func (f *flr) replicate(c *conn, req *appendEntriesReq) (err error) {
 					case resultCh <- result{0, toErr(v)}:
 					}
 				}
-				close(resultCh)
 			}()
 			for {
 				err := f.writeAppendEntriesReq(c, req, true)
