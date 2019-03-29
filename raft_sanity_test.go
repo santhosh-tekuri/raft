@@ -82,7 +82,7 @@ func test_bootstrap(t *testing.T) {
 
 	// the bootstrapped node should be the leader
 	c.waitForLeader(ldr)
-	c.waitForFollowers(ldr)
+	c.waitForFollowers()
 
 	// should be able to apply
 	if _, err := waitUpdate(ldr, "hello", 0); err != nil {

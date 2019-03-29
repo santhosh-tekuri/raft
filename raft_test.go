@@ -408,8 +408,8 @@ func (c *cluster) followers() []*Raft {
 
 func (c *cluster) waitForHealthy() *Raft {
 	c.Helper()
-	ldr := c.waitForLeader()
-	c.waitForFollowers(ldr)
+	c.waitForLeader()
+	ldr := c.waitForFollowers()
 	c.waitForCommitted(ldr.Info().LastLogIndex())
 	return ldr
 }
@@ -424,15 +424,22 @@ func (c *cluster) ensureLeader(leader uint64) {
 }
 
 // wait until all followers follow the leader
-func (c *cluster) waitForFollowers(ldr *Raft) {
+func (c *cluster) waitForFollowers() *Raft {
 	c.Helper()
-	tdebug("waitForFollowers:", host(ldr))
+	tdebug("waitForFollowers")
 	log := false
 	condition := func() bool {
+		ldrs := c.getInState(Leader)
+		if len(ldrs) == 0 {
+			if log {
+				c.Log("no leader yet chosen")
+			}
+			return false
+		}
 		for _, r := range c.rr {
-			if got := r.Info().Leader(); got != ldr.NID() {
+			if got := r.Info().Leader(); got != ldrs[0].NID() {
 				if log {
-					c.Logf("leader of M%d: got M%d, want M%d", r.NID(), got, ldr.NID())
+					c.Logf("leader of M%d: got M%d, want M%d", r.NID(), got, ldrs[0].NID())
 				}
 				return false
 			}
@@ -444,8 +451,9 @@ func (c *cluster) waitForFollowers(ldr *Raft) {
 	if !leaderChanged.waitFor(condition, c.longTimeout) {
 		log = true
 		condition()
-		c.Fatalf("waitForFollowers(M%d) timeout", ldr.NID())
+		c.Fatalf("waitForFollowers timeout")
 	}
+	return c.getInState(Leader)[0]
 }
 
 // wait until state is one of given states
