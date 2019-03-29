@@ -628,6 +628,19 @@ func (c *cluster) waitUnreachableDetected(ldr, failed *Raft) {
 	}
 }
 
+func (c *cluster) waitReachableDetected(ldr, failed *Raft) {
+	c.Helper()
+	tdebug("waitReachableDetected: ldr:", host(ldr), "failed:", host(failed))
+	condition := func() bool {
+		return ldr.Info().Followers()[failed.NID()].Unreachable.IsZero()
+	}
+	unreachable := c.registerFor(unreachable, ldr)
+	defer c.unregister(unreachable)
+	if !unreachable.waitFor(condition, c.longTimeout) {
+		c.Fatalf("waitReachableDetected: ldr M%d failed to detect M%d is reachable", ldr.NID(), failed.NID())
+	}
+}
+
 func (c *cluster) waitTaskDone(t Task, timeout time.Duration, want error) interface{} {
 	c.Helper()
 

@@ -190,6 +190,9 @@ func test_nonvoter_reconnects_catchesUp(t *testing.T) {
 	// now reconnect m4
 	c.connect()
 
+	// ensure that leader detected that m4 is reachable
+	c.waitReachableDetected(ldr, m4)
+
 	// wait and ensure that m4 got last 10 entries from new leader
 	c.waitFSMLen(10, m4)
 
