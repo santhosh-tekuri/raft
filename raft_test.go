@@ -246,7 +246,7 @@ func (c *cluster) launch(n int, bootstrap bool) map[uint64]*Raft {
 		if err != nil {
 			c.Fatal(err)
 		}
-		storage := Storage{Vars: s, Log: s, Snapshots: &snapshots{dir: tempDir}}
+		storage := Storage{Vars: s, Log: s, Dir: tempDir}
 		if bootstrap {
 			if err := bootstrapStorage(storage, nodes); err != nil {
 				c.Fatalf("Storage.bootstrap failed: %v", err)

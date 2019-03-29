@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"path/filepath"
 	"sync"
 )
 
@@ -29,9 +30,9 @@ type Log interface {
 
 // Storage contains all persistent state.
 type Storage struct {
-	Vars      Vars
-	Log       Log
-	Snapshots *snapshots
+	Vars Vars
+	Log  Log
+	Dir  string
 }
 
 // GetIdentity returns the server identity.
@@ -92,10 +93,11 @@ type storage struct {
 }
 
 func newStorage(s Storage) *storage {
+	snaps := &snapshots{dir: filepath.Join(s.Dir, "snapshots")}
 	return &storage{
 		vars:  s.Vars,
 		log:   s.Log,
-		snaps: s.Snapshots,
+		snaps: snaps,
 	}
 }
 

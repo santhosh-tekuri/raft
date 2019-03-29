@@ -338,11 +338,11 @@ func test_leader_quorumWait_reachable(t *testing.T) {
 func test_opError_getVote(t *testing.T) {
 	mockStorage := &inmemStorage{cid: rand.Uint64(), nid: 1}
 	mockStorage.getVoteErr = errors.New("abc")
-	temp, err := ioutil.TempDir(tempDir, "storage")
+	tempDir, err := ioutil.TempDir(tempDir, "storage")
 	if err != nil {
 		t.Fatal(err)
 	}
-	storage := Storage{mockStorage, mockStorage, &snapshots{dir: temp}}
+	storage := Storage{Vars: mockStorage, Log: mockStorage, Dir: tempDir}
 	_, err = New(DefaultOptions(), &fsmMock{id: 1}, storage)
 	if _, ok := err.(OpError); !ok {
 		t.Fatalf("got %v, want OpError", err)

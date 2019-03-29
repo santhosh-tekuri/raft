@@ -60,7 +60,7 @@ func New(opt Options, fsm FSM, storage Storage) (*Raft, error) {
 		FSM:       fsm,
 		id:        store.nid,
 		taskCh:    make(chan Task, 128), // todo configurable capacity
-		snapshots: storage.Snapshots,
+		snapshots: store.snaps,
 	}
 
 	r := &Raft{
