@@ -16,6 +16,9 @@ type Options struct {
 }
 
 func (o Options) validate() error {
+	if o.FileMode.String()[1] != 'r' {
+		return fmt.Errorf("log: FileMode %q has no read permission", o.FileMode)
+	}
 	if o.SegmentSize < 1024 {
 		return fmt.Errorf("log: SegmentSize %d is too smal", o.SegmentSize)
 	}
