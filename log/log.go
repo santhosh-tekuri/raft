@@ -238,6 +238,24 @@ func (l *Log) RemoveGTE(i uint64) error {
 	return nil
 }
 
+// Reset clears all entries and resets to given lastIndex
+func (l *Log) Reset(lastIndex uint64) error {
+	// remove all segments
+	for l.first != nil {
+		if err := l.first.closeAndRemove(); err != nil {
+			return err
+		}
+		l.first = l.first.next
+	}
+
+	s, err := openSegment(l.dir, lastIndex, l.opt)
+	if err != nil {
+		return err
+	}
+	l.first, l.last = s, s
+	return nil
+}
+
 func (l *Log) Flush() error {
 	for s := l.last; s != nil; s = s.prev {
 		if !s.dirty {
