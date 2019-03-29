@@ -37,7 +37,7 @@ func (l *ldrShip) init() {
 
 	l.voter = true
 	l.startIndex = l.lastLogIndex + 1
-	l.fromReplsCh = make(chan interface{}, len(l.configs.Latest.Nodes))
+	l.fromReplsCh = make(chan interface{}, 1024)
 
 	// start replication routine for each follower
 	for id, n := range l.configs.Latest.Nodes {
