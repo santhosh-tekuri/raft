@@ -232,19 +232,19 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq, reader io.Reader) (rpcR
 	r.setLeader(req.src)
 
 	// store snapshot
-	sink, err := r.snapshots.New(req.lastIndex, req.lastTerm, req.lastConfig)
+	sink, err := r.snapshots.new(req.lastIndex, req.lastTerm, req.lastConfig)
 	if err != nil {
-		return unexpectedErr, err
+		return unexpectedErr, opError(err, "snapshots.new")
 	}
-	n, err := io.CopyN(sink, reader, req.size)
+	n, err := io.CopyN(sink.file, reader, req.size)
 	req.size -= n
 	if err != nil {
-		_, _ = sink.Done(err)
+		_, _ = sink.done(err)
 		return readErr, err
 	}
-	meta, err := sink.Done(nil)
+	meta, err := sink.done(nil)
 	if err != nil {
-		return unexpectedErr, err
+		return unexpectedErr, opError(err, "snapshotSink.done")
 	}
 	r.snapIndex, r.snapTerm = meta.Index, meta.Term
 

@@ -107,12 +107,17 @@ func TestRaft(t *testing.T) {
 //       ensure that leader replies confChange
 //       ensure that removed node sits idle as follower
 
+var tempDir string
+
 func TestMain(m *testing.M) {
+	temp, err := ioutil.TempDir("", "log")
+	if err != nil {
+		os.Exit(1)
+	}
+	tempDir = temp
 	code := m.Run()
-
-	// wait until all pending debug messages are printed to stdout
-	debug("barrier")
-
+	debug("barrier") // wait until all pending debug messages are printed to stdout
+	_ = os.RemoveAll(tempDir)
 	os.Exit(code)
 }
 
@@ -237,7 +242,11 @@ func (c *cluster) launch(n int, bootstrap bool) map[uint64]*Raft {
 	launched := make(map[uint64]*Raft)
 	for _, node := range nodes {
 		s := &inmemStorage{cid: c.id, nid: node.ID}
-		storage := Storage{Vars: s, Log: s, Snapshots: s}
+		tempDir, err := ioutil.TempDir(tempDir, "storage")
+		if err != nil {
+			c.Fatal(err)
+		}
+		storage := Storage{Vars: s, Log: s, Snapshots: &snapshots{dir: tempDir}}
 		if bootstrap {
 			if err := bootstrapStorage(storage, nodes); err != nil {
 				c.Fatalf("Storage.bootstrap failed: %v", err)
@@ -670,6 +679,15 @@ func (c *cluster) disconnect(rr ...*Raft) {
 func (c *cluster) connect() {
 	tdebug("reconnecting")
 	c.network.SetFirewall(fnet.AllowAll)
+}
+
+func (c *cluster) snaps(r *Raft) []uint64 {
+	c.Helper()
+	snaps, err := findSnapshots(r.snapshots.dir)
+	if err != nil {
+		c.Fatal(err)
+	}
+	return snaps
 }
 
 // ---------------------------------------------
@@ -1159,9 +1177,6 @@ type inmemStorage struct {
 
 	muLog   sync.RWMutex
 	entries [][]byte
-
-	snapMeta SnapshotMeta
-	snapshot *bytes.Buffer
 }
 
 func (s *inmemStorage) GetIdentity() (cluster, node uint64, err error) {
@@ -1262,54 +1277,6 @@ func (s *inmemStorage) DeleteLast(n uint64) error {
 	}
 	s.entries = s.entries[:len(s.entries)-int(n)]
 	return nil
-}
-
-func (s *inmemStorage) numSnaps() int {
-	if s.snapMeta.Index == 0 {
-		return 0
-	}
-	return 1
-}
-
-type inmemSink struct {
-	s    *inmemStorage
-	meta SnapshotMeta
-	*bytes.Buffer
-}
-
-func (s *inmemSink) Done(err error) (SnapshotMeta, error) {
-	if err == nil {
-		s.meta.Size = int64(s.Buffer.Len())
-		s.s.snapMeta = s.meta
-		s.s.snapshot = s.Buffer
-	}
-	return s.meta, err
-}
-
-func (s *inmemStorage) New(index, term uint64, config Config) (SnapshotSink, error) {
-	if index < s.snapMeta.Index {
-		panic("i have latest snapshot")
-	}
-	return &inmemSink{
-		s: s,
-		meta: SnapshotMeta{
-			Index:  index,
-			Term:   term,
-			Config: config,
-		},
-		Buffer: new(bytes.Buffer),
-	}, nil
-}
-
-func (s *inmemStorage) Meta() (SnapshotMeta, error) {
-	return s.snapMeta, nil
-}
-
-func (s *inmemStorage) Open() (SnapshotMeta, io.ReadCloser, error) {
-	if s.snapMeta.Index == 0 {
-		panic("no snapshots")
-	}
-	return s.snapMeta, ioutil.NopCloser(bytes.NewReader(s.snapshot.Bytes())), nil
 }
 
 // ------------------------------------------------------------------

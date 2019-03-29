@@ -37,8 +37,8 @@ func test_takeSnapshot_restartSendUpdates(t *testing.T) {
 	c.takeSnapshot(ldr, 10, nil)
 
 	// ensure #snapshots is one
-	if got := c.inmemStorage(ldr).numSnaps(); got != 1 {
-		t.Fatalf("numSnaps: got %d, want 1", got)
+	if snaps := c.snaps(ldr); len(snaps) != 1 {
+		t.Fatalf("numSnaps: got %v, want 1", snaps)
 	}
 
 	// log should have zero entries

@@ -2,6 +2,7 @@ package raft
 
 import (
 	"errors"
+	"io/ioutil"
 	"math/rand"
 	"testing"
 	"time"
@@ -337,8 +338,12 @@ func test_leader_quorumWait_reachable(t *testing.T) {
 func test_opError_getVote(t *testing.T) {
 	mockStorage := &inmemStorage{cid: rand.Uint64(), nid: 1}
 	mockStorage.getVoteErr = errors.New("abc")
-	storage := Storage{mockStorage, mockStorage, mockStorage}
-	_, err := New(DefaultOptions(), &fsmMock{id: 1}, storage)
+	temp, err := ioutil.TempDir(tempDir, "storage")
+	if err != nil {
+		t.Fatal(err)
+	}
+	storage := Storage{mockStorage, mockStorage, &snapshots{dir: temp}}
+	_, err = New(DefaultOptions(), &fsmMock{id: 1}, storage)
 	if _, ok := err.(OpError); !ok {
 		t.Fatalf("got %v, want OpError", err)
 	}

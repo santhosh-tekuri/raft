@@ -267,9 +267,9 @@ func (f *flr) onAppendEntriesResp(resp *appendEntriesResp, reqLastIndex uint64) 
 }
 
 func (f *flr) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
-	meta, snapshot, err := f.storage.snapshots.Open()
+	meta, snapshot, err := f.storage.snapshots.open()
 	if err != nil {
-		return opError(err, "Snapshots.Open")
+		return opError(err, "snapshots.open")
 	}
 	defer snapshot.Close()
 

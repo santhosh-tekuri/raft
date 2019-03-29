@@ -25,31 +25,13 @@ type Log interface {
 	DeleteLast(n uint64) error
 }
 
-type Snapshots interface {
-	New(index, term uint64, config Config) (SnapshotSink, error)
-	Meta() (SnapshotMeta, error)
-	Open() (SnapshotMeta, io.ReadCloser, error)
-}
-
-type SnapshotMeta struct {
-	Index  uint64
-	Term   uint64
-	Config Config
-	Size   int64
-}
-
-type SnapshotSink interface {
-	io.Writer
-	Done(err error) (SnapshotMeta, error)
-}
-
 // -----------------------------------------------------------------------------------
 
 // Storage contains all persistent state.
 type Storage struct {
 	Vars      Vars
 	Log       Log
-	Snapshots Snapshots
+	Snapshots *snapshots
 }
 
 // GetIdentity returns the server identity.
@@ -105,7 +87,7 @@ type storage struct {
 	lastLogIndex uint64
 	lastLogTerm  uint64
 
-	snapshots Snapshots
+	snapshots *snapshots
 	snapMu    sync.RWMutex
 	snapIndex uint64
 	snapTerm  uint64
@@ -140,9 +122,12 @@ func (s *storage) init() error {
 	}
 
 	// init snapshots ---------------
-	meta, err := s.snapshots.Meta()
+	if err = s.snapshots.init(); err != nil {
+		return opError(err, "snapshots.init")
+	}
+	meta, err := s.snapshots.meta()
 	if err != nil {
-		return opError(err, "Snapshots.Meta")
+		return opError(err, "snapshots.meta")
 	}
 	s.snapIndex, s.snapTerm = meta.Index, meta.Term
 

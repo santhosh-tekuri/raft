@@ -22,7 +22,7 @@ type stateMachine struct {
 	id uint64
 
 	taskCh    chan Task
-	snapshots Snapshots
+	snapshots *snapshots
 }
 
 func (fsm *stateMachine) runLoop() {
@@ -61,10 +61,10 @@ func (fsm *stateMachine) runLoop() {
 				state: state,
 			})
 		case fsmRestoreReq:
-			meta, sr, err := fsm.snapshots.Open()
+			meta, sr, err := fsm.snapshots.open()
 			if err != nil {
-				debug(fsm, "snapshots.Open failed", err)
-				t.reply(opError(err, "Snapshots.Open"))
+				debug(fsm, "snapshots.open failed", err)
+				t.reply(opError(err, "snapshots.open"))
 				continue
 			}
 			if err = fsm.RestoreFrom(sr); err != nil {
@@ -133,26 +133,26 @@ func doTakeSnapshot(fsm *stateMachine, index uint64, config Config) (meta Snapsh
 
 	// write snapshot to storage
 	debug(fsm, "takingSnap:", resp.index)
-	sink, err := fsm.snapshots.New(resp.index, resp.term, config)
+	sink, err := fsm.snapshots.new(resp.index, resp.term, config)
 	if err != nil {
-		debug(fsm, "snapshots.New failed", err)
-		err = opError(err, "Snapshots.New")
+		debug(fsm, "snapshots.new failed", err)
+		err = opError(err, "snapshots.new")
 		return
 	}
-	bufw := bufio.NewWriter(sink)
+	bufw := bufio.NewWriter(sink.file)
 	err = resp.state.WriteTo(bufw)
 	if err == nil {
 		err = bufw.Flush()
 	}
-	meta, doneErr := sink.Done(err)
+	meta, doneErr := sink.done(err)
 	if err != nil {
 		debug(fsm, "FSMState.WriteTo failed", resp.index, err)
 		err = opError(err, "FSMState.WriteTo")
 		return
 	}
 	if doneErr != nil {
-		debug(fsm, "FSMState.Done failed", resp.index, err)
-		err = opError(err, "FSMState.Done")
+		debug(fsm, "snapshotSink.done failed", resp.index, err)
+		err = opError(err, "snapshotSink.done")
 	}
 	return
 }
