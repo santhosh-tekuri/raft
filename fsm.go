@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"bufio"
 	"io"
 )
 
@@ -138,7 +139,11 @@ func doTakeSnapshot(fsm *stateMachine, index uint64, config Config) (meta Snapsh
 		err = opError(err, "Snapshots.New")
 		return
 	}
-	err = resp.state.WriteTo(sink)
+	bufw := bufio.NewWriter(sink)
+	err = resp.state.WriteTo(bufw)
+	if err == nil {
+		err = bufw.Flush()
+	}
 	meta, doneErr := sink.Done(err)
 	if err != nil {
 		debug(fsm, "FSMState.WriteTo failed", resp.index, err)
