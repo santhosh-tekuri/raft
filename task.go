@@ -338,7 +338,7 @@ func WaitForStableConfig() Task {
 
 // ------------------------------------------------------------------------
 
-// result is of type SnapshotMeta
+// result is snapshot index
 type takeSnapshot struct {
 	*task
 	threshold uint64

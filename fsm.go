@@ -182,7 +182,7 @@ func (r *Raft) onSnapshotTaken(t snapTaken) {
 			}
 		}
 	}
-	t.req.reply(t.meta)
+	t.req.reply(t.meta.Index)
 }
 
 // takeSnapshot() -> fsmLoop
