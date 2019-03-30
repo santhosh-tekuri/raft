@@ -109,7 +109,7 @@ func (f *flr) replicate(c *conn, req *appendEntriesReq) (err error) {
 			if err = f.onAppendEntriesResp(resp, f.nextIndex-1); err != nil {
 				return err
 			}
-			if err = f.checkLeaderUpdate(req, false); err != nil {
+			if _, err = f.checkLeaderUpdate(req, false); err != nil {
 				return err
 			}
 			if f.matchIndex+1 == f.nextIndex {
@@ -148,13 +148,17 @@ func (f *flr) replicate(c *conn, req *appendEntriesReq) (err error) {
 				if err != nil {
 					return
 				}
-				if err = f.checkLeaderUpdate(req, true); err != nil {
-					select {
-					case <-stopCh:
+				for {
+					ldrUpdate, errStop := f.checkLeaderUpdate(req, true)
+					if errStop != nil {
 						return
-					case resultCh <- result{0, err}:
 					}
-					return
+					if ldrUpdate || len(resultCh) == 0 || f.nextIndex <= f.ldrLastIndex {
+						break
+					}
+					// we have not received responses for all requests yet
+					// so no need to flood him with heartbeat
+					// take a nap and check again
 				}
 			}
 		}()
@@ -314,7 +318,7 @@ func (f *flr) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
 	}
 }
 
-func (f *flr) checkLeaderUpdate(req *appendEntriesReq, sendEntries bool) error {
+func (f *flr) checkLeaderUpdate(req *appendEntriesReq, sendEntries bool) (ldrUpdate bool, err error) {
 	if sendEntries && f.nextIndex > f.ldrLastIndex {
 		// for nonvoter, dont send heartbeats
 		var timerCh <-chan time.Time
@@ -326,23 +330,26 @@ func (f *flr) checkLeaderUpdate(req *appendEntriesReq, sendEntries bool) error {
 		// nothing to send. start heartbeat timer
 		select {
 		case <-f.stopCh:
-			return errStop
+			return false, errStop
 		case update := <-f.fromLeaderCh:
 			f.onLeaderUpdate(update, req)
+			return true, nil
 		case <-timerCh:
 			f.timer.active = false
+			return false, nil
 		}
 	} else {
 		// check signal if any, without blocking
 		select {
 		case <-f.stopCh:
-			return errStop
+			return false, errStop
 		case update := <-f.fromLeaderCh:
 			f.onLeaderUpdate(update, req)
+			return true, nil
 		default:
 		}
 	}
-	return nil
+	return false, nil
 }
 
 func (f *flr) onLeaderUpdate(u leaderUpdate, req *appendEntriesReq) {
