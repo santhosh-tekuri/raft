@@ -88,10 +88,12 @@ func (n Node) String() string {
 	return fmt.Sprintf("M%d", n.ID)
 }
 
+//go:norace
 func (r *Raft) String() string {
 	return fmt.Sprintf("M%d %d %s |", r.nid, r.term, string(r.state))
 }
 
+//go:norace
 func (f *flr) String() string {
 	return fmt.Sprintf("%s %d %d %d |", f.str, f.matchIndex, f.nextIndex, f.ldrLastIndex)
 }

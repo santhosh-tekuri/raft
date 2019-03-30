@@ -116,7 +116,7 @@ func (r *Raft) Serve(l net.Listener) error {
 	go func() {
 		defer wg.Done()
 		r.fsm.runLoop()
-		debug(r.nid, "fsmLoop shutdown")
+		debug(r, "fsmLoop shutdown")
 	}()
 	defer close(r.fsm.taskCh)
 
@@ -132,7 +132,7 @@ func (r *Raft) Serve(l net.Listener) error {
 	go func() {
 		defer wg.Done()
 		s.serve(r.rpcCh)
-		debug(r.nid, "server shutdown")
+		debug(r, "server shutdown")
 	}()
 	defer s.shutdown()
 
@@ -256,7 +256,7 @@ func (r *Raft) release() {
 
 func (r *Raft) doClose(reason error) {
 	r.closeOnce.Do(func() {
-		debug(r.nid, ">> shutdown()", reason)
+		debug(r, ">> shutdown()", reason)
 		if r.trace.ShuttingDown != nil {
 			r.trace.ShuttingDown(r.liveInfo(), reason)
 		}
