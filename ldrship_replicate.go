@@ -82,7 +82,9 @@ func (f *flr) runLoop(req *appendEntriesReq) {
 			err = remoteErr.error
 		}
 		failures++
-		_ = c.rwc.Close()
+		if c.rwc != nil {
+			_ = c.rwc.Close()
+		}
 		c = nil
 	}
 }
@@ -190,13 +192,36 @@ func (f *flr) replicate(c *conn, req *appendEntriesReq) (err error) {
 			} else {
 				debug(f, "ending pipeline, got resp.result", resp.result)
 				close(stopCh)
-				// drain remaining responses
-				for range resultCh {
-					if err = c.readResp(resp); err != nil {
-						return err
+				drainResps := func() error {
+					for range resultCh {
+						if err = c.readResp(resp); err != nil {
+							return err
+						}
 					}
+					return nil
 				}
-				break
+				if resp.result == staleTerm {
+					drained := make(chan error, 1)
+					go func() {
+						drained <- drainResps()
+					}()
+					closed := false
+					select {
+					case err = <-drained:
+					case <-time.After(f.hbTimeout / 2):
+						closed, _, err = true, c.rwc.Close(), io.ErrClosedPipe
+						<-drained
+					}
+					if err != nil {
+						if !closed {
+							_ = c.rwc.Close()
+						}
+						c.rwc = nil // to signal runLoop that we closed the conn
+					}
+					return f.onAppendEntriesResp(resp, result.lastIndex) // notifies ldr and return errStop
+				} else {
+					return drainResps()
+				}
 			}
 		}
 	}
