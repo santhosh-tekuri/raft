@@ -7,6 +7,9 @@ import (
 	"time"
 )
 
+// when running tests this is set to true
+var testMode bool
+
 type Raft struct {
 	rtime randTime
 	timer *safeTimer

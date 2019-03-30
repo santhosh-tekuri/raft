@@ -82,6 +82,14 @@ const (
 	rpcTimeoutNow
 )
 
+func (t rpcType) isValid() bool {
+	switch t {
+	case rpcIdentity, rpcVote, rpcAppendEntries, rpcInstallSnap, rpcTimeoutNow:
+		return true
+	}
+	return false
+}
+
 func (t rpcType) fromLeader() bool {
 	switch t {
 	case rpcAppendEntries, rpcInstallSnap, rpcTimeoutNow:

@@ -110,6 +110,7 @@ func TestRaft(t *testing.T) {
 var tempDir string
 
 func TestMain(m *testing.M) {
+	testMode = true
 	temp, err := ioutil.TempDir("", "log")
 	if err != nil {
 		os.Exit(1)

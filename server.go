@@ -2,6 +2,7 @@ package raft
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -69,6 +70,13 @@ func (s *server) serve(rpcCh chan<- *rpc) {
 func (s *server) handleRPC(ch chan<- *rpc, r *bufio.Reader, w *bufio.Writer) error {
 	b, err := r.ReadByte()
 	if err != nil {
+		return err
+	}
+	if !rpcType(b).isValid() {
+		err = fmt.Errorf("raft: server.handleRpc got rpcType %d", b)
+		if testMode {
+			panic(err)
+		}
 		return err
 	}
 	rpc := &rpc{req: rpcType(b).createReq(), reader: r, done: make(chan struct{})}
