@@ -43,9 +43,7 @@ func Open(dir string, dirMode os.FileMode, opt Options) (*Log, error) {
 	first, last, err := openSegments(dir, opt)
 	if err != nil {
 		for first != nil {
-			if e := first.close(); err == nil {
-				err = e
-			}
+			_ = first.close()
 			first = first.next
 		}
 		return nil, err
