@@ -37,7 +37,7 @@ func (f *flr) runLoop(req *appendEntriesReq) {
 	debug(f, "f.start")
 	var c *conn
 	defer func() {
-		if c != nil {
+		if c != nil && c.rwc != nil {
 			f.connPool.returnConn(c)
 		}
 		if v := recover(); v != nil {
