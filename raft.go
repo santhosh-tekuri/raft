@@ -3,6 +3,7 @@ package raft
 import (
 	"container/list"
 	"net"
+	"runtime"
 	"sync"
 	"time"
 )
@@ -162,6 +163,9 @@ func (r *Raft) stateLoop() (err error) {
 
 	defer func() {
 		if v := recover(); v != nil {
+			if _, ok := v.(runtime.Error); ok {
+				panic(v)
+			}
 			err = toErr(v)
 			r.doClose(err)
 		}

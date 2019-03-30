@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"path/filepath"
+	"runtime"
 	"sync"
 )
 
@@ -305,7 +306,12 @@ func (s *storage) deleteGTE(index, prevTerm uint64) {
 
 func (s *storage) bootstrap(config Config) (err error) {
 	defer func() {
-		err = toErr(recover())
+		if v := recover(); v != nil {
+			if _, ok := v.(runtime.Error); ok {
+				panic(v)
+			}
+			err = toErr(v)
+		}
 	}()
 	s.appendEntry(config.encode())
 	s.setTerm(1)

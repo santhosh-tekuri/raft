@@ -3,6 +3,7 @@ package raft
 import (
 	"fmt"
 	"io"
+	"runtime"
 	"time"
 )
 
@@ -42,6 +43,9 @@ func (f *flr) runLoop(req *appendEntriesReq) {
 		}
 		if v := recover(); v != nil {
 			debug(f, "got panic:", v)
+			if _, ok := v.(runtime.Error); ok {
+				panic(v)
+			}
 			f.notifyLdr(toErr(v))
 		}
 	}()
@@ -137,6 +141,9 @@ func (f *flr) replicate(c *conn, req *appendEntriesReq) (err error) {
 			defer func() {
 				close(resultCh)
 				if v := recover(); v != nil {
+					if _, ok := v.(runtime.Error); ok {
+						panic(v)
+					}
 					select {
 					case <-stopCh:
 						return
