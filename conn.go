@@ -30,7 +30,7 @@ func dial(dialFn dialFn, address string, timeout time.Duration) (*conn, error) {
 }
 
 func (c *conn) writeReq(req request) error {
-	if err := c.rwc.SetDeadline(time.Now().Add(c.timeout)); err != nil {
+	if err := c.rwc.SetWriteDeadline(time.Now().Add(c.timeout)); err != nil {
 		return err
 	}
 	if err := writeUint8(c.bufw, uint8(req.rpcType())); err != nil {
@@ -43,7 +43,7 @@ func (c *conn) writeReq(req request) error {
 }
 
 func (c *conn) readResp(resp response) error {
-	if err := c.rwc.SetDeadline(time.Now().Add(c.timeout)); err != nil {
+	if err := c.rwc.SetReadDeadline(time.Now().Add(c.timeout)); err != nil {
 		return err
 	}
 	return resp.decode(c.bufr)
