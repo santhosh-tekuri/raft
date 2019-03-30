@@ -189,40 +189,45 @@ func (f *flr) replicate(c *conn, req *appendEntriesReq) (err error) {
 			}
 			if resp.result == success {
 				_ = f.onAppendEntriesResp(resp, result.lastIndex)
-			} else {
-				debug(f, "ending pipeline, got resp.result", resp.result)
-				close(stopCh)
-				drainResps := func() error {
-					for range resultCh {
-						if err = c.readResp(resp); err != nil {
-							return err
-						}
-					}
-					return nil
-				}
-				if resp.result == staleTerm {
-					drained := make(chan error, 1)
-					go func() {
-						drained <- drainResps()
-					}()
-					closed := false
-					select {
-					case err = <-drained:
-					case <-time.After(f.hbTimeout / 2):
-						closed, _, err = true, c.rwc.Close(), io.ErrClosedPipe
-						<-drained
-					}
-					if err != nil {
-						if !closed {
-							_ = c.rwc.Close()
-						}
-						c.rwc = nil // to signal runLoop that we closed the conn
-					}
-					return f.onAppendEntriesResp(resp, result.lastIndex) // notifies ldr and return errStop
-				} else {
-					return drainResps()
-				}
+				continue
 			}
+
+			debug(f, "ending pipeline, got resp.result", resp.result)
+			close(stopCh)
+			drainResps := func() error {
+				for range resultCh {
+					if err = c.readResp(resp); err != nil {
+						return err
+					}
+				}
+				return nil
+			}
+
+			if resp.result == staleTerm {
+				drained := make(chan error, 1)
+				go func() {
+					drained <- drainResps()
+				}()
+				closed := false
+				select {
+				case err = <-drained:
+				case <-time.After(f.hbTimeout / 2):
+					closed, _, err = true, c.rwc.Close(), io.ErrClosedPipe
+					<-drained
+				}
+				if err != nil {
+					if !closed {
+						_ = c.rwc.Close()
+					}
+					c.rwc = nil // to signal runLoop that we closed the conn
+				}
+				return f.onAppendEntriesResp(resp, result.lastIndex) // notifies ldr and return errStop
+			}
+
+			if err = drainResps(); err != nil {
+				return err
+			}
+			break
 		}
 	}
 }
