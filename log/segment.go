@@ -21,7 +21,6 @@ type segment struct {
 	n     uint64 // number of entries
 	size  int64  // log size
 	dirty bool   // is sync needed ?
-	sync1 bool
 }
 
 func openSegment(dir string, prevIndex uint64, opt Options) (*segment, error) {
@@ -41,7 +40,6 @@ func openSegment(dir string, prevIndex uint64, opt Options) (*segment, error) {
 		prevIndex: prevIndex,
 		file:      file,
 		bufw:      bufio.NewWriter(file.File),
-		sync1:     opt.SyncTogether,
 	}
 	s.n = uint64(s.offset(0))
 	s.size = int64(s.offset(s.n + 1))
@@ -119,10 +117,8 @@ func (s *segment) sync() error {
 		if err := s.bufw.Flush(); err != nil {
 			return err
 		}
-		if !s.sync1 {
-			if err := s.file.SyncData(); err != nil {
-				return err
-			}
+		if err := s.file.SyncData(); err != nil {
+			return err
 		}
 		if err := s.setOffset(s.n, 0); err != nil {
 			return err

@@ -12,7 +12,7 @@ import (
 )
 
 func TestOpen(t *testing.T) {
-	l := newLog(t, 1024, true)
+	l := newLog(t, 1024)
 
 	assertInt(t, "available", l.last.available(), 1024-3*8)
 	assertInt(t, "numSegments", numSegments(l), 1)
@@ -28,7 +28,7 @@ func TestOpen(t *testing.T) {
 }
 
 func TestSegmentSize(t *testing.T) {
-	l := newLog(t, 1024, true)
+	l := newLog(t, 1024)
 
 	b := make([]byte, l.last.available()+1)
 	rand.Read(b)
@@ -46,7 +46,7 @@ func TestSegmentSize(t *testing.T) {
 }
 
 func TestLog_Get(t *testing.T) {
-	l := newLog(t, 1024, true)
+	l := newLog(t, 1024)
 
 	n, numSeg := uint64(0), 1
 	for i := 0; i <= 1; i++ {
@@ -77,7 +77,7 @@ func TestLog_Get(t *testing.T) {
 }
 
 func TestLog_GetN(t *testing.T) {
-	l := newLog(t, 1024, true)
+	l := newLog(t, 1024)
 
 	var n uint64
 	for numSegments(l) != 4 {
@@ -147,7 +147,7 @@ func TestLog_GetN(t *testing.T) {
 }
 
 func TestLog_ViewAt(t *testing.T) {
-	l := newLog(t, 1024, true)
+	l := newLog(t, 1024)
 
 	var n uint64
 	for numSegments(l) != 4 {
@@ -214,7 +214,7 @@ func TestLog_ViewAt(t *testing.T) {
 func TestLog_RemoveLTE(t *testing.T) {
 	newLog := func() *Log {
 		t.Helper()
-		l := newLog(t, 1024, true)
+		l := newLog(t, 1024)
 
 		var n uint64
 		for numSegments(l) != 4 {
@@ -311,7 +311,7 @@ func TestLog_RemoveLTE(t *testing.T) {
 func TestLog_RemoveGTE(t *testing.T) {
 	newLog := func() *Log {
 		t.Helper()
-		l := newLog(t, 1024, true)
+		l := newLog(t, 1024)
 
 		var n uint64
 		for numSegments(l) != 4 {
@@ -381,7 +381,7 @@ func TestLog_RemoveGTE(t *testing.T) {
 func TestLog_RemoveLTE_RemoveGTE(t *testing.T) {
 	newLog := func() *Log {
 		t.Helper()
-		l := newLog(t, 1024, true)
+		l := newLog(t, 1024)
 
 		var n uint64
 		for numSegments(l) != 4 {
@@ -468,13 +468,13 @@ func TestMain(M *testing.M) {
 
 // helpers -----------------------------------------
 
-func newLog(tb testing.TB, size int, together bool) *Log {
+func newLog(tb testing.TB, size int) *Log {
 	tb.Helper()
 	dir, err := ioutil.TempDir(tempDir, "log")
 	if err != nil {
 		tb.Fatal(err)
 	}
-	l, err := Open(dir, 0700, Options{0600, size, together})
+	l, err := Open(dir, 0700, Options{0600, size})
 	if err != nil {
 		tb.Fatal(err)
 	}

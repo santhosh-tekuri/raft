@@ -10,9 +10,8 @@ var ErrNotFound = errors.New("log: entry not found")
 var ErrExceedsSegmentSize = errors.New("log: entry exceeds segment size")
 
 type Options struct {
-	FileMode     os.FileMode
-	SegmentSize  int
-	SyncTogether bool
+	FileMode    os.FileMode
+	SegmentSize int
 }
 
 func (o Options) validate() error {
