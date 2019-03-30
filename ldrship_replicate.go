@@ -366,7 +366,7 @@ func (f *flr) checkLeaderUpdate(stopCh <-chan struct{}, req *appendEntriesReq, s
 		// for nonvoter, dont send heartbeats
 		var timerCh <-chan time.Time
 		if f.voter {
-			f.timer.reset(f.hbTimeout / 10)
+			f.timer.reset(f.hbTimeout / 2)
 			timerCh = f.timer.C
 		}
 
