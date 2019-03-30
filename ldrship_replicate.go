@@ -246,7 +246,9 @@ func (f *flr) writeAppendEntriesReq(c *conn, req *appendEntriesReq, sendEntries 
 
 	// fill req.prevLogXXX
 	req.prevLogIndex = f.nextIndex - 1
-	if req.prevLogIndex == snapIndex {
+	if req.prevLogIndex == 0 {
+		req.prevLogTerm = 0
+	} else if req.prevLogIndex == snapIndex {
 		req.prevLogTerm = snapTerm
 	} else {
 		req.prevLogTerm, err = f.storage.getEntryTerm(req.prevLogIndex)
