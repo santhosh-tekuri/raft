@@ -69,6 +69,10 @@ func (f *flr) runLoop(req *appendEntriesReq) {
 			if failures > 0 {
 				failures = 0
 				f.notifyNoContact(nil)
+
+				// we have not checked leader update since no contact
+				// let us check it
+				_, _ = f.checkLeaderUpdate(f.stopCh, req, false)
 			}
 		}
 
