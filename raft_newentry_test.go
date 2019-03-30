@@ -31,9 +31,10 @@ func test_update_concurrent(t *testing.T) {
 
 	// concurrently apply
 	var wg sync.WaitGroup
-	for i := 0; i < 100; i++ {
+	n := uint64(100)
+	for i := uint64(0); i < n; i++ {
 		wg.Add(1)
-		go func(i int) {
+		go func(i uint64) {
 			defer wg.Done()
 			if _, err := waitUpdate(ldr, fmt.Sprintf("test%d", i), 0); err != nil {
 				t.Log("FAIL got", err, "want nil")
@@ -51,7 +52,7 @@ func test_update_concurrent(t *testing.T) {
 	}
 
 	// check the FSMs
-	c.waitFSMLen(100)
+	c.waitFSMLen(n)
 	c.ensureFSMSame(nil)
 }
 
