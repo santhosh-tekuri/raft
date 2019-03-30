@@ -109,7 +109,7 @@ func (f *flr) replicate(c *conn, req *appendEntriesReq) (err error) {
 			if err = f.onAppendEntriesResp(resp, f.nextIndex-1); err != nil {
 				return err
 			}
-			if _, err = f.checkLeaderUpdate(req, false); err != nil {
+			if _, err = f.checkLeaderUpdate(f.stopCh, req, false); err != nil {
 				return err
 			}
 			if f.matchIndex+1 == f.nextIndex {
@@ -149,7 +149,7 @@ func (f *flr) replicate(c *conn, req *appendEntriesReq) (err error) {
 					return
 				}
 				for {
-					ldrUpdate, errStop := f.checkLeaderUpdate(req, true)
+					ldrUpdate, errStop := f.checkLeaderUpdate(stopCh, req, true)
 					if errStop != nil {
 						return
 					}
@@ -162,16 +162,23 @@ func (f *flr) replicate(c *conn, req *appendEntriesReq) (err error) {
 				}
 			}
 		}()
-		for result := range resultCh {
-			if result.err != nil {
-				debug(f, "pipeline ended with", result.err)
-				if result.err == errNoEntryFound {
-					break
+		for {
+			var result result
+			select {
+			case <-f.stopCh:
+				err = errStop
+			case result = <-resultCh:
+				if result.err != nil {
+					debug(f, "pipeline ended with", result.err)
+					if result.err == errNoEntryFound {
+						break
+					}
+					return result.err
 				}
-				return result.err
+				err = c.readResp(resp)
 			}
-			if err = c.readResp(resp); err != nil {
-				debug(f, "pipeline ended with readResp error:", err)
+			if err != nil {
+				debug(f, "ending pipeline, got", err)
 				close(stopCh)
 				// wait for pipeline routine finish
 				for range resultCh {
@@ -181,7 +188,7 @@ func (f *flr) replicate(c *conn, req *appendEntriesReq) (err error) {
 			if resp.result == success {
 				_ = f.onAppendEntriesResp(resp, result.lastIndex)
 			} else {
-				debug(f, "pipeline ended with resp.result", resp.result)
+				debug(f, "ending pipeline, got resp.result", resp.result)
 				close(stopCh)
 				// drain remaining responses
 				for range resultCh {
@@ -318,7 +325,7 @@ func (f *flr) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
 	}
 }
 
-func (f *flr) checkLeaderUpdate(req *appendEntriesReq, sendEntries bool) (ldrUpdate bool, err error) {
+func (f *flr) checkLeaderUpdate(stopCh <-chan struct{}, req *appendEntriesReq, sendEntries bool) (ldrUpdate bool, err error) {
 	if sendEntries && f.nextIndex > f.ldrLastIndex {
 		// for nonvoter, dont send heartbeats
 		var timerCh <-chan time.Time
@@ -329,7 +336,7 @@ func (f *flr) checkLeaderUpdate(req *appendEntriesReq, sendEntries bool) (ldrUpd
 
 		// nothing to send. start heartbeat timer
 		select {
-		case <-f.stopCh:
+		case <-stopCh:
 			return false, errStop
 		case update := <-f.fromLeaderCh:
 			f.onLeaderUpdate(update, req)
@@ -341,7 +348,7 @@ func (f *flr) checkLeaderUpdate(req *appendEntriesReq, sendEntries bool) (ldrUpd
 	} else {
 		// check signal if any, without blocking
 		select {
-		case <-f.stopCh:
+		case <-stopCh:
 			return false, errStop
 		case update := <-f.fromLeaderCh:
 			f.onLeaderUpdate(update, req)
