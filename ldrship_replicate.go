@@ -98,12 +98,12 @@ func (f *flr) runLoop(req *appendEntriesReq) {
 }
 
 // always returns non-nil error
-func (f *flr) replicate(c *conn, req *appendEntriesReq) (err error) {
+func (f *flr) replicate(c *conn, req *appendEntriesReq) error {
 	resp := &appendEntriesResp{}
 	for {
 		// find matchIndex ---------------------------------------------------
 		for {
-			err = f.writeAppendEntriesReq(c, req, false)
+			err := f.writeAppendEntriesReq(c, req, false)
 			if err == errNoEntryFound {
 				if err = f.sendInstallSnapReq(c, req); err == nil {
 					continue
@@ -175,70 +175,79 @@ func (f *flr) replicate(c *conn, req *appendEntriesReq) (err error) {
 				}
 			}
 		}()
+
+		drainResps := func() error {
+			for range resultCh {
+				if err := c.readResp(resp); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		drainRespsTimeout := func(timeout time.Duration) {
+			drained := make(chan error, 1)
+			go func() {
+				drained <- drainResps()
+			}()
+			select {
+			case err := <-drained:
+				debug(f, "drain completed with error:", err)
+				if err != nil {
+					_ = c.rwc.Close()
+					c.rwc = nil // to signal runLoop that we closed the conn
+				}
+			case <-time.After(timeout):
+				debug(f, "drain timeout, closing conn")
+				_ = c.rwc.Close()
+				<-drained
+				debug(f, "drain completed")
+				c.rwc = nil // to signal runLoop that we closed the conn
+			}
+		}
+
+		var err error
 		for {
 			var result result
 			select {
 			case <-f.stopCh:
-				err = errStop
-			case result = <-resultCh:
-				if result.err != nil {
-					debug(f, "pipeline ended with", result.err)
-					if result.err == errNoEntryFound {
-						break
-					}
-					return result.err
-				}
-				err = c.readResp(resp)
-			}
-			if err != nil {
-				debug(f, "ending pipeline, got", err)
+				debug(f, "ending pipeline, got stop signal from ldr")
 				close(stopCh)
-				// wait for pipeline routine finish
+				drainRespsTimeout(f.hbTimeout / 2)
+				return errStop
+			case result = <-resultCh:
+			}
+			if result.err != nil {
+				debug(f, "pipeline ended with", result.err)
+				if result.err == errNoEntryFound {
+					break
+				}
+				return result.err
+			}
+			err = c.readResp(resp)
+			if err != nil {
+				debug(f, "ending pipeline, error in reading resp:", err)
+				close(stopCh)
+				_ = c.rwc.Close()
 				for range resultCh {
 				}
+				c.rwc = nil
 				return err
 			}
 			if resp.result == success {
 				_ = f.onAppendEntriesResp(resp, result.lastIndex)
-				continue
-			}
-
-			debug(f, "ending pipeline, got resp.result", resp.result)
-			close(stopCh)
-			drainResps := func() error {
-				for range resultCh {
-					if err = c.readResp(resp); err != nil {
+			} else {
+				debug(f, "ending pipeline, got resp.result", resp.result)
+				close(stopCh)
+				if resp.result == staleTerm {
+					drainRespsTimeout(f.hbTimeout / 2)
+					return f.onAppendEntriesResp(resp, result.lastIndex) // notifies ldr and return errStop
+				} else {
+					if err = drainResps(); err != nil {
 						return err
 					}
+					break
 				}
-				return nil
 			}
-
-			if resp.result == staleTerm {
-				drained := make(chan error, 1)
-				go func() {
-					drained <- drainResps()
-				}()
-				closed := false
-				select {
-				case err = <-drained:
-				case <-time.After(f.hbTimeout / 2):
-					closed, _, err = true, c.rwc.Close(), io.ErrClosedPipe
-					<-drained
-				}
-				if err != nil {
-					if !closed {
-						_ = c.rwc.Close()
-					}
-					c.rwc = nil // to signal runLoop that we closed the conn
-				}
-				return f.onAppendEntriesResp(resp, result.lastIndex) // notifies ldr and return errStop
-			}
-
-			if err = drainResps(); err != nil {
-				return err
-			}
-			break
 		}
 	}
 }
