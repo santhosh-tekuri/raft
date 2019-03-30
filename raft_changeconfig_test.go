@@ -162,9 +162,6 @@ func test_nonvoter_reconnects_catchesUp(t *testing.T) {
 	// launch new raft instance M4, without bootstrap
 	m4 := c.launch(1, false)[4]
 
-	// add M4 as nonvoter, wait for success reply
-	c.ensure(waitAddNonvoter(ldr, m4.NID(), id2Addr(m4.NID()), false))
-
 	// now disconnect nonvoter m4
 	m4StateChanged := c.registerFor(stateChanged, m4)
 	defer c.unregister(m4StateChanged)
@@ -176,6 +173,9 @@ func test_nonvoter_reconnects_catchesUp(t *testing.T) {
 		t.Fatalf("m4 changed state to %s", e.state)
 	case <-time.After(5 * c.heartbeatTimeout):
 	}
+
+	// add M4 as nonvoter, wait for success reply
+	c.ensure(waitAddNonvoter(ldr, m4.NID(), id2Addr(m4.NID()), false))
 
 	// ensure that leader detected that m4 is unreachable
 	c.waitUnreachableDetected(ldr, m4)
