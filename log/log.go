@@ -122,6 +122,10 @@ func (l *Log) segment(i uint64) *segment {
 	}
 }
 
+func (l *Log) Contains(i uint64) bool {
+	return i > l.PrevIndex() && i <= l.LastIndex()
+}
+
 func (l *Log) Get(i uint64) ([]byte, error) {
 	s := l.segment(i)
 	if s == nil {
