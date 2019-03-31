@@ -99,6 +99,7 @@ func (l *ldrShip) tryTransfer() {
 				f := l.flrs[id]
 				if f.status.noContact.IsZero() && f.status.matchIndex == l.lastLogIndex {
 					target = id
+					break
 				}
 			}
 		}
