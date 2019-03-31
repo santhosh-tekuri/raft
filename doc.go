@@ -9,3 +9,5 @@ package raft
 // todo: resolver should catch latest resolved addr
 // todo: leader should back pressure on newEntryCh
 // todo: can we provide type safe tasks: task.Result() now returns interface{}
+
+// todo: rpc.onAppendEntries, send reply and then start applying to fsm
