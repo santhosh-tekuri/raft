@@ -20,23 +20,24 @@ type snapshots struct {
 	term  uint64
 }
 
-func (s *snapshots) init() error {
-	if err := os.MkdirAll(s.dir, 0700); err != nil {
-		return err
+func openSnapshots(dir string) (*snapshots, error) {
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return nil, err
 	}
-	snaps, err := findSnapshots(s.dir)
+	snaps, err := findSnapshots(dir)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	s := &snapshots{dir: dir}
 	if len(snaps) > 0 {
 		s.index = snaps[0]
 		if meta, err := s.meta(); err != nil {
-			return err
+			return nil, err
 		} else {
 			s.term = meta.Term
 		}
 	}
-	return err
+	return s, nil
 }
 
 func (s *snapshots) latest() (index, term uint64) {

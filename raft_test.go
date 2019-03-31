@@ -833,8 +833,8 @@ func requestVote(from, to *Raft) (granted bool, err error) {
 }
 
 func bootstrapStorage(storage Storage, nodes map[uint64]Node) error {
-	store := newStorage(storage)
-	if err := store.init(); err != nil {
+	store, err := openStorage(storage)
+	if err != nil {
 		return err
 	}
 	return store.bootstrap(Config{Nodes: nodes, Index: 1, Term: 1})

@@ -93,13 +93,20 @@ type storage struct {
 	configs Configs
 }
 
-func newStorage(s Storage) *storage {
-	snaps := &snapshots{dir: filepath.Join(s.Dir, "snapshots")}
-	return &storage{
+func openStorage(s Storage) (*storage, error) {
+	snaps, err := openSnapshots(filepath.Join(s.Dir, "snapshots"))
+	if err != nil {
+		return nil, err
+	}
+	store := &storage{
 		vars:  s.Vars,
 		log:   s.Log,
 		snaps: snaps,
 	}
+	if err := store.init(); err != nil {
+		return nil, err
+	}
+	return store, nil
 }
 
 func (s *storage) init() error {
@@ -121,9 +128,6 @@ func (s *storage) init() error {
 	}
 
 	// init snapshots ---------------
-	if err = s.snaps.init(); err != nil {
-		return opError(err, "snapshots.init")
-	}
 	meta, err := s.snaps.meta()
 	if err != nil {
 		return opError(err, "snapshots.meta")

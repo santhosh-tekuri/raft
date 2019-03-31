@@ -56,8 +56,8 @@ func New(opt Options, fsm FSM, storage Storage) (*Raft, error) {
 	if err := opt.validate(); err != nil {
 		return nil, err
 	}
-	store := newStorage(storage)
-	if err := store.init(); err != nil {
+	store, err := openStorage(storage)
+	if err != nil {
 		return nil, err
 	}
 	sm := &stateMachine{
