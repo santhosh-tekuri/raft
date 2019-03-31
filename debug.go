@@ -82,7 +82,59 @@ func fatal(format string, args ...interface{}) {
 	assert(false, format, args...)
 }
 
-// ----------------------------------------------------------
+// Stringers ----------------------------------------------------------
+
+func (resp resp) String() string {
+	if resp.result == unexpectedErr {
+		return fmt.Sprintf("T%d %s %v", resp.term, resp.result, resp.err)
+	}
+	return fmt.Sprintf("T%d %s", resp.term, resp.result)
+}
+
+func (req *identityReq) String() string {
+	format := "identityReq{T%d M%d C%d M%d}"
+	return fmt.Sprintf(format, req.term, req.src, req.cid, req.nid)
+}
+
+func (resp *identityResp) String() string {
+	return fmt.Sprintf("identityResp{%v}", resp.resp)
+}
+
+func (req *voteReq) String() string {
+	format := "voteReq{T%d M%d last:(%d,%d)}"
+	return fmt.Sprintf(format, req.term, req.src, req.lastLogIndex, req.lastLogTerm)
+}
+
+func (resp *voteResp) String() string {
+	return fmt.Sprintf("voteResp{%s}", resp.resp)
+}
+
+func (req *appendEntriesReq) String() string {
+	format := "appendEntriesReq{T%d M%d prev:(%d,%d), #entries: %d, commit:%d}"
+	return fmt.Sprintf(format, req.term, req.src, req.prevLogIndex, req.prevLogTerm, req.numEntries, req.ldrCommitIndex)
+}
+
+func (resp *appendEntriesResp) String() string {
+	format := "appendEntriesResp{%v last:%d}"
+	return fmt.Sprintf(format, resp.resp, resp.lastLogIndex)
+}
+
+func (req *installSnapReq) String() string {
+	format := "installSnapReq{T%d M%d last:(%d,%d), size:%d}"
+	return fmt.Sprintf(format, req.term, req.src, req.lastIndex, req.lastIndex, req.size)
+}
+
+func (resp *installSnapResp) String() string {
+	return fmt.Sprintf("installSnapResp{%v}", resp.resp)
+}
+
+func (req *timeoutNowReq) String() string {
+	return fmt.Sprintf("timeoutNowReq{T%d M%d}", req.term, req.src)
+}
+
+func (resp *timeoutNowResp) String() string {
+	return fmt.Sprintf("timeoutNowResp{%v}", resp.resp)
+}
 
 func (n Node) String() string {
 	return fmt.Sprintf("M%d", n.ID)

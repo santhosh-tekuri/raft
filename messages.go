@@ -289,10 +289,6 @@ type identityReq struct {
 }
 
 func (req *identityReq) rpcType() rpcType { return rpcIdentity }
-func (req *identityReq) String() string {
-	format := "identityReq{T%d M%d C%d M%d}"
-	return fmt.Sprintf(format, req.term, req.src, req.cid, req.nid)
-}
 
 func (req *identityReq) decode(r io.Reader) error {
 	var err error
@@ -316,10 +312,6 @@ type identityResp struct {
 	resp
 }
 
-func (resp *identityResp) String() string {
-	return fmt.Sprintf("identityResp{T%d %s}", resp.term, resp.result)
-}
-
 // ------------------------------------------------------
 
 type voteReq struct {
@@ -329,10 +321,6 @@ type voteReq struct {
 }
 
 func (req *voteReq) rpcType() rpcType { return rpcVote }
-func (req *voteReq) String() string {
-	format := "voteReq{T%d M%d last:(%d,%d)}"
-	return fmt.Sprintf(format, req.term, req.src, req.lastLogIndex, req.lastLogTerm)
-}
 
 func (req *voteReq) decode(r io.Reader) error {
 	var err error
@@ -362,10 +350,6 @@ type voteResp struct {
 	resp
 }
 
-func (resp *voteResp) String() string {
-	return fmt.Sprintf("voteResp{T%d %s}", resp.term, resp.result)
-}
-
 // ------------------------------------------------------
 
 type appendEntriesReq struct {
@@ -377,10 +361,6 @@ type appendEntriesReq struct {
 }
 
 func (req *appendEntriesReq) rpcType() rpcType { return rpcAppendEntries }
-func (req *appendEntriesReq) String() string {
-	format := "appendEntriesReq{T%d M%d prev:(%d,%d), #entries: %d, commit:%d}"
-	return fmt.Sprintf(format, req.term, req.src, req.prevLogIndex, req.prevLogTerm, req.numEntries, req.ldrCommitIndex)
-}
 
 func (req *appendEntriesReq) decode(r io.Reader) error {
 	var err error
@@ -423,11 +403,6 @@ type appendEntriesResp struct {
 	lastLogIndex uint64
 }
 
-func (resp *appendEntriesResp) String() string {
-	format := "appendEntriesResp{T%d %s last:%d}"
-	return fmt.Sprintf(format, resp.term, resp.result, resp.lastLogIndex)
-}
-
 func (resp *appendEntriesResp) decode(r io.Reader) error {
 	var err error
 	if err = resp.resp.decode(r); err != nil {
@@ -455,10 +430,6 @@ type installSnapReq struct {
 }
 
 func (req *installSnapReq) rpcType() rpcType { return rpcInstallSnap }
-func (req *installSnapReq) String() string {
-	format := "installSnapReq{T%d M%d last:(%d,%d), size:%d}"
-	return fmt.Sprintf(format, req.term, req.src, req.lastIndex, req.lastIndex, req.size)
-}
 
 func (req *installSnapReq) decode(r io.Reader) error {
 	var err error
@@ -511,10 +482,6 @@ type installSnapResp struct {
 	resp
 }
 
-func (resp *installSnapResp) String() string {
-	return fmt.Sprintf("installSnapResp{T%d %s}", resp.term, resp.result)
-}
-
 // ------------------------------------------------------
 
 type timeoutNowReq struct {
@@ -522,16 +489,9 @@ type timeoutNowReq struct {
 }
 
 func (req *timeoutNowReq) rpcType() rpcType { return rpcTimeoutNow }
-func (req *timeoutNowReq) String() string {
-	return fmt.Sprintf("timeoutNowReq{T%d M%d}", req.term, req.src)
-}
 
 // ------------------------------------------------------
 
 type timeoutNowResp struct {
 	resp
-}
-
-func (resp *timeoutNowResp) String() string {
-	return fmt.Sprintf("timeoutNowResp{T%d %s}", resp.term, resp.result)
 }
