@@ -85,7 +85,7 @@ func New(opt Options, fsm FSM, storage Storage) (*Raft, error) {
 		dialFn:           net.DialTimeout,
 		connPools:        make(map[uint64]*connPool),
 		taskCh:           make(chan Task),
-		fsmTaskCh:        make(chan FSMTask),
+		fsmTaskCh:        make(chan FSMTask, maxAppendEntries), // todo
 		close:            make(chan struct{}),
 		closed:           make(chan struct{}),
 	}
@@ -268,6 +268,10 @@ func (r *Raft) doClose(reason error) {
 			r.trace.ShuttingDown(r.liveInfo(), reason)
 		}
 		close(r.close)
+		for buffed := len(r.fsmTaskCh); buffed > 0; buffed-- {
+			t := <-r.fsmTaskCh
+			t.reply(ErrServerClosed)
+		}
 	})
 }
 

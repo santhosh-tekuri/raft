@@ -84,6 +84,11 @@ func (l *ldrShip) release() {
 		ne := l.newEntries.Remove(l.newEntries.Front()).(newEntry)
 		ne.reply(err)
 	}
+	for buffed := len(l.fsmTaskCh); buffed > 0; buffed-- {
+		t := <-l.fsmTaskCh
+		t.reply(err)
+	}
+
 	for _, t := range l.waitStable {
 		t.reply(err)
 	}
@@ -95,31 +100,47 @@ func (l *ldrShip) release() {
 }
 
 func (l *ldrShip) storeEntry(ne newEntry) {
-	ne.entry.index, ne.entry.term = l.lastLogIndex+1, l.term
-	elem := l.newEntries.PushBack(ne)
+	i, lastIndex, configIndex := 0, l.lastLogIndex, l.configs.Latest.Index
+	for {
+		i++
+		ne.entry.index, ne.entry.term = l.lastLogIndex+1, l.term
+		elem := l.newEntries.PushBack(ne)
 
-	if ne.typ == entryRead || ne.typ == entryBarrier { // non-log entry
-		l.applyCommitted()
-		return
-	}
-
-	if l.transfer.inProgress() {
-		l.newEntries.Remove(elem)
-		ne.reply(InProgressError("transferLeadership"))
-		return
-	}
-
-	debug(l, "log.append", ne.typ, ne.index)
-	l.storage.appendEntry(ne.entry)
-	if ne.typ == entryConfig {
-		config := Config{}
-		if err := config.decode(ne.entry); err != nil {
-			panic(bug(1, "config.decode: %v", err))
+		if ne.typ == entryRead || ne.typ == entryBarrier { // non-log entry
+			l.applyCommitted()
+			break
 		}
-		l.changeConfig(config)
+
+		if l.transfer.inProgress() {
+			l.newEntries.Remove(elem)
+			ne.reply(InProgressError("transferLeadership"))
+			break
+		}
+
+		debug(l, "log.append", ne.typ, ne.index)
+		l.storage.appendEntry(ne.entry)
+		if ne.typ == entryConfig {
+			config := Config{}
+			if err := config.decode(ne.entry); err != nil {
+				panic(bug(1, "config.decode: %v", err))
+			}
+			l.changeConfig(config)
+		}
+
+		if i < maxAppendEntries {
+			select {
+			case t := <-l.fsmTaskCh:
+				ne = t.newEntry()
+				continue
+			default:
+			}
+		}
+		break
 	}
-	l.beginFinishedRounds()
-	l.notifyFlr(ne.typ == entryConfig)
+	if l.lastLogIndex > lastIndex {
+		l.beginFinishedRounds()
+		l.notifyFlr(l.configs.Latest.Index > configIndex)
+	}
 }
 
 func (l *ldrShip) addFlr(n Node) {
