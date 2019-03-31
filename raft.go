@@ -151,7 +151,10 @@ func (r *Raft) stateLoop() (err error) {
 			Raft:       r,
 			newEntries: list.New(),
 			flrs:       make(map[uint64]*flr),
-			transfer:   transfer{timer: newSafeTimer()},
+			transfer: transfer{
+				timer:        newSafeTimer(),
+				newTermTimer: newSafeTimer(),
+			},
 		}
 	)
 	r.ldr = l
@@ -240,6 +243,10 @@ func (r *Raft) stateLoop() (err error) {
 
 			case result := <-l.transfer.respCh:
 				l.onTimeoutNowResult(result)
+
+			case <-l.transfer.newTermTimer.C:
+				l.transfer.newTermTimer.active = false
+				l.onNewTermTimeout()
 			}
 		}
 		r.timer.stop()

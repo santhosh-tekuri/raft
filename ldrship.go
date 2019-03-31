@@ -226,9 +226,7 @@ func (l *ldrShip) checkReplUpdates(u interface{}) {
 	// todo: do this in case matchIndex in above switch
 	if matchUpdated || noContactUpdated {
 		if l.transfer.inProgress() && !l.transfer.targetChosen() {
-			if tgt := l.choseTransferTgt(); tgt != 0 {
-				l.doTransfer(tgt)
-			}
+			l.tryTransfer()
 		}
 	}
 }
