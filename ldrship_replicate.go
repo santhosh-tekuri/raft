@@ -56,7 +56,7 @@ func (f *flr) runLoop(req *appendEntriesReq) {
 			if failures == 1 {
 				f.notifyNoContact(err)
 			}
-			f.timer.reset(backOff(failures))
+			f.timer.reset(backOff(failures, f.hbTimeout/2))
 			select {
 			case <-f.stopCh:
 				return

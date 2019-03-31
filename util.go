@@ -78,13 +78,17 @@ const (
 
 // backOff is used to compute an exponential backOff
 // duration. Base time is scaled by the current round,
-// up to some maximum scale factor.
-func backOff(round uint64) time.Duration {
+// up to some maximum scale factor. If backOff exceeds
+// given max, it returns max
+func backOff(round uint64, max time.Duration) time.Duration {
 	base, limit := failureWait, uint64(maxFailureScale)
 	power := min(round, limit)
 	for power > 2 {
 		base *= 2
 		power--
+	}
+	if base > max {
+		return max
 	}
 	return base
 }
