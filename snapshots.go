@@ -60,6 +60,9 @@ func (s *snapshots) meta() (SnapshotMeta, error) {
 
 func (s *snapshots) open() (SnapshotMeta, io.ReadCloser, error) {
 	meta, err := s.meta()
+	if err != nil {
+		return meta, nil, err
+	}
 	f, err := os.Open(snapFile(s.dir, meta.Index))
 	return meta, f, err
 }
