@@ -11,15 +11,23 @@ func (c *candShip) onTimeout() { c.startElection() }
 func (c *candShip) release()   { c.respCh = nil }
 
 func (c *candShip) startElection() {
-	d := c.rtime.duration(c.hbTimeout)
-	c.timer.reset(d)
+	if !c.configs.Latest.isVoter(c.nid) {
+		panic(bug(1, "nonvoter %d became candidate", c.nid))
+	}
+
 	c.votesNeeded = c.configs.Latest.quorum()
 	c.respCh = make(chan rpcResponse, len(c.configs.Latest.Nodes))
 
-	// increment currentTerm
-	c.setTerm(c.term + 1)
+	// increment currentTerm and vote self
+	c.setVotedFor(c.term+1, c.nid) // hit disk once
+	c.respCh <- rpcResponse{
+		response: rpcVote.createResp(c.Raft, success, nil),
+		from:     c.nid,
+	}
 
 	debug(c, "startElection")
+	d := c.rtime.duration(c.hbTimeout)
+	c.timer.reset(d)
 	if c.trace.ElectionStarted != nil {
 		c.trace.ElectionStarted(c.liveInfo())
 	}
@@ -31,25 +39,15 @@ func (c *candShip) startElection() {
 		lastLogTerm:  c.lastLogTerm,
 	}
 	for _, n := range c.configs.Latest.Nodes {
-		if !n.Voter {
-			continue
+		if n.Voter && n.ID != c.nid {
+			pool := c.getConnPool(n.ID)
+			debug(c, n, ">>", req)
+			go func(ch chan<- rpcResponse) {
+				resp := &voteResp{}
+				err := pool.doRPC(req, resp)
+				ch <- rpcResponse{resp, pool.nid, err}
+			}(c.respCh)
 		}
-		if n.ID == c.nid {
-			// vote for self
-			c.setVotedFor(c.nid)
-			c.respCh <- rpcResponse{
-				response: rpcVote.createResp(c.Raft, success, nil),
-				from:     c.nid,
-			}
-			continue
-		}
-		pool := c.getConnPool(n.ID)
-		debug(c, n, ">>", req)
-		go func(ch chan<- rpcResponse) {
-			resp := &voteResp{}
-			err := pool.doRPC(req, resp)
-			ch <- rpcResponse{resp, pool.nid, err}
-		}(c.respCh)
 	}
 }
 

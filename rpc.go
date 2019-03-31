@@ -66,16 +66,22 @@ func (r *Raft) onRequest(req request, reader io.Reader) (result rpcResult, err e
 // onVoteRequest -------------------------------------------------
 
 func (r *Raft) onVoteRequest(req *voteReq) (rpcResult, error) {
+	// to avoid hitting disk at most once
+	term, votedFor := r.term, r.votedFor
+	defer func() {
+		r.setVotedFor(term, votedFor)
+	}()
+
 	if req.term < r.term {
 		return staleTerm, nil
 	} else if req.term > r.term {
-		r.setTerm(req.getTerm())
+		term, votedFor = req.getTerm(), 0
 		r.setState(Follower)
 	}
 
 	// if we already voted
-	if r.votedFor != 0 {
-		if r.votedFor == req.src { // same candidate we votedFor
+	if votedFor != 0 {
+		if votedFor == req.src { // same candidate we votedFor
 			return success, nil
 		}
 		return alreadyVoted, nil
@@ -86,7 +92,7 @@ func (r *Raft) onVoteRequest(req *voteReq) (rpcResult, error) {
 		return logNotUptodate, nil
 	}
 
-	r.setVotedFor(req.src)
+	votedFor = req.src
 	return success, nil
 }
 
