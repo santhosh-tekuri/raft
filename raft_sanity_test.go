@@ -350,6 +350,19 @@ func test_opError_getVote(t *testing.T) {
 }
 
 func test_opError_voteOther(t *testing.T) {
+	f := grantingVote
+	failNow := make(chan struct{})
+	grantingVote = func(s *storage, term, candidate uint64) error {
+		if !isClosed(failNow) {
+			return nil
+		}
+		if s.nid != candidate {
+			return errors.New(t.Name())
+		}
+		return nil
+	}
+	defer func() { grantingVote = f }()
+
 	c, ldr, flrs := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -357,12 +370,7 @@ func test_opError_voteOther(t *testing.T) {
 	defer c.unregister(shuttingDown)
 
 	// make storage fail when voting other
-	for _, flr := range flrs {
-		s := c.inmemStorage(flr)
-		s.muStable.Lock()
-		s.voteOtherErr = errors.New("xyz")
-		s.muStable.Unlock()
-	}
+	close(failNow)
 
 	// shutdown leader, so that other two start election to chose new leader
 	tdebug("shutting down leader", ldr.nid)
