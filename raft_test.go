@@ -173,7 +173,7 @@ func newCluster(t *testing.T) *cluster {
 		testTimeout:      testTimeout,
 		network:          fnet.New(),
 		rr:               make(map[uint64]*Raft),
-		storage:          make(map[uint64]*storage),
+		storage:          make(map[uint64]*Storage),
 		serveErr:         make(map[uint64]chan error),
 		heartbeatTimeout: heartbeatTimeout,
 		longTimeout:      5 * time.Second,
@@ -196,7 +196,7 @@ type cluster struct {
 	checkLeak        func()
 	testTimeout      *time.Timer
 	rr               map[uint64]*Raft
-	storage          map[uint64]*storage
+	storage          map[uint64]*Storage
 	serverErrMu      sync.RWMutex
 	serveErr         map[uint64]chan error
 	network          *fnet.Network
@@ -839,7 +839,7 @@ func requestVote(from, to *Raft) (granted bool, err error) {
 	return
 }
 
-func bootstrapStorage(store *storage, nodes map[uint64]Node) error {
+func bootstrapStorage(store *Storage, nodes map[uint64]Node) error {
 	return store.bootstrap(Config{Nodes: nodes, Index: 1, Term: 1})
 }
 

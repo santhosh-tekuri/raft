@@ -26,6 +26,50 @@ func DefaultStorageOptions() StorageOptions {
 }
 
 // Storage contains all persistent state.
+type Storage struct {
+	*storage
+}
+
+func OpenStorage(dir string, opt StorageOptions) (*Storage, error) {
+	s, err := openStorage(dir, opt)
+	if err != nil {
+		return nil, err
+	}
+	return &Storage{s}, nil
+}
+
+// GetIdentity returns the server identity.
+//
+// The identity includes clusterID and nodeID. Zero values
+// mean identity is not set yet.
+func (s *Storage) GetIdentity() (cid, nid uint64) {
+	return s.cid, s.nid
+}
+
+// SetIdentity sets the server identity.
+//
+// If identity is already set and you are trying
+// to override it with different identity, it returns error.
+func (s *Storage) SetIdentity(cid, nid uint64) error {
+	if cid == 0 {
+		return errors.New("raft: cid is zero")
+	}
+	if nid == 0 {
+		return errors.New("raft: nid is zero")
+	}
+	if cid == s.cid && nid == s.nid {
+		return nil
+	}
+	if s.cid != 0 || s.nid != 0 {
+		return ErrIdentityAlreadySet
+	}
+	if err := s.idVal.set(cid, nid); err != nil {
+		return err
+	}
+	s.cid, s.nid = s.idVal.get()
+	return nil
+}
+
 type storage struct {
 	idVal *value
 	cid   uint64
@@ -43,7 +87,7 @@ type storage struct {
 	configs Configs
 }
 
-func OpenStorage(dir string, opt StorageOptions) (*storage, error) {
+func openStorage(dir string, opt StorageOptions) (*storage, error) {
 	if err := os.MkdirAll(dir, opt.DirMode); err != nil {
 		return nil, err
 	}
@@ -132,38 +176,6 @@ func OpenStorage(dir string, opt StorageOptions) (*storage, error) {
 	}
 
 	return s, nil
-}
-
-// GetIdentity returns the server identity.
-//
-// The identity includes clusterID and nodeID. Zero values
-// mean identity is not set yet.
-func (s *storage) GetIdentity() (cid, nid uint64) {
-	return s.cid, s.nid
-}
-
-// SetIdentity sets the server identity.
-//
-// If identity is already set and you are trying
-// to override it with different identity, it returns error.
-func (s *storage) SetIdentity(cid, nid uint64) error {
-	if cid == 0 {
-		return errors.New("raft: cid is zero")
-	}
-	if nid == 0 {
-		return errors.New("raft: nid is zero")
-	}
-	if cid == s.cid && nid == s.nid {
-		return nil
-	}
-	if s.cid != 0 || s.nid != 0 {
-		return ErrIdentityAlreadySet
-	}
-	if err := s.idVal.set(cid, nid); err != nil {
-		return err
-	}
-	s.cid, s.nid = s.idVal.get()
-	return nil
 }
 
 func (s *storage) setTerm(term uint64) {
