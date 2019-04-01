@@ -109,18 +109,19 @@ type FlrStatus struct {
 }
 
 type json struct {
-	CID          uint64               `json:"cid"`
-	NID          uint64               `json:"nid"`
-	Addr         string               `json:"addr"`
-	Term         uint64               `json:"term"`
-	State        State                `json:"state"`
-	Leader       uint64               `json:"leader,omitempty"`
-	LastLogIndex uint64               `json:"lastLogIndex"`
-	LastLogTerm  uint64               `json:"lastLogTerm"`
-	Committed    uint64               `json:"committed"`
-	LastApplied  uint64               `json:"lastApplied"`
-	Configs      Configs              `json:"configs"`
-	Followers    map[uint64]FlrStatus `json:"followers,omitempty"`
+	CID           uint64               `json:"cid"`
+	NID           uint64               `json:"nid"`
+	Addr          string               `json:"addr"`
+	Term          uint64               `json:"term"`
+	State         State                `json:"state"`
+	Leader        uint64               `json:"leader,omitempty"`
+	FirstLogIndex uint64               `json:"firstLogIndex"`
+	LastLogIndex  uint64               `json:"lastLogIndex"`
+	LastLogTerm   uint64               `json:"lastLogTerm"`
+	Committed     uint64               `json:"committed"`
+	LastApplied   uint64               `json:"lastApplied"`
+	Configs       Configs              `json:"configs"`
+	Followers     map[uint64]FlrStatus `json:"followers,omitempty"`
 }
 
 type Info interface {
@@ -130,6 +131,7 @@ type Info interface {
 	Term() uint64
 	State() State
 	Leader() uint64
+	FirstLogIndex() uint64
 	LastLogIndex() uint64
 	LastLogTerm() uint64
 	Committed() uint64
@@ -143,17 +145,18 @@ type liveInfo struct {
 	r *Raft
 }
 
-func (info liveInfo) CID() uint64          { return info.r.cid }
-func (info liveInfo) NID() uint64          { return info.r.nid }
-func (info liveInfo) Addr() string         { return info.r.addr() }
-func (info liveInfo) Term() uint64         { return info.r.term }
-func (info liveInfo) State() State         { return info.r.state }
-func (info liveInfo) Leader() uint64       { return info.r.leader }
-func (info liveInfo) LastLogIndex() uint64 { return info.r.lastLogIndex }
-func (info liveInfo) LastLogTerm() uint64  { return info.r.lastLogTerm }
-func (info liveInfo) Committed() uint64    { return info.r.commitIndex }
-func (info liveInfo) LastApplied() uint64  { return info.r.lastApplied }
-func (info liveInfo) Configs() Configs     { return info.r.configs.clone() }
+func (info liveInfo) CID() uint64           { return info.r.cid }
+func (info liveInfo) NID() uint64           { return info.r.nid }
+func (info liveInfo) Addr() string          { return info.r.addr() }
+func (info liveInfo) Term() uint64          { return info.r.term }
+func (info liveInfo) State() State          { return info.r.state }
+func (info liveInfo) Leader() uint64        { return info.r.leader }
+func (info liveInfo) FirstLogIndex() uint64 { return info.r.log.PrevIndex() + 1 }
+func (info liveInfo) LastLogIndex() uint64  { return info.r.lastLogIndex }
+func (info liveInfo) LastLogTerm() uint64   { return info.r.lastLogTerm }
+func (info liveInfo) Committed() uint64     { return info.r.commitIndex }
+func (info liveInfo) LastApplied() uint64   { return info.r.lastApplied }
+func (info liveInfo) Configs() Configs      { return info.r.configs.clone() }
 
 func (info liveInfo) Followers() map[uint64]FlrStatus {
 	if info.r.state != Leader {
@@ -182,18 +185,19 @@ func (info liveInfo) Followers() map[uint64]FlrStatus {
 
 func (info liveInfo) JSON() interface{} {
 	return json{
-		CID:          info.CID(),
-		NID:          info.NID(),
-		Addr:         info.Addr(),
-		Term:         info.Term(),
-		State:        info.State(),
-		Leader:       info.Leader(),
-		LastLogIndex: info.LastLogIndex(),
-		LastLogTerm:  info.LastLogTerm(),
-		Committed:    info.Committed(),
-		LastApplied:  info.LastApplied(),
-		Configs:      info.Configs(),
-		Followers:    info.Followers(),
+		CID:           info.CID(),
+		NID:           info.NID(),
+		Addr:          info.Addr(),
+		Term:          info.Term(),
+		State:         info.State(),
+		Leader:        info.Leader(),
+		FirstLogIndex: info.FirstLogIndex(),
+		LastLogIndex:  info.LastLogIndex(),
+		LastLogTerm:   info.LastLogTerm(),
+		Committed:     info.Committed(),
+		LastApplied:   info.LastApplied(),
+		Configs:       info.Configs(),
+		Followers:     info.Followers(),
 	}
 }
 
@@ -207,6 +211,7 @@ func (info cachedInfo) Addr() string                    { return info.json.Addr 
 func (info cachedInfo) Term() uint64                    { return info.json.Term }
 func (info cachedInfo) State() State                    { return info.json.State }
 func (info cachedInfo) Leader() uint64                  { return info.json.Leader }
+func (info cachedInfo) FirstLogIndex() uint64           { return info.json.FirstLogIndex }
 func (info cachedInfo) LastLogIndex() uint64            { return info.json.LastLogIndex }
 func (info cachedInfo) LastLogTerm() uint64             { return info.json.LastLogTerm }
 func (info cachedInfo) Committed() uint64               { return info.json.Committed }

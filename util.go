@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/big"
 	"math/rand"
+	"os"
 	"runtime"
 	"strings"
 	"time"
@@ -32,6 +33,19 @@ func isClosed(ch <-chan struct{}) bool {
 	default:
 		return false
 	}
+}
+
+func syncDir(dir string) error {
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	err = d.Sync()
+	e := d.Close()
+	if err != nil {
+		return err
+	}
+	return e
 }
 
 // safeTimer ------------------------------------------------------

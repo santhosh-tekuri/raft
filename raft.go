@@ -52,13 +52,12 @@ type Raft struct {
 	closed    chan struct{}
 }
 
-func New(opt Options, fsm FSM, storage Storage) (*Raft, error) {
+func New(opt Options, fsm FSM, store *storage) (*Raft, error) {
 	if err := opt.validate(); err != nil {
 		return nil, err
 	}
-	store, err := openStorage(storage)
-	if err != nil {
-		return nil, err
+	if store.cid == 0 || store.nid == 0 {
+		return nil, ErrIdentityNotSet
 	}
 	sm := &stateMachine{
 		FSM:       fsm,

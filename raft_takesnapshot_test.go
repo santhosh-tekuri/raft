@@ -25,13 +25,18 @@ func test_takeSnapshot_thresholdNotReached(t *testing.T) {
 }
 
 func test_takeSnapshot_restartSendUpdates(t *testing.T) {
-	c, ldr, _ := launchCluster(t, 1)
+	c := newCluster(t)
+	c.storeOpt.LogSegmentSize = 1024
+	ldr, _ := c.ensureLaunch(1)
 	defer c.shutdown()
 
 	// commit a log of things
 	fsmLen := uint64(100)
 	c.sendUpdates(ldr, 1, 100)
 	c.waitBarrier(ldr, 0)
+
+	logCompacted := c.registerFor(logCompacted, ldr)
+	defer c.unregister(logCompacted)
 
 	// now take proper snapshot
 	c.takeSnapshot(ldr, 10, nil)
@@ -41,10 +46,8 @@ func test_takeSnapshot_restartSendUpdates(t *testing.T) {
 		t.Fatalf("numSnaps: got %v, want 1", snaps)
 	}
 
-	// log should have zero entries
-	if got := c.inmemStorage(ldr).numEntries(); got != 0 {
-		t.Fatalf("numEntries: got %d, want 0", got)
-	}
+	// ensure log compacted
+	c.ensure(logCompacted.waitForEvent(c.longTimeout))
 
 	// shutdown and restart with fresh fsm
 	r := c.restart(ldr)

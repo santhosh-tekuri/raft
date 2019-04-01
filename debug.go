@@ -155,7 +155,7 @@ func (fsm *stateMachine) String() string {
 }
 
 func (u leaderUpdate) String() string {
-	return fmt.Sprintf("leaderUpdate{last:%d, commit:%d, config: %v}", u.lastIndex, u.commitIndex, u.config)
+	return fmt.Sprintf("leaderUpdate{last:%d, commit:%d, config: %v}", u.log.LastIndex(), u.commitIndex, u.config)
 }
 
 func (info *liveInfo) String() string {
@@ -197,4 +197,15 @@ func (r rpcResponse) String() string {
 
 func (u matchIndex) String() string {
 	return fmt.Sprintf("replUpdate{M%d matchIndex:%d}", u.status.id, u.val)
+}
+
+func (u noContact) String() string {
+	if u.time.IsZero() {
+		return fmt.Sprintf("replUpdate{M%d yesContact}", u.status.id)
+	}
+	return fmt.Sprintf("replUpdate{M%d noContact err:%v}", u.status.id, u.err)
+}
+
+func (u removeLTE) String() string {
+	return fmt.Sprintf("replUpdate{M%d removeLTE:%d}", u.status.id, u.val)
 }

@@ -168,22 +168,31 @@ func (r *Raft) onSnapshotTaken(t snapTaken) {
 		return
 	}
 
-	metaIndexExists := t.meta.Index > r.prevLogIndex && t.meta.Index <= r.lastLogIndex
-	if metaIndexExists {
+	if r.storage.log.Contains(t.meta.Index) {
 		// find compact index
-		index := t.meta.Index
+		// nowCompact: min of all matchIndex
+		// canCompact: min of online matchIndex
+		nowCompact, canCompact := t.meta.Index, t.meta.Index
 		if r.state == Leader {
 			for _, f := range r.ldr.flrs {
-				if f.status.noContact.IsZero() && f.status.matchIndex < index {
-					index = f.status.matchIndex
+				if f.status.matchIndex < nowCompact {
+					nowCompact = f.status.matchIndex
+				}
+				if f.status.noContact.IsZero() && f.status.matchIndex < canCompact {
+					canCompact = f.status.matchIndex
 				}
 			}
 		}
-		// compact log
-		if err := r.storage.deleteLTE(index); err != nil {
-			if r.trace.Error != nil {
-				r.trace.Error(err) // todo: should we reply err to user ?
-			}
+		debug(r, "nowCompact:", nowCompact, "canCompact:", canCompact)
+		nowCompact, canCompact = r.log.CanLTE(nowCompact), r.log.CanLTE(canCompact)
+		debug(r, "nowCompact:", nowCompact, "canCompact:", canCompact)
+		if nowCompact > r.log.PrevIndex() {
+			r.compactLog(nowCompact)
+		}
+		if canCompact > nowCompact {
+			// notify flrs with new logView
+			r.ldr.removeLTE = canCompact
+			r.ldr.notifyFlr(false)
 		}
 	}
 	t.req.reply(t.meta.Index)

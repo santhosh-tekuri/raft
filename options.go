@@ -86,6 +86,7 @@ type Trace struct {
 	ConfigCommitted     func(info Info)
 	ConfigReverted      func(info Info)
 	RoundCompleted      func(info Info, id uint64, round Round)
+	LogCompacted        func(info Info)
 	ConfigActionStarted func(info Info, id uint64, action ConfigAction)
 	Unreachable         func(info Info, id uint64, since time.Time, err error)
 	QuorumUnreachable   func(info Info, since time.Time)
@@ -127,6 +128,9 @@ func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
 	}
 	trace.RoundCompleted = func(rinfo Info, id uint64, r Round) {
 		info("raft: nonVoter", id, "completed round", r.Ordinal, "in", r.Duration(), ", its lastIndex:", r.LastIndex)
+	}
+	trace.LogCompacted = func(rinfo Info) {
+		info("raft: log upto index ", rinfo.FirstLogIndex()-1, "is discarded")
 	}
 	trace.ConfigActionStarted = func(rinfo Info, id uint64, action ConfigAction) {
 		switch action {

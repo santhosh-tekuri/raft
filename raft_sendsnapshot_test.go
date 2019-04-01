@@ -6,13 +6,14 @@ import (
 
 func test_sendSnapshot_case(t *testing.T, updateFSMAfterSnap bool) {
 	// launch 3 node cluster
-	c, ldr, _ := launchCluster(t, 3)
+	c := newCluster(t)
+	c.storeOpt.LogSegmentSize = 1024
+	ldr, _ := c.ensureLaunch(3)
 	defer c.shutdown()
 
-	// send 10 updates, wait for them
-	updates := uint64(10)
-	c.sendUpdates(ldr, 1, 10)
-	c.waitBarrier(ldr, 0)
+	// send 100 updates, wait for them
+	updates := uint64(30)
+	<-c.sendUpdates(ldr, 1, 30).Done()
 
 	// add two nonVoters M4; wait all commit them
 	c.ensure(waitAddNonvoter(ldr, 4, id2Addr(4), false))
@@ -22,14 +23,16 @@ func test_sendSnapshot_case(t *testing.T, updateFSMAfterSnap bool) {
 	// why this: because snapIndex is determined by fsm
 	//           and fsm does not know about config changes
 	updates++
-	c.ensure(waitUpdate(ldr, "msg:11", 0))
+	c.ensure(waitUpdate(ldr, "onemoreupdate", 0))
+
+	logCompacted := c.registerFor(logCompacted, ldr)
+	defer c.unregister(logCompacted)
 
 	// take snapshot
 	c.takeSnapshot(ldr, 1, nil)
-	_ = ldr.Info() // to ensure log compact finished
-	if n := c.inmemStorage(ldr).numEntries(); n != 0 {
-		c.Fatalf("ldr.numEntries: got %d, want 0", n)
-	}
+
+	// ensure log compacted
+	c.ensure(logCompacted.waitForEvent(c.longTimeout))
 
 	if updateFSMAfterSnap {
 		// send 10 more updates, ensure all alive get them

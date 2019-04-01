@@ -11,3 +11,6 @@ package raft
 // todo: can we provide type safe tasks: task.Result() now returns interface{}
 
 // todo: rpc.onAppendEntries, send reply and then start applying to fsm
+
+// todo: we are backing off too much, meanwhile if we receive votereq, the repl should
+//       wakeup and send appendEntries heartbeat immediately

@@ -30,6 +30,8 @@ type ldrShip struct {
 
 	transfer   transfer
 	waitStable []waitForStableConfig
+
+	removeLTE uint64
 }
 
 func (l *ldrShip) init() {
@@ -38,6 +40,7 @@ func (l *ldrShip) init() {
 	l.voter = true
 	l.startIndex = l.lastLogIndex + 1
 	l.fromReplsCh = make(chan interface{}, 1024)
+	l.removeLTE = l.log.PrevIndex()
 
 	// start replication routine for each follower
 	for id, n := range l.configs.Latest.Nodes {
@@ -138,6 +141,8 @@ func (l *ldrShip) storeEntry(ne newEntry) {
 		break
 	}
 	if l.lastLogIndex > lastIndex {
+		debug(l, "syncLog", l.lastLogIndex-lastIndex, "entries")
+		l.storage.syncLog()
 		l.beginFinishedRounds()
 		l.notifyFlr(l.configs.Latest.Index > configIndex)
 	}
@@ -148,7 +153,7 @@ func (l *ldrShip) addFlr(n Node) {
 	f := &flr{
 		voter:         n.Voter,
 		rtime:         newRandTime(),
-		status:        flrStatus{id: n.ID},
+		status:        flrStatus{id: n.ID, removeLTE: l.removeLTE},
 		ldrStartIndex: l.startIndex,
 		ldrLastIndex:  l.lastLogIndex,
 		matchIndex:    0,
@@ -156,7 +161,8 @@ func (l *ldrShip) addFlr(n Node) {
 		connPool:      l.getConnPool(n.ID),
 		hbTimeout:     l.hbTimeout,
 		timer:         newSafeTimer(),
-		storage:       l.storage,
+		log:           l.storage.log.ViewAt(l.removeLTE, l.lastLogIndex),
+		snaps:         l.storage.snaps,
 		stopCh:        make(chan struct{}),
 		toLeaderCh:    l.fromReplsCh,
 		fromLeaderCh:  make(chan leaderUpdate, 1),
@@ -181,16 +187,19 @@ func (l *ldrShip) addFlr(n Node) {
 }
 
 func (l *ldrShip) checkReplUpdates(u interface{}) {
-	matchUpdated, noContactUpdated := false, false
+	matchUpdated, noContactUpdated, removeLTEUpdated := false, false, false
 	for {
+		debug(l, "<<", u)
 		switch u := u.(type) {
 		case error:
 			panic(u)
 		case matchIndex:
-			debug(l, "<<", u)
 			matchUpdated = true
 			u.status.matchIndex = u.val
 			l.checkActionStatus(u.status)
+		case removeLTE:
+			removeLTEUpdated = true
+			u.status.removeLTE = u.val
 		case noContact:
 			noContactUpdated = true
 			u.status.noContact, u.status.err = u.time, u.err
@@ -221,6 +230,9 @@ func (l *ldrShip) checkReplUpdates(u interface{}) {
 	}
 	if noContactUpdated {
 		l.checkQuorum(l.quorumWait)
+	}
+	if removeLTEUpdated && l.removeLTE > l.log.PrevIndex() {
+		l.checkLogCompact()
 	}
 
 	// todo: do this in case matchIndex in above switch
@@ -348,7 +360,7 @@ func (l *ldrShip) applyCommitted() {
 
 func (l *ldrShip) notifyFlr(includeConfig bool) {
 	update := leaderUpdate{
-		lastIndex:   l.lastLogIndex,
+		log:         l.log.ViewAt(l.removeLTE, l.lastLogIndex),
 		commitIndex: l.commitIndex,
 	}
 	if includeConfig {
@@ -365,4 +377,13 @@ func (l *ldrShip) notifyFlr(includeConfig bool) {
 	if l.voter {
 		l.onMajorityCommit()
 	}
+}
+
+func (l *ldrShip) checkLogCompact() {
+	for _, f := range l.flrs {
+		if f.status.removeLTE < l.removeLTE {
+			return
+		}
+	}
+	l.compactLog(l.removeLTE)
 }

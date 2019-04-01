@@ -1,10 +1,14 @@
 package raft
 
 import (
+	"bytes"
 	"fmt"
 	"io"
+	"net"
 	"runtime"
 	"time"
+
+	"github.com/santhosh-tekuri/raft/log"
 )
 
 type flr struct {
@@ -12,12 +16,13 @@ type flr struct {
 	status flrStatus // owned by ldr goroutine
 
 	connPool  *connPool
-	storage   *storage
+	log       *log.Log
+	snaps     *snapshots
 	hbTimeout time.Duration
 	timer     *safeTimer
 
 	ldrStartIndex uint64
-	ldrLastIndex  uint64
+	ldrLastIndex  uint64 // todo: directly use log.lastIndex
 	matchIndex    uint64
 	nextIndex     uint64
 
@@ -63,6 +68,9 @@ func (f *flr) runLoop(req *appendEntriesReq) {
 			case <-f.timer.C:
 				f.timer.active = false
 			}
+			if _, err = f.checkLeaderUpdate(f.stopCh, req, false); err == errStop {
+				return
+			}
 		}
 
 		if c == nil {
@@ -73,10 +81,9 @@ func (f *flr) runLoop(req *appendEntriesReq) {
 			if failures > 0 {
 				failures = 0
 				f.notifyNoContact(nil)
-
-				// we have not checked leader update since no contact
-				// let us check it
-				_, _ = f.checkLeaderUpdate(f.stopCh, req, false)
+				if _, err = f.checkLeaderUpdate(f.stopCh, req, false); err == errStop {
+					return
+				}
 			}
 		}
 
@@ -127,6 +134,15 @@ func (f *flr) replicate(c *conn, req *appendEntriesReq) error {
 			}
 		}
 
+		if f.nextIndex < f.ldrLastIndex && !f.log.Contains(f.nextIndex) {
+			if err := f.sendInstallSnapReq(c, req); err == nil {
+				continue
+			}
+		}
+
+		// todo: before starting pipeline, check if sending snap
+		//       is better than sending lots of entries
+
 		debug(f, "pipelining.............................")
 		// pipelining ---------------------------------------------------------
 		type result struct {
@@ -172,6 +188,7 @@ func (f *flr) replicate(c *conn, req *appendEntriesReq) error {
 					// we have not received responses for all requests yet
 					// so no need to flood him with heartbeat
 					// take a nap and check again
+					debug(f, "no heartbeat, pending resps:", len(resultCh))
 				}
 			}
 		}()
@@ -254,11 +271,8 @@ func (f *flr) replicate(c *conn, req *appendEntriesReq) error {
 
 const maxAppendEntries = 64
 
-func (f *flr) writeAppendEntriesReq(c *conn, req *appendEntriesReq, sendEntries bool) (err error) {
-	f.storage.prevLogMu.RLock()
-	defer f.storage.prevLogMu.RUnlock()
-
-	snapIndex, snapTerm := f.storage.snaps.latest()
+func (f *flr) writeAppendEntriesReq(c *conn, req *appendEntriesReq, sendEntries bool) error {
+	snapIndex, snapTerm := f.snaps.latest()
 
 	// fill req.prevLogXXX
 	req.prevLogIndex = f.nextIndex - 1
@@ -267,15 +281,19 @@ func (f *flr) writeAppendEntriesReq(c *conn, req *appendEntriesReq, sendEntries 
 	} else if req.prevLogIndex == snapIndex {
 		req.prevLogTerm = snapTerm
 	} else {
-		req.prevLogTerm, err = f.storage.getEntryTerm(req.prevLogIndex)
-		if err != nil { // meanwhile leader compacted log
-			return
+		term, err := f.getEntryTerm(req.prevLogIndex)
+		if err != nil { // should be in snapshot
+			return err
 		}
+		req.prevLogTerm = term
 	}
 
 	req.numEntries = 0
 	if sendEntries {
 		req.numEntries = min(f.ldrLastIndex-req.prevLogIndex, maxAppendEntries)
+		if req.numEntries > 0 && !f.log.Contains(f.nextIndex) {
+			return errNoEntryFound
+		}
 	}
 
 	if sendEntries && req.numEntries == 0 {
@@ -283,15 +301,12 @@ func (f *flr) writeAppendEntriesReq(c *conn, req *appendEntriesReq, sendEntries 
 	} else {
 		debug(f, ">>", req)
 	}
-	if err = c.writeReq(req); err != nil {
-		return
+	if err := c.writeReq(req); err != nil {
+		return err
 	}
 	if req.numEntries > 0 {
-		if err = f.storage.WriteEntriesTo(c.bufw, f.nextIndex, req.numEntries); err != nil {
-			return
-		}
-		if err = c.bufw.Flush(); err != nil {
-			return
+		if err := f.writeEntriesTo(c, f.nextIndex, req.numEntries); err != nil {
+			return err
 		}
 		f.nextIndex += req.numEntries
 		debug(f, "nextIndex:", f.nextIndex)
@@ -328,7 +343,7 @@ func (f *flr) onAppendEntriesResp(resp *appendEntriesResp, reqLastIndex uint64) 
 }
 
 func (f *flr) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
-	meta, snapshot, err := f.storage.snaps.open()
+	meta, snapshot, err := f.snaps.open()
 	if err != nil {
 		return opError(err, "snapshots.open")
 	}
@@ -413,7 +428,11 @@ func (f *flr) checkLeaderUpdate(stopCh <-chan struct{}, req *appendEntriesReq, s
 
 func (f *flr) onLeaderUpdate(u leaderUpdate, req *appendEntriesReq) {
 	debug(f, u)
-	f.ldrLastIndex, req.ldrCommitIndex = u.lastIndex, u.commitIndex
+	if u.log.PrevIndex() > f.log.PrevIndex() {
+		f.notifyLdr(removeLTE{&f.status, u.log.PrevIndex()})
+	}
+	f.log = u.log
+	f.ldrLastIndex, req.ldrCommitIndex = u.log.LastIndex(), u.commitIndex
 	if u.config != nil {
 		f.voter = u.config.Nodes[f.status.id].Voter
 	}
@@ -438,10 +457,37 @@ func (f *flr) notifyNoContact(err error) {
 	}
 }
 
+func (f *flr) getEntryTerm(i uint64) (uint64, error) {
+	b, err := f.log.Get(i)
+	if err == errNoEntryFound {
+		return 0, err
+	} else if err != nil {
+		panic(opError(err, "Log.Get(%d)", i))
+	}
+	e := &entry{}
+	if err = e.decode(bytes.NewReader(b)); err != nil {
+		panic(opError(err, "log.Get(%d).decode()", i))
+	}
+	return e.term, nil
+}
+
+func (f *flr) writeEntriesTo(c *conn, from uint64, n uint64) error {
+	buffs, err := f.log.GetN(from, n)
+	if err != nil {
+		panic(opError(err, "Log.GetN(%d, %d)", from, n))
+	}
+	nbuffs := net.Buffers(buffs)
+	// todo: set write deadline based on size
+	if _, err = nbuffs.WriteTo(c.bufw); err != nil {
+		return err
+	}
+	return c.bufw.Flush()
+}
+
 // ------------------------------------------------
 
 type leaderUpdate struct {
-	lastIndex   uint64
+	log         *log.Log
 	commitIndex uint64
 	config      *Config // nil if config not changed
 }
@@ -455,6 +501,11 @@ type noContact struct {
 	status *flrStatus
 	time   time.Time
 	err    error
+}
+
+type removeLTE struct {
+	status *flrStatus
+	val    uint64
 }
 
 type newTerm struct {
@@ -475,4 +526,6 @@ type flrStatus struct {
 	err error
 
 	round *Round // nil if no promotion required
+
+	removeLTE uint64
 }

@@ -4,88 +4,38 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
-	"net"
+	"os"
 	"path/filepath"
 	"runtime"
-	"sync"
+
+	"github.com/santhosh-tekuri/raft/log"
 )
 
-type Vars interface {
-	GetIdentity() (cid, nid uint64, err error)
-	SetIdentity(cid, nid uint64) error
-	GetVote() (term, vote uint64, err error)
-	SetVote(term, vote uint64) error
+type StorageOptions struct {
+	DirMode        os.FileMode
+	FileMode       os.FileMode
+	LogSegmentSize int
 }
 
-type Log interface {
-	Count() (uint64, error)
-	Get(offset uint64) ([]byte, error)
-	WriteTo(w io.Writer, offset uint64, n uint64) error
-	Append(entry []byte) error
-	DeleteFirst(n uint64) error
-	DeleteLast(n uint64) error
+func DefaultStorageOptions() StorageOptions {
+	return StorageOptions{
+		DirMode:        0700,
+		FileMode:       0600,
+		LogSegmentSize: 16 * 1024 * 1024,
+	}
 }
-
-// -----------------------------------------------------------------------------------
 
 // Storage contains all persistent state.
-type Storage struct {
-	Vars Vars
-	Log  Log
-	Dir  string
-}
-
-// GetIdentity returns the server identity.
-//
-// The identity includes clusterID and nodeID. Zero values
-// mean identity is not set yet.
-func (s Storage) GetIdentity() (cid, nid uint64, err error) {
-	cid, nid, err = s.Vars.GetIdentity()
-	if err != nil {
-		err = opError(err, "Vars.GetIdentity")
-	}
-	return
-}
-
-// SetIdentity sets the server identity.
-//
-// If identity is already set and you are trying
-// to override it with different identity, it returns error.
-func (s Storage) SetIdentity(cid, nid uint64) error {
-	if cid == 0 {
-		return errors.New("raft: cid is zero")
-	}
-	if nid == 0 {
-		return errors.New("raft: nid is zero")
-	}
-	cluster, node, err := s.GetIdentity()
-	if err != nil {
-		return err
-	}
-	if cid == cluster && nid == node {
-		return nil
-	}
-	if cluster != 0 || node != 0 {
-		return ErrIdentityAlreadySet
-	}
-	err = s.Vars.SetIdentity(cid, nid)
-	if err != nil {
-		err = opError(err, "Vars.SetIdentity")
-	}
-	return nil
-}
-
 type storage struct {
-	vars     Vars
-	cid      uint64
-	nid      uint64
+	idVal *value
+	cid   uint64
+	nid   uint64
+
+	termVal  *value
 	term     uint64
 	votedFor uint64
 
-	log          Log
-	prevLogMu    sync.RWMutex
-	prevLogIndex uint64
+	log          *log.Log
 	lastLogIndex uint64
 	lastLogTerm  uint64
 
@@ -93,74 +43,70 @@ type storage struct {
 	configs Configs
 }
 
-func openStorage(s Storage) (*storage, error) {
-	snaps, err := openSnapshots(filepath.Join(s.Dir, "snapshots"))
-	if err != nil {
+func OpenStorage(dir string, opt StorageOptions) (*storage, error) {
+	if err := os.MkdirAll(dir, opt.DirMode); err != nil {
 		return nil, err
 	}
-	store := &storage{
-		vars:  s.Vars,
-		log:   s.Log,
-		snaps: snaps,
-	}
-	if err := store.init(); err != nil {
+	s, err := &storage{}, error(nil)
+	defer func() {
+		if err != nil {
+			if s.log != nil {
+				_ = s.log.Close()
+			}
+		}
+	}()
+
+	// open identity value ----------------
+	if s.idVal, err = openValue(dir, ".id", opt.FileMode); err != nil {
 		return nil, err
 	}
-	return store, nil
-}
+	s.cid, s.nid = s.idVal.get()
 
-func (s *storage) init() error {
-	var err error
-
-	// init identity
-	s.cid, s.nid, err = s.vars.GetIdentity()
-	if err != nil {
-		return opError(err, "Vars.GetIdentity")
+	// open term value ----------------
+	if s.termVal, err = openValue(dir, ".term", opt.FileMode); err != nil {
+		return nil, err
 	}
-	if s.cid == 0 || s.nid == 0 {
-		return ErrIdentityNotSet
-	}
+	s.term, s.votedFor = s.termVal.get()
 
-	// init vars ---------------------
-	s.term, s.votedFor, err = s.vars.GetVote()
-	if err != nil {
-		return opError(err, "Vars.GetVote")
+	// open snapshots ----------------
+	if s.snaps, err = openSnapshots(filepath.Join(dir, "snapshots")); err != nil {
+		return nil, err
 	}
-
-	// init snapshots ---------------
+	s.lastLogIndex, s.lastLogTerm = s.snaps.index, s.snaps.term
 	meta, err := s.snaps.meta()
 	if err != nil {
-		return opError(err, "snapshots.meta")
+		return nil, err
 	}
 
-	// init log ---------------------
-	count, err := s.log.Count()
-	if err != nil {
-		return opError(err, "Log.Count")
+	// open log ----------------
+	logOpt := log.Options{
+		FileMode:    opt.FileMode,
+		SegmentSize: opt.LogSegmentSize,
 	}
-	if count == 0 {
-		s.lastLogIndex, s.lastLogTerm = s.snaps.index, s.snaps.term
-		s.prevLogIndex = s.snaps.index
-	} else {
-		data, err := s.log.Get(count - 1)
+	if s.log, err = log.Open(filepath.Join(dir, "log"), opt.DirMode, logOpt); err != nil {
+		return nil, err
+	}
+	if s.log.Count() > 0 {
+		data, err := s.log.Get(s.log.LastIndex())
 		if err != nil {
-			return opError(err, "Log.Get(%d)", count-1)
+			return nil, opError(err, "Log.Get(%d)", s.log.LastIndex())
 		}
 		e := &entry{}
 		if err := e.decode(bytes.NewReader(data)); err != nil {
-			return opError(err, "Log.Get(%d).decode", count-1)
+			return nil, opError(err, "Log.Get(%d).decode", s.log.LastIndex())
+		}
+		if e.index != s.log.LastIndex() {
+			panic("BUG")
 		}
 		s.lastLogIndex, s.lastLogTerm = e.index, e.term
-		s.prevLogIndex = s.lastLogIndex - count
 	}
 
 	// load configs ----------------
 	need := 2
 	for i := s.lastLogIndex; i > s.snaps.index; i-- {
 		e := &entry{}
-		err = s.getEntry(i, e)
-		if err != nil {
-			return err
+		if err = s.getEntry(i, e); err != nil {
+			return nil, err
 		}
 		if e.typ == entryConfig {
 			if need == 2 {
@@ -169,7 +115,7 @@ func (s *storage) init() error {
 				err = s.configs.Committed.decode(e)
 			}
 			if err != nil {
-				return err
+				return nil, err
 			}
 			need--
 			if need == 0 {
@@ -185,6 +131,38 @@ func (s *storage) init() error {
 		s.configs.Committed = meta.Config
 	}
 
+	return s, nil
+}
+
+// GetIdentity returns the server identity.
+//
+// The identity includes clusterID and nodeID. Zero values
+// mean identity is not set yet.
+func (s *storage) GetIdentity() (cid, nid uint64) {
+	return s.cid, s.nid
+}
+
+// SetIdentity sets the server identity.
+//
+// If identity is already set and you are trying
+// to override it with different identity, it returns error.
+func (s *storage) SetIdentity(cid, nid uint64) error {
+	if cid == 0 {
+		return errors.New("raft: cid is zero")
+	}
+	if nid == 0 {
+		return errors.New("raft: nid is zero")
+	}
+	if cid == s.cid && nid == s.nid {
+		return nil
+	}
+	if s.cid != 0 || s.nid != 0 {
+		return ErrIdentityAlreadySet
+	}
+	if err := s.idVal.set(cid, nid); err != nil {
+		return err
+	}
+	s.cid, s.nid = s.idVal.get()
 	return nil
 }
 
@@ -193,7 +171,7 @@ func (s *storage) setTerm(term uint64) {
 		if term < s.term {
 			panic(fmt.Sprintf("term cannot be changed from %d to %d", s.term, term))
 		}
-		if err := s.vars.SetVote(s.term, 0); err != nil {
+		if err := s.termVal.set(s.term, 0); err != nil {
 			panic(opError(err, "Vars.SetVote(%d, %d)", term, 0))
 		}
 		s.term, s.votedFor = term, 0
@@ -208,10 +186,10 @@ func (s *storage) setVotedFor(term, candidate uint64) {
 	}
 	err := grantingVote(s, term, candidate)
 	if err == nil {
-		err = s.vars.SetVote(s.term, candidate)
+		err = s.termVal.set(s.term, candidate)
 	}
 	if err != nil {
-		panic(opError(err, "Vars.SetVote(%d, %d)", s.term, candidate))
+		panic(opError(err, "Vars.SetVote(%d, %d)", term, candidate))
 	}
 	s.term, s.votedFor = term, candidate
 }
@@ -226,19 +204,17 @@ func (s *storage) getEntryTerm(index uint64) (uint64, error) {
 // called by raft.runLoop and m.replicate. append call can be called during this
 // never called with invalid index
 func (s *storage) getEntry(index uint64, e *entry) error {
-	if index <= s.prevLogIndex {
-		return errNoEntryFound
-	}
-	offset := index - s.prevLogIndex - 1
-	b, err := s.log.Get(offset)
-	if err != nil {
-		panic(opError(err, "Log.Get(%d)", offset))
+	b, err := s.log.Get(index)
+	if err == errNoEntryFound {
+		return err
+	} else if err != nil {
+		panic(opError(err, "Log.Get(%d)", index))
 	}
 	if err = e.decode(bytes.NewReader(b)); err != nil {
-		panic(opError(err, "log.Get(%d).decode()", offset))
+		panic(opError(err, "log.Get(%d).decode()", index))
 	}
 	if e.index != index {
-		panic(opError(fmt.Errorf("got %d, want %d", e.index, index), "log.Get(%d).index: ", offset))
+		panic(opError(fmt.Errorf("got %d, want %d", e.index, index), "log.Get(%d).index: ", index))
 	}
 	return nil
 }
@@ -249,22 +225,11 @@ func (s *storage) mustGetEntry(index uint64, e *entry) {
 	}
 }
 
-func (s *storage) WriteEntriesTo(w io.Writer, from uint64, n uint64) error {
-	if from <= s.prevLogIndex {
-		return errNoEntryFound
-	}
-	offset := from - s.prevLogIndex - 1
-	if err := s.log.WriteTo(w, offset, n); err != nil {
-		if _, ok := err.(*net.OpError); !ok {
-			panic(opError(err, "Log.WriteTo(%d, %d)", offset, n))
-		}
-		return err
-	}
-	return nil
-}
-
 // called by raft.runLoop. getEntry call can be called during this
 func (s *storage) appendEntry(e *entry) {
+	if s.lastLogIndex != s.log.LastIndex() {
+		panic("BUG")
+	}
 	if e.index != s.lastLogIndex+1 {
 		panic(bug(2, "storage.appendEntry.index: got %d, want %d", e.index, s.lastLogIndex+1))
 	}
@@ -276,40 +241,61 @@ func (s *storage) appendEntry(e *entry) {
 		panic(opError(err, "Log.Append"))
 	}
 	s.lastLogIndex, s.lastLogTerm = e.index, e.term
+	if s.lastLogIndex != s.log.LastIndex() {
+		panic("BUG")
+	}
+}
+
+func (s *storage) syncLog() {
+	if err := s.log.Sync(); err != nil {
+		panic(opError(err, "Log.Sync"))
+	}
 }
 
 // never called with invalid index
-func (s *storage) deleteLTE(index uint64) error {
-	s.prevLogMu.Lock()
-	defer s.prevLogMu.Unlock()
-	debug("deleteLTE index:", index, "prevLogIndex:", s.prevLogIndex, "lastLogIndex:", s.lastLogIndex)
-	n := index - s.prevLogIndex
-	if err := s.log.DeleteFirst(n); err != nil {
-		return opError(err, "Log.DeleteFirst(%d)", n)
+func (s *storage) removeLTE(index uint64) error {
+	debug("removeLTE index:", index, "prevLogIndex:", s.log.PrevIndex(), "lastLogIndex:", s.lastLogIndex)
+	// todo: trace log compaction
+	if err := s.log.RemoveLTE(index); err != nil {
+		return opError(err, "Log.RemoveLTE(%d)", index)
 	}
-	s.prevLogIndex = index
 	return nil
 }
 
+func (r *Raft) compactLog(lte uint64) {
+	if err := r.storage.removeLTE(lte); err != nil {
+		if r.trace.Error != nil {
+			r.trace.Error(err)
+		}
+	} else if r.trace.LogCompacted != nil {
+		r.trace.LogCompacted(r.liveInfo())
+	}
+}
+
 // no flr.replicate is going on when this called
+// todo: are you sure about this ???
 func (s *storage) clearLog() error {
-	s.prevLogMu.Lock()
-	defer s.prevLogMu.Unlock()
-	count := s.lastLogIndex - s.prevLogIndex
-	if err := s.log.DeleteFirst(count); err != nil {
-		return err
+	if err := s.log.Reset(s.snaps.index); err != nil {
+		return opError(err, "Log.Reset(%d)", s.snaps.index)
+	}
+	if s.log.LastIndex() != s.snaps.index {
+		panic("BUG")
+	}
+	if s.log.PrevIndex() != s.snaps.index {
+		panic("BUG")
 	}
 	s.lastLogIndex, s.lastLogTerm = s.snaps.index, s.snaps.term
-	s.prevLogIndex = s.snaps.index
 	return nil
 }
 
 // called by raft.runLoop. no other calls made during this
 // never called with invalid index
-func (s *storage) deleteGTE(index, prevTerm uint64) {
-	n := s.lastLogIndex - index + 1
-	if err := s.log.DeleteLast(n); err != nil {
-		panic(opError(err, "Log.DeleteLast(%d)", n))
+func (s *storage) removeGTE(index, prevTerm uint64) {
+	if err := s.log.RemoveGTE(index); err != nil {
+		panic(opError(err, "Log.RemoveGTE(%d)", index))
+	}
+	if s.log.LastIndex() != index-1 {
+		panic("BUG")
 	}
 	s.lastLogIndex, s.lastLogTerm = index-1, prevTerm
 }
@@ -324,6 +310,9 @@ func (s *storage) bootstrap(config Config) (err error) {
 		}
 	}()
 	s.appendEntry(config.encode())
+	s.syncLog()
 	s.setTerm(1)
+	s.lastLogIndex, s.lastLogTerm = config.Index, config.Term
+	s.configs.Committed, s.configs.Latest = config, config
 	return nil
 }

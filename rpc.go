@@ -146,7 +146,19 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq, reader io.Reader) (
 	}
 
 	// valid req: let us consume entries
-	index, term := req.prevLogIndex, req.prevLogTerm
+	index, term, syncLog := req.prevLogIndex, req.prevLogTerm, false
+	if req.numEntries > 0 {
+		defer func() {
+			if syncLog {
+				debug(r, "syncLog")
+				r.storage.syncLog()
+				if r.canCommit(req, index, term) {
+					r.setCommitIndex(index)
+					r.applyCommitted(nil)
+				}
+			}
+		}()
+	}
 	for req.numEntries > 0 {
 		req.numEntries--
 		ne := &entry{}
@@ -167,8 +179,8 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq, reader io.Reader) (
 
 			// new entry conflicts with our entry
 			// delete it and all that follow it
-			debug(r, "log.deleteGTE", ne.index)
-			r.storage.deleteGTE(ne.index, prevTerm)
+			debug(r, "log.removeGTE", ne.index)
+			r.storage.removeGTE(ne.index, prevTerm)
 			if ne.index <= r.configs.Latest.Index {
 				r.revertConfig()
 			}
@@ -176,18 +188,13 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq, reader io.Reader) (
 		// new entry not in the log, append it
 		debug(r, "log.append", ne.typ, ne.index)
 		r.storage.appendEntry(ne)
+		syncLog = true
 		if ne.typ == entryConfig {
 			var newConfig Config
 			if err := newConfig.decode(ne); err != nil {
 				return unexpectedErr, err
 			}
 			r.changeConfig(newConfig)
-		}
-
-		_ = index
-		if r.canCommit(req, ne.index, ne.term) {
-			r.setCommitIndex(ne.index)
-			r.applyCommitted(ne)
 		}
 	}
 	return success, nil
@@ -255,16 +262,15 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq, reader io.Reader) (rpcR
 	}
 
 	discardLog := true
-	metaIndexExists := meta.Index > r.prevLogIndex && meta.Index <= r.lastLogIndex
-	if metaIndexExists {
+	if r.storage.log.Contains(meta.Index) {
 		metaTerm, err := r.storage.getEntryTerm(meta.Index)
 		if err != nil {
 			return unexpectedErr, err
 		}
 		termsMatched := metaTerm == meta.Term
 		if termsMatched {
-			// delete <=meta.index, but retain following it
-			if err = r.storage.deleteLTE(meta.Index); err != nil {
+			// remove <=meta.index, but retain following it
+			if err = r.storage.removeLTE(meta.Index); err != nil {
 				return unexpectedErr, err
 			}
 			discardLog = false
