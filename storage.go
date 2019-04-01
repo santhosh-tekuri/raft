@@ -7,21 +7,24 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/santhosh-tekuri/raft/log"
 )
 
 type StorageOptions struct {
-	DirMode        os.FileMode
-	FileMode       os.FileMode
-	LogSegmentSize int
+	DirMode         os.FileMode
+	FileMode        os.FileMode
+	LogSegmentSize  int
+	SnapshotsRetain int ``
 }
 
 func DefaultStorageOptions() StorageOptions {
 	return StorageOptions{
-		DirMode:        0700,
-		FileMode:       0600,
-		LogSegmentSize: 16 * 1024 * 1024,
+		DirMode:         0700,
+		FileMode:        0600,
+		LogSegmentSize:  16 * 1024 * 1024,
+		SnapshotsRetain: 1,
 	}
 }
 
@@ -88,6 +91,9 @@ type storage struct {
 }
 
 func openStorage(dir string, opt StorageOptions) (*storage, error) {
+	if !strings.HasPrefix(opt.DirMode.String()[1:], "rwx") {
+		return nil, fmt.Errorf("raft: DirMode %q has no rwx permission", opt.DirMode)
+	}
 	if err := os.MkdirAll(dir, opt.DirMode); err != nil {
 		return nil, err
 	}
@@ -113,7 +119,7 @@ func openStorage(dir string, opt StorageOptions) (*storage, error) {
 	s.term, s.votedFor = s.termVal.get()
 
 	// open snapshots ----------------
-	if s.snaps, err = openSnapshots(filepath.Join(dir, "snapshots")); err != nil {
+	if s.snaps, err = openSnapshots(filepath.Join(dir, "snapshots"), opt); err != nil {
 		return nil, err
 	}
 	s.lastLogIndex, s.lastLogTerm = s.snaps.index, s.snaps.term

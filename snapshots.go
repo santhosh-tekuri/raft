@@ -14,21 +14,33 @@ import (
 // todo: add md5 check
 
 type snapshots struct {
-	dir   string
+	dir    string
+	retain int
+
 	mu    sync.RWMutex
 	index uint64
 	term  uint64
+
+	usedMu sync.RWMutex
+	used   map[uint64]int // map[index]numUses
 }
 
-func openSnapshots(dir string) (*snapshots, error) {
-	if err := os.MkdirAll(dir, 0700); err != nil {
+func openSnapshots(dir string, opt StorageOptions) (*snapshots, error) {
+	if opt.SnapshotsRetain < 1 {
+		return nil, fmt.Errorf("raft: must retain at least one snapshot")
+	}
+	if err := os.MkdirAll(dir, opt.DirMode); err != nil {
 		return nil, err
 	}
 	snaps, err := findSnapshots(dir)
 	if err != nil {
 		return nil, err
 	}
-	s := &snapshots{dir: dir}
+	s := &snapshots{
+		dir:    dir,
+		retain: opt.SnapshotsRetain,
+		used:   make(map[uint64]int),
+	}
 	if len(snaps) > 0 {
 		s.index = snaps[0]
 		if meta, err := s.meta(); err != nil {
@@ -59,14 +71,75 @@ func (s *snapshots) meta() (SnapshotMeta, error) {
 	return meta, meta.decode(f)
 }
 
-func (s *snapshots) open() (SnapshotMeta, io.ReadCloser, error) {
+func (s *snapshots) applyRetain() error {
+	snaps, err := findSnapshots(s.dir)
+	if err != nil {
+		return err
+	}
+	s.usedMu.RLock()
+	defer s.usedMu.RUnlock()
+	for i, index := range snaps {
+		if i >= s.retain && s.used[index] == 0 {
+			if e := os.Remove(metaFile(s.dir, index)); e == nil {
+				if e := os.Remove(snapFile(s.dir, index)); err == nil {
+					err = e
+				}
+			} else if err == nil {
+				err = e
+			}
+		}
+	}
+	return err
+}
+
+// snapshot ----------------------------------------------------
+
+func (s *snapshots) open() (*snapshot, error) {
 	meta, err := s.meta()
 	if err != nil {
-		return meta, nil, err
+		return nil, err
 	}
-	f, err := os.Open(snapFile(s.dir, meta.Index))
-	return meta, f, err
+	file := snapFile(s.dir, meta.Index)
+
+	// validate file size
+	info, err := os.Stat(file)
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() != meta.Size {
+		return nil, fmt.Errorf("raft: size of %q is %d, want %d", file, info.Size(), meta.Size)
+	}
+
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, err
+	}
+	s.used[meta.Index]++
+	return &snapshot{
+		snaps: s,
+		meta:  meta,
+		file:  f,
+	}, nil
 }
+
+type snapshot struct {
+	snaps *snapshots
+	meta  SnapshotMeta
+	file  *os.File
+}
+
+func (s *snapshot) release() {
+	_ = s.file.Close()
+	s.snaps.usedMu.Lock()
+	defer s.snaps.usedMu.Unlock()
+	if s.snaps.used[s.meta.Index] == 1 {
+		delete(s.snaps.used, s.meta.Index)
+	} else {
+		s.snaps.used[s.meta.Index]--
+	}
+}
+
+// snapshotSink ----------------------------------------------------
 
 func (s *snapshots) new(index, term uint64, config Config) (*snapshotSink, error) {
 	f, err := os.Create(snapFile(s.dir, index))
@@ -79,8 +152,6 @@ func (s *snapshots) new(index, term uint64, config Config) (*snapshotSink, error
 		file:  f,
 	}, nil
 }
-
-// snapshotSink ----------------------------------------------------
 
 type snapshotSink struct {
 	snaps *snapshots
@@ -133,6 +204,7 @@ func (s *snapshotSink) done(err error) (SnapshotMeta, error) {
 	s.snaps.mu.Lock()
 	s.snaps.index, s.snaps.term = s.meta.Index, s.meta.Term
 	s.snaps.mu.Unlock()
+	_ = s.snaps.applyRetain() // todo: trace error
 	return s.meta, nil
 }
 

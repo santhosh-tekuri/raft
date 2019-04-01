@@ -343,27 +343,24 @@ func (f *flr) onAppendEntriesResp(resp *appendEntriesResp, reqLastIndex uint64) 
 }
 
 func (f *flr) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
-	meta, snapshot, err := f.snaps.open()
+	snap, err := f.snaps.open()
 	if err != nil {
 		return opError(err, "snapshots.open")
 	}
-	defer snapshot.Close()
+	defer snap.release()
 
 	req := &installSnapReq{
 		req:        appReq.req,
-		lastIndex:  meta.Index,
-		lastTerm:   meta.Term,
-		lastConfig: meta.Config,
-		size:       meta.Size,
+		lastIndex:  snap.meta.Index,
+		lastTerm:   snap.meta.Term,
+		lastConfig: snap.meta.Config,
+		size:       snap.meta.Size,
 	}
 	debug(f, ">>", req)
 	if err = c.writeReq(req); err != nil {
 		return err
 	}
-	if _, err = io.CopyN(c.bufw, snapshot, req.size); err != nil {
-		return err
-	}
-	if err = c.bufw.Flush(); err != nil {
+	if _, err = io.Copy(c.rwc, snap.file); err != nil { // will use sendFile
 		return err
 	}
 
@@ -478,10 +475,8 @@ func (f *flr) writeEntriesTo(c *conn, from uint64, n uint64) error {
 	}
 	nbuffs := net.Buffers(buffs)
 	// todo: set write deadline based on size
-	if _, err = nbuffs.WriteTo(c.bufw); err != nil {
-		return err
-	}
-	return c.bufw.Flush()
+	_, err = nbuffs.WriteTo(c.rwc)
+	return err
 }
 
 // ------------------------------------------------

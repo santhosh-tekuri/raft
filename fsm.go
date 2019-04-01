@@ -115,22 +115,22 @@ func (fsm *stateMachine) onSnapReq(t fsmSnapReq) {
 }
 
 func (fsm *stateMachine) onRestoreReq(t fsmRestoreReq) {
-	meta, sr, err := fsm.snaps.open()
+	snap, err := fsm.snaps.open()
 	if err != nil {
 		debug(fsm, "snapshots.open failed", err)
 		t.reply(opError(err, "snapshots.open"))
 		return
 	}
-	if err = fsm.RestoreFrom(sr); err != nil {
+	defer snap.release()
+	if err = fsm.RestoreFrom(bufio.NewReader(snap.file)); err != nil {
 		debug(fsm, "fsm.restore failed", err)
 		// todo: detect where err occurred in restoreFrom/sr.read
 		t.reply(opError(err, "FSM.RestoreFrom"))
 	} else {
-		fsm.index, fsm.term = meta.Index, meta.Term
-		debug(fsm, "restored snapshot", meta.Index)
+		fsm.index, fsm.term = snap.meta.Index, snap.meta.Term
+		debug(fsm, "restored snapshot", snap.meta.Index)
 		t.reply(nil)
 	}
-	_ = sr.Close()
 }
 
 type fsmApply struct {
