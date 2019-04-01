@@ -423,7 +423,6 @@ func (c *cluster) waitForHealthy() *Raft {
 	c.Helper()
 	c.waitForLeader()
 	ldr := c.waitForFollowers()
-	c.waitForCommitted(ldr.Info().LastLogIndex())
 	return ldr
 }
 

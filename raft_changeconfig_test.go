@@ -50,6 +50,9 @@ func test_changeConfig_committedByAll(t *testing.T) {
 	c, ldr, followers := launchCluster(t, 2)
 	defer c.shutdown()
 
+	// wait for bootstrap config committed by all
+	c.waitForCommitted(ldr.Info().LastLogIndex())
+
 	configRelated := c.registerFor(configRelated)
 	defer c.unregister(configRelated)
 

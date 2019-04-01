@@ -77,6 +77,9 @@ func test_promote_newNode_uptodateButConfigChangeInProgress(t *testing.T) {
 	ldr, followers := c.ensureLaunch(2)
 	defer c.shutdown()
 
+	// wait for bootstrap config committed by all
+	c.waitForCommitted(ldr.Info().LastLogIndex())
+
 	// shutdown the follower
 	c.shutdown(followers[0])
 

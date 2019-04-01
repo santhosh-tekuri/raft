@@ -61,6 +61,9 @@ func setupTransferLeadershipTimeout(t *testing.T, quorumWait, taskTimeout time.D
 	c.opt.QuorumWait = quorumWait
 	ldr, flrs = c.ensureLaunch(3)
 
+	// wait for bootstrap config committed by all
+	c.waitForCommitted(ldr.Info().LastLogIndex())
+
 	// shutdown all followers
 	c.shutdown(flrs...)
 
