@@ -45,54 +45,47 @@ func (fsm *stateMachine) runLoop() {
 }
 
 func (fsm *stateMachine) onApply(t fsmApply) {
-	var elem *list.Element
-	if t.newEntries != nil {
-		elem = t.newEntries.Front()
-	}
+	// process all entries before t.newEntries.front from log
 	commitIndex := t.log.LastIndex()
-	for {
-		// process non log entries
-		for elem != nil {
+	front := commitIndex + 1
+	if t.newEntries != nil && t.newEntries.Len() > 0 {
+		front = t.newEntries.Front().Value.(newEntry).index
+	}
+	for fsm.index+1 < front {
+		b, err := t.log.Get(fsm.index + 1)
+		if err != nil {
+			panic(opError(err, "Log.Get(%d)", fsm.index+1))
+		}
+		e := &entry{}
+		if err := e.decode(bytes.NewReader(b)); err != nil {
+			panic(opError(err, "Log.Get(%d).decode", fsm.index+1))
+		}
+
+		debug(fsm, "fsm.apply", e.typ, e.index)
+		if e.typ == entryUpdate {
+			fsm.Update(e.data)
+		}
+		fsm.index, fsm.term = e.index, e.term
+	}
+
+	// process all entries from t.newEntries if any
+	if t.newEntries != nil {
+		for elem := t.newEntries.Front(); elem != nil; elem = elem.Next() {
 			ne := elem.Value.(newEntry)
-			if ne.index == fsm.index+1 && (ne.typ == entryRead || ne.typ == entryBarrier) {
-				elem = elem.Next()
-				debug(fsm, "fsm.apply", ne.typ, ne.index)
-				var resp interface{}
-				if ne.typ == entryRead {
-					resp = fsm.Read(ne.data)
-				}
-				ne.reply(resp)
-			} else {
-				break
+			var resp interface{}
+			if ne.typ == entryRead {
+				resp = fsm.Read(ne.data)
+			} else if ne.typ == entryUpdate {
+				resp = fsm.Update(ne.data)
 			}
-		}
-
-		if fsm.index+1 > commitIndex {
-			return
-		}
-
-		var ne newEntry
-		if elem != nil && elem.Value.(newEntry).index == fsm.index+1 {
-			ne = elem.Value.(newEntry)
-			elem = elem.Next()
-		} else {
-			b, err := t.log.Get(fsm.index + 1)
-			if err != nil {
-				panic(opError(err, "Log.Get(%d)", fsm.index+1))
+			if ne.typ != entryRead && ne.typ != entryBarrier {
+				fsm.index, fsm.term = ne.index, ne.term
 			}
-			ne.entry = &entry{}
-			if err := ne.entry.decode(bytes.NewReader(b)); err != nil {
-				panic(opError(err, "Log.Get(%d).decode", fsm.index+1))
-			}
+			ne.reply(resp)
 		}
-
-		debug(fsm, "fsm.apply", ne.typ, ne.index)
-		var resp interface{}
-		if ne.typ == entryUpdate {
-			resp = fsm.Update(ne.data)
-		}
-		ne.reply(resp)
-		fsm.index, fsm.term = ne.index, ne.term
+	}
+	if fsm.index != commitIndex {
+		panic(bug(1, "fsm.index=%d, commitIndex=%d", fsm.index, commitIndex))
 	}
 }
 
