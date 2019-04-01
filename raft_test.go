@@ -393,8 +393,10 @@ func (c *cluster) getInState(state State, rr ...*Raft) []*Raft {
 		rr = c.exclude()
 	}
 	var inState []*Raft
+	c.eventMu.RLock()
+	defer c.eventMu.RUnlock()
 	for _, r := range rr {
-		if r.Info().State() == state {
+		if c.states[r.nid] == state {
 			inState = append(inState, r)
 		}
 	}
