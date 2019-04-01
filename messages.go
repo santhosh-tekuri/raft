@@ -39,6 +39,13 @@ type entry struct {
 	data  []byte
 }
 
+func (e *entry) isLogEntry() bool {
+	if e.typ == entryRead || e.typ == entryBarrier {
+		return false
+	}
+	return true
+}
+
 func (e *entry) decode(r io.Reader) error {
 	var err error
 

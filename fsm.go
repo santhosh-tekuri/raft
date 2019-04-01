@@ -80,7 +80,7 @@ func (fsm *stateMachine) onApply(t fsmApply) {
 			} else if ne.typ == entryUpdate {
 				resp = fsm.Update(ne.data)
 			}
-			if ne.typ != entryRead && ne.typ != entryBarrier {
+			if ne.isLogEntry() {
 				fsm.index, fsm.term = ne.index, ne.term
 			}
 			ne.reply(resp)
