@@ -212,8 +212,6 @@ func (r *Raft) applyCommitted(ne *entry) {
 	apply := fsmApply{log: r.log.ViewAt(r.log.PrevIndex(), r.commitIndex)}
 	debug(r, apply)
 	r.fsm.ch <- apply
-	debug(r, "lastApplied", r.lastApplied)
-	r.lastApplied = r.commitIndex
 }
 
 // onInstallSnapRequest -------------------------------------------------

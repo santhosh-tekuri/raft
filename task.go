@@ -155,7 +155,7 @@ func (info liveInfo) FirstLogIndex() uint64 { return info.r.log.PrevIndex() + 1 
 func (info liveInfo) LastLogIndex() uint64  { return info.r.lastLogIndex }
 func (info liveInfo) LastLogTerm() uint64   { return info.r.lastLogTerm }
 func (info liveInfo) Committed() uint64     { return info.r.commitIndex }
-func (info liveInfo) LastApplied() uint64   { return info.r.lastApplied }
+func (info liveInfo) LastApplied() uint64   { return info.r.lastApplied() }
 func (info liveInfo) Configs() Configs      { return info.r.configs.clone() }
 
 func (info liveInfo) Followers() map[uint64]FlrStatus {

@@ -40,6 +40,8 @@ func (fsm *stateMachine) runLoop() {
 			fsm.onSnapReq(t)
 		case fsmRestoreReq:
 			fsm.onRestoreReq(t)
+		case lastApplied:
+			t.reply(fsm.index)
 		}
 	}
 }
@@ -134,6 +136,17 @@ func (fsm *stateMachine) onRestoreReq(t fsmRestoreReq) {
 type fsmApply struct {
 	newEntries *list.List
 	log        *log.Log
+}
+
+type lastApplied struct {
+	*task
+}
+
+func (r *Raft) lastApplied() uint64 {
+	t := lastApplied{newTask()}
+	r.fsm.ch <- t
+	<-t.done
+	return t.result.(uint64)
 }
 
 // --------------------------------------------------------------------------
@@ -263,7 +276,7 @@ func (r *Raft) restoreFSM() error {
 	if req.Err() != nil {
 		return req.Err()
 	}
-	r.commitIndex, r.lastApplied = r.snaps.index, r.snaps.index
+	r.commitIndex = r.snaps.index
 	return nil
 }
 

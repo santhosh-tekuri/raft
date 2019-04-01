@@ -333,8 +333,6 @@ func (l *ldrShip) applyCommitted() {
 			break
 		}
 	}
-	l.lastApplied = l.commitIndex
-	debug(l, "lastApplied", l.lastApplied)
 	apply := fsmApply{newEntries, l.log.ViewAt(l.log.PrevIndex(), l.commitIndex)}
 	debug(l, apply)
 	l.fsm.ch <- apply

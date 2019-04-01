@@ -29,7 +29,6 @@ type Raft struct {
 	state       State
 	leader      uint64
 	commitIndex uint64
-	lastApplied uint64
 
 	// options
 	hbTimeout        time.Duration
