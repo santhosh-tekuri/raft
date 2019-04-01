@@ -61,10 +61,10 @@ func New(opt Options, fsm FSM, storage *Storage) (*Raft, error) {
 		return nil, ErrIdentityNotSet
 	}
 	sm := &stateMachine{
-		FSM:       fsm,
-		id:        store.nid,
-		taskCh:    make(chan Task, 128), // todo configurable capacity
-		snapshots: store.snaps,
+		FSM:    fsm,
+		id:     store.nid,
+		taskCh: make(chan Task, 128), // todo configurable capacity
+		snaps:  store.snaps,
 	}
 
 	r := &Raft{

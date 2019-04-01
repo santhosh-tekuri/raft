@@ -21,8 +21,8 @@ type stateMachine struct {
 	FSM
 	id uint64
 
-	taskCh    chan Task
-	snapshots *snapshots
+	taskCh chan Task
+	snaps  *snapshots
 }
 
 func (fsm *stateMachine) runLoop() {
@@ -61,7 +61,7 @@ func (fsm *stateMachine) runLoop() {
 				state: state,
 			})
 		case fsmRestoreReq:
-			meta, sr, err := fsm.snapshots.open()
+			meta, sr, err := fsm.snaps.open()
 			if err != nil {
 				debug(fsm, "snapshots.open failed", err)
 				t.reply(opError(err, "snapshots.open"))
@@ -133,7 +133,7 @@ func doTakeSnapshot(fsm *stateMachine, index uint64, config Config) (meta Snapsh
 
 	// write snapshot to storage
 	debug(fsm, "takingSnap:", resp.index)
-	sink, err := fsm.snapshots.new(resp.index, resp.term, config)
+	sink, err := fsm.snaps.new(resp.index, resp.term, config)
 	if err != nil {
 		debug(fsm, "snapshots.new failed", err)
 		err = opError(err, "snapshots.new")
