@@ -136,10 +136,6 @@ func id2Addr(id uint64) string {
 	return id2Host(id) + ":8888"
 }
 
-//func (c *cluster) inmemStorage(r *Raft) *inmemStorage {
-//	return r.storage.vars.(*inmemStorage)
-//}
-
 func launchCluster(t *testing.T, n int) (c *cluster, ldr *Raft, flrs []*Raft) {
 	t.Helper()
 	c = newCluster(t)
@@ -1196,52 +1192,6 @@ func (fsm *fsmMock) RestoreFrom(r io.Reader) error {
 	if fsm.changed != nil {
 		fsm.changed(fsm.id, uint64(len(cmds)))
 	}
-	return nil
-}
-
-// inmemStorage ------------------------------------------------------------------
-
-type inmemStorage struct {
-	cid          uint64
-	nid          uint64
-	muStable     sync.RWMutex
-	term         uint64
-	vote         uint64
-	getVoteErr   error
-	setTermErr   error
-	voteSelfErr  error
-	voteOtherErr error
-}
-
-func (s *inmemStorage) GetIdentity() (cluster, node uint64, err error) {
-	return s.cid, s.nid, nil
-}
-
-func (s *inmemStorage) SetIdentity(cluster, node uint64) error {
-	s.cid, s.nid = cluster, node
-	return nil
-}
-
-func (s *inmemStorage) GetVote() (term, vote uint64, err error) {
-	s.muStable.RLock()
-	defer s.muStable.RUnlock()
-	return s.term, s.vote, s.getVoteErr
-}
-
-func (s *inmemStorage) SetVote(term, vote uint64) error {
-	s.muStable.Lock()
-	defer s.muStable.Unlock()
-	if term != s.term && s.setTermErr != nil {
-		return s.setTermErr
-	}
-	if vote != 0 && vote != s.vote {
-		if vote == s.nid && s.voteSelfErr != nil {
-			return s.voteSelfErr
-		} else if vote != s.nid && s.voteOtherErr != nil {
-			return s.voteOtherErr
-		}
-	}
-	s.term, s.vote = term, vote
 	return nil
 }
 
