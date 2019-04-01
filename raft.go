@@ -301,21 +301,21 @@ func (r *Raft) isClosing() bool {
 func (r *Raft) setState(s State) {
 	if s != r.state {
 		debug(r, r.state, "->", s)
+		r.state = s
 		if r.trace.StateChanged != nil {
 			r.trace.StateChanged(r.liveInfo())
 		}
 	}
-	r.state = s
 }
 
 func (r *Raft) setLeader(id uint64) {
 	if id != r.leader {
 		debug(r, "leader:", id)
+		r.leader = id
 		if r.trace.LeaderChanged != nil {
 			r.trace.LeaderChanged(r.liveInfo())
 		}
 	}
-	r.leader = id
 }
 
 // CID returns cluster ID.
