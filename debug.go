@@ -166,7 +166,7 @@ func (info *cachedInfo) String() string {
 	return fmt.Sprintf("M%d %d %s |", info.NID(), info.Term(), string(info.State()))
 }
 
-func (ne newEntry) String() string {
+func (ne *newEntry) String() string {
 	switch ne.typ {
 	case entryUpdate:
 		return fmt.Sprintf("update{%s}", string(ne.data))
@@ -212,10 +212,13 @@ func (u removeLTE) String() string {
 
 func (t fsmApply) String() string {
 	var newEntries string
-	if t.newEntries != nil && t.newEntries.Len() > 0 {
-		front := t.newEntries.Front().Value.(newEntry).index
-		back := t.newEntries.Back().Value.(newEntry).index
-		newEntries = fmt.Sprintf(", newEntries[%d..%d]", front, back)
+	if t.neHead != nil {
+		first := t.neHead.index
+		var last uint64
+		for ne := t.neHead; ne != nil; ne = ne.next {
+			last = ne.index
+		}
+		newEntries = fmt.Sprintf(", newEntries[%d..%d]", first, last)
 	}
 	return fmt.Sprintf("fsmApply{commitIndex:%d%s}", t.log.LastIndex(), newEntries)
 }

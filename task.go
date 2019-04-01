@@ -59,15 +59,16 @@ func (t *task) reply(result interface{}) {
 
 type FSMTask interface {
 	Task
-	newEntry() newEntry
+	newEntry() *newEntry
 }
 
 type newEntry struct {
 	*task
 	*entry
+	next *newEntry
 }
 
-func (ne newEntry) newEntry() newEntry {
+func (ne *newEntry) newEntry() *newEntry {
 	return ne
 }
 
@@ -76,7 +77,7 @@ func (r *Raft) FSMTasks() chan<- FSMTask {
 }
 
 func fsmTask(typ entryType, data []byte) FSMTask {
-	return newEntry{
+	return &newEntry{
 		task:  newTask(),
 		entry: &entry{typ: typ, data: data},
 	}

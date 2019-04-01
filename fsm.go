@@ -3,7 +3,6 @@ package raft
 import (
 	"bufio"
 	"bytes"
-	"container/list"
 	"io"
 
 	"github.com/santhosh-tekuri/raft/log"
@@ -47,11 +46,11 @@ func (fsm *stateMachine) runLoop() {
 }
 
 func (fsm *stateMachine) onApply(t fsmApply) {
-	// process all entries before t.newEntries.front from log
+	// process all entries before t.neHead from log
 	commitIndex := t.log.LastIndex()
 	front := commitIndex + 1
-	if t.newEntries != nil && t.newEntries.Len() > 0 {
-		front = t.newEntries.Front().Value.(newEntry).index
+	if t.neHead != nil {
+		front = t.neHead.index
 	}
 	for fsm.index+1 < front {
 		b, err := t.log.Get(fsm.index + 1)
@@ -62,7 +61,9 @@ func (fsm *stateMachine) onApply(t fsmApply) {
 		if err := e.decode(bytes.NewReader(b)); err != nil {
 			panic(opError(err, "Log.Get(%d).decode", fsm.index+1))
 		}
-
+		if e.index != fsm.index+1 {
+			panic(bug(1, "e.index=%d, fsm.index=%d", e.index, fsm.index))
+		}
 		debug(fsm, "fsm.apply", e.typ, e.index)
 		if e.typ == entryUpdate {
 			fsm.Update(e.data)
@@ -70,22 +71,23 @@ func (fsm *stateMachine) onApply(t fsmApply) {
 		fsm.index, fsm.term = e.index, e.term
 	}
 
-	// process all entries from t.newEntries if any
-	if t.newEntries != nil {
-		for elem := t.newEntries.Front(); elem != nil; elem = elem.Next() {
-			ne := elem.Value.(newEntry)
-			var resp interface{}
-			if ne.typ == entryRead {
-				resp = fsm.Read(ne.data)
-			} else if ne.typ == entryUpdate {
-				resp = fsm.Update(ne.data)
-			}
-			if ne.isLogEntry() {
-				fsm.index, fsm.term = ne.index, ne.term
-			}
-			ne.reply(resp)
+	// process all entries from t.neHead if any
+	for ne := t.neHead; ne != nil; ne = ne.next {
+		if ne.index != fsm.index+1 {
+			panic(bug(1, "ne.index=%d, fsm.index=%d", ne.index, fsm.index))
 		}
+		var resp interface{}
+		if ne.typ == entryRead {
+			resp = fsm.Read(ne.data)
+		} else if ne.typ == entryUpdate {
+			resp = fsm.Update(ne.data)
+		}
+		if ne.isLogEntry() {
+			fsm.index, fsm.term = ne.index, ne.term
+		}
+		ne.reply(resp)
 	}
+
 	if fsm.index != commitIndex {
 		panic(bug(1, "fsm.index=%d, commitIndex=%d", fsm.index, commitIndex))
 	}
@@ -134,8 +136,8 @@ func (fsm *stateMachine) onRestoreReq(t fsmRestoreReq) {
 }
 
 type fsmApply struct {
-	newEntries *list.List
-	log        *log.Log
+	neHead *newEntry
+	log    *log.Log
 }
 
 type lastApplied struct {

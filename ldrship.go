@@ -1,7 +1,6 @@
 package raft
 
 import (
-	"container/list"
 	"fmt"
 	"sort"
 	"sync"
@@ -19,14 +18,14 @@ type ldrShip struct {
 
 	// queue in which user submitted entries are enqueued
 	// committed entries are dequeued and handed over to fsm go-routine
-	newEntries *list.List
+	neHead, neTail *newEntry
 
 	// holds running replications, key is addr
 	flrs map[uint64]*flr
 	wg   sync.WaitGroup
 
 	// to receive updates from replicators
-	fromReplsCh chan interface{}
+	fromReplsCh chan interface{} // todo: can we have some buffer ??
 
 	transfer   transfer
 	waitStable []waitForStableConfig
@@ -51,7 +50,7 @@ func (l *ldrShip) init() {
 	l.onActionChange()
 
 	// add a blank no-op entry into log at the start of its term
-	l.storeEntry(newEntry{entry: &entry{typ: entryNop}})
+	l.storeEntry(&newEntry{entry: &entry{typ: entryNop}})
 }
 
 func (l *ldrShip) onTimeout() { l.checkQuorum(0) }
@@ -83,10 +82,10 @@ func (l *ldrShip) release() {
 	if l.isClosing() {
 		err = ErrServerClosed
 	}
-	for l.newEntries.Len() > 0 {
-		ne := l.newEntries.Remove(l.newEntries.Front()).(newEntry)
+	for ne := l.neHead; ne != nil; ne = ne.next {
 		ne.reply(err)
 	}
+	l.neHead, l.neTail = nil, nil
 	for buffed := len(l.fsmTaskCh); buffed > 0; buffed-- {
 		t := <-l.fsmTaskCh
 		t.reply(err)
@@ -102,7 +101,7 @@ func (l *ldrShip) release() {
 	l.fromReplsCh = nil
 }
 
-func (l *ldrShip) storeEntry(ne newEntry) {
+func (l *ldrShip) storeEntry(ne *newEntry) {
 	i, lastIndex, configIndex := 0, l.lastLogIndex, l.configs.Latest.Index
 	for {
 		i++
@@ -110,7 +109,11 @@ func (l *ldrShip) storeEntry(ne newEntry) {
 			ne.reply(InProgressError("transferLeadership"))
 		} else {
 			ne.entry.index, ne.entry.term = l.lastLogIndex+1, l.term
-			l.newEntries.PushBack(ne)
+			if l.neTail != nil {
+				l.neTail.next, l.neTail = ne, ne
+			} else {
+				l.neHead, l.neTail = ne, ne
+			}
 			if ne.isLogEntry() {
 				debug(l, "log.append", ne.typ, ne.index)
 				l.storage.appendEntry(ne.entry)
@@ -133,7 +136,7 @@ func (l *ldrShip) storeEntry(ne newEntry) {
 		}
 		break
 	}
-	if l.newEntries.Len() > 0 && !l.newEntries.Front().Value.(newEntry).isLogEntry() {
+	if l.neHead != nil && !l.neHead.isLogEntry() {
 		l.applyCommitted()
 	}
 	if l.lastLogIndex > lastIndex {
@@ -312,24 +315,28 @@ func (l *ldrShip) onMajorityCommit() {
 // if commitIndex > lastApplied: increment lastApplied, apply
 // log[lastApplied] to state machine
 func (l *ldrShip) applyCommitted() {
-	// todo: maintain newEntries as self made linkedList, to avoid new list every time
-	newEntries := list.New()
-
 	// add all entries <=commitIndex & add only non-log entries at commitIndex+1
-	for l.newEntries.Len() > 0 {
-		elem := l.newEntries.Front()
-		ne := elem.Value.(newEntry)
+	var prev, ne *newEntry = nil, l.neHead
+	for ne != nil {
 		if ne.index <= l.commitIndex {
-			l.newEntries.Remove(elem)
-			newEntries.PushBack(ne)
+			prev, ne = ne, ne.next
 		} else if ne.index == l.commitIndex+1 && !ne.isLogEntry() {
-			l.newEntries.Remove(elem)
-			newEntries.PushBack(ne)
+			prev, ne = ne, ne.next
 		} else {
 			break
 		}
 	}
-	apply := fsmApply{newEntries, l.log.ViewAt(l.log.PrevIndex(), l.commitIndex)}
+	var head *newEntry
+	if prev != nil {
+		head = l.neHead
+		prev.next = nil
+		l.neHead = ne
+		if l.neHead == nil {
+			l.neTail = nil
+		}
+	}
+
+	apply := fsmApply{head, l.log.ViewAt(l.log.PrevIndex(), l.commitIndex)}
 	debug(l, apply)
 	l.fsm.ch <- apply
 }

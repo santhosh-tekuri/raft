@@ -1,7 +1,6 @@
 package raft
 
 import (
-	"container/list"
 	"net"
 	"runtime"
 	"sync"
@@ -147,9 +146,8 @@ func (r *Raft) stateLoop() (err error) {
 		f = &flrShip{Raft: r}
 		c = &candShip{Raft: r}
 		l = &ldrShip{
-			Raft:       r,
-			newEntries: list.New(),
-			flrs:       make(map[uint64]*flr),
+			Raft: r,
+			flrs: make(map[uint64]*flr),
 			transfer: transfer{
 				timer:        newSafeTimer(),
 				newTermTimer: newSafeTimer(),
