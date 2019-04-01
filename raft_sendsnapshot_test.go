@@ -19,12 +19,6 @@ func test_sendSnapshot_case(t *testing.T, updateFSMAfterSnap bool) {
 	c.ensure(waitAddNonvoter(ldr, 4, id2Addr(4), false))
 	c.waitCatchup()
 
-	// now send one update
-	// why this: because snapIndex is determined by fsm
-	//           and fsm does not know about config changes
-	updates++
-	c.ensure(waitUpdate(ldr, "onemoreupdate", 0))
-
 	logCompacted := c.registerFor(logCompacted, ldr)
 	defer c.unregister(logCompacted)
 
