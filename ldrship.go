@@ -117,17 +117,16 @@ func (l *ldrShip) storeEntry(ne newEntry) {
 		if l.transfer.inProgress() {
 			l.newEntries.Remove(elem)
 			ne.reply(InProgressError("transferLeadership"))
-			break
-		}
-
-		debug(l, "log.append", ne.typ, ne.index)
-		l.storage.appendEntry(ne.entry)
-		if ne.typ == entryConfig {
-			config := Config{}
-			if err := config.decode(ne.entry); err != nil {
-				panic(bug(1, "config.decode: %v", err))
+		} else {
+			debug(l, "log.append", ne.typ, ne.index)
+			l.storage.appendEntry(ne.entry)
+			if ne.typ == entryConfig {
+				config := Config{}
+				if err := config.decode(ne.entry); err != nil {
+					panic(bug(1, "config.decode: %v", err))
+				}
+				l.changeConfig(config)
 			}
-			l.changeConfig(config)
 		}
 
 		if i < maxAppendEntries {
