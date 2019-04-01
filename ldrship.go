@@ -316,37 +316,24 @@ func (l *ldrShip) onMajorityCommit() {
 // if commitIndex > lastApplied: increment lastApplied, apply
 // log[lastApplied] to state machine
 func (l *ldrShip) applyCommitted() {
-	// todo: implement without using l.lastApplied
-	// todo: maintain newEntries as self made linkedlist, to avoid new list every time
+	// todo: maintain newEntries as self made linkedList, to avoid new list every time
 	newEntries := list.New()
-	for {
-		// send query/barrier entries if any to fsm
-		for l.newEntries.Len() > 0 {
-			elem := l.newEntries.Front()
-			ne := elem.Value.(newEntry)
-			if ne.index == l.lastApplied+1 && (ne.typ == entryRead || ne.typ == entryBarrier) {
-				l.newEntries.Remove(elem)
-				newEntries.PushBack(ne)
-			} else {
-				break
-			}
-		}
 
-		if l.lastApplied+1 > l.commitIndex {
+	// add all entries <=commitIndex & add only non-log entries at commitIndex+1
+	for l.newEntries.Len() > 0 {
+		elem := l.newEntries.Front()
+		ne := elem.Value.(newEntry)
+		if ne.index <= l.commitIndex {
+			l.newEntries.Remove(elem)
+			newEntries.PushBack(ne)
+		} else if ne.index == l.commitIndex+1 && (ne.typ == entryRead || ne.typ == entryBarrier) {
+			l.newEntries.Remove(elem)
+			newEntries.PushBack(ne)
+		} else {
 			break
 		}
-
-		// get lastApplied+1 entry
-		var ne newEntry
-		if l.newEntries.Len() > 0 {
-			elem := l.newEntries.Front()
-			if elem.Value.(newEntry).index == l.lastApplied+1 {
-				ne = l.newEntries.Remove(elem).(newEntry)
-				newEntries.PushBack(ne)
-			}
-		}
-		l.lastApplied++
 	}
+	l.lastApplied = l.commitIndex
 	debug(l, "lastApplied", l.lastApplied)
 	apply := fsmApply{newEntries, l.log.ViewAt(l.log.PrevIndex(), l.commitIndex)}
 	debug(l, apply)
