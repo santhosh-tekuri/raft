@@ -26,7 +26,7 @@ type stateMachine struct {
 }
 
 func (fsm *stateMachine) runLoop() {
-	var updateIndex, updateTerm uint64
+	var lastAppliedIndex, lastAppliedTerm uint64
 	for t := range fsm.taskCh {
 		switch t := t.(type) {
 		case newEntry:
@@ -34,17 +34,17 @@ func (fsm *stateMachine) runLoop() {
 			var resp interface{}
 			if t.typ == entryUpdate {
 				resp = fsm.Update(t.entry.data)
-				updateIndex, updateTerm = t.index, t.term
+				lastAppliedIndex, lastAppliedTerm = t.index, t.term
 			} else if t.typ == entryRead {
 				resp = fsm.Read(t.entry.data)
 			}
 			t.reply(resp)
 		case fsmSnapReq:
-			if updateIndex == 0 {
+			if lastAppliedIndex == 0 {
 				t.reply(ErrNoUpdates)
 				continue
 			}
-			if updateIndex < t.index {
+			if lastAppliedIndex < t.index {
 				t.reply(ErrSnapshotThreshold)
 				continue
 			}
@@ -56,8 +56,8 @@ func (fsm *stateMachine) runLoop() {
 				continue
 			}
 			t.reply(fsmSnapResp{
-				index: updateIndex,
-				term:  updateTerm,
+				index: lastAppliedIndex,
+				term:  lastAppliedTerm,
 				state: state,
 			})
 		case fsmRestoreReq:
@@ -72,7 +72,7 @@ func (fsm *stateMachine) runLoop() {
 				// todo: detect where err occurred in restoreFrom/sr.read
 				t.reply(opError(err, "FSM.RestoreFrom"))
 			} else {
-				updateIndex, updateTerm = meta.Index, meta.Term
+				lastAppliedIndex, lastAppliedTerm = meta.Index, meta.Term
 				debug(fsm, "restored snapshot", meta.Index)
 				t.reply(nil)
 			}
