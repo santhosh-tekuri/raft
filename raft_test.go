@@ -174,7 +174,11 @@ func newCluster(t *testing.T) *cluster {
 		heartbeatTimeout: heartbeatTimeout,
 		longTimeout:      5 * time.Second,
 		commitTimeout:    5 * time.Millisecond,
-		events:           &events{observers: make(map[int]observer)},
+		events: &events{
+			observers: make(map[int]observer),
+			states:    make(map[uint64]State),
+			ldrs:      make(map[uint64]uint64),
+		},
 	}
 	c.opt = Options{
 		HeartbeatTimeout: heartbeatTimeout,
@@ -285,6 +289,10 @@ func (c *cluster) serve(r *Raft) {
 	if err != nil {
 		c.Fatalf("raft.listen failed: %v", err)
 	}
+	c.eventMu.Lock()
+	c.states[r.nid] = Follower
+	c.ldrs[r.nid] = 0
+	c.eventMu.Unlock()
 	go func() {
 		err := r.Serve(l)
 		c.serverErrMu.RLock()
@@ -432,20 +440,19 @@ func (c *cluster) ensureLeader(leader uint64) {
 func (c *cluster) waitForFollowers() *Raft {
 	c.Helper()
 	tdebug("waitForFollowers")
-	log := false
+
+	var ldr uint64
 	condition := func(e *event) bool {
-		ldrs := c.getInState(Leader)
-		if len(ldrs) == 0 {
-			if log {
-				c.Log("no leader yet chosen")
+		c.eventMu.RLock()
+		defer c.eventMu.RUnlock()
+		ldr = 0
+		for _, v := range c.ldrs {
+			if v == 0 {
+				return false
 			}
-			return false
-		}
-		for _, r := range c.rr {
-			if got := r.Info().Leader(); got != ldrs[0].NID() {
-				if log {
-					c.Logf("leader of M%d: got M%d, want M%d", r.NID(), got, ldrs[0].NID())
-				}
+			if ldr == 0 {
+				ldr = v
+			} else if ldr != v {
 				return false
 			}
 		}
@@ -454,11 +461,14 @@ func (c *cluster) waitForFollowers() *Raft {
 	leaderChanged := c.registerFor(leaderChanged)
 	defer c.unregister(leaderChanged)
 	if !leaderChanged.waitFor(condition, c.longTimeout) {
-		log = true
-		condition(nil)
+		c.eventMu.RLock()
+		for id, ldr := range c.ldrs {
+			c.Logf("leader of M%d: M%d", id, ldr)
+		}
+		c.eventMu.RUnlock()
 		c.Fatalf("waitForFollowers timeout")
 	}
-	return c.getInState(Leader)[0]
+	return c.rr[ldr]
 }
 
 // wait until state is one of given states
@@ -489,15 +499,10 @@ func (c *cluster) waitForLeader(rr ...*Raft) *Raft {
 	}
 	var ldr *Raft
 	condition := func(e *event) bool {
-		if e != nil {
-			if e.state == Leader {
-				ldr = c.rr[e.src]
-				return true
-			}
-			return false
-		}
+		c.eventMu.RLock()
+		defer c.eventMu.RUnlock()
 		for _, r := range rr {
-			if r.Info().State() == Leader {
+			if c.states[r.nid] == Leader {
 				ldr = r
 				return true
 			}
@@ -948,6 +953,10 @@ type events struct {
 	observersMu sync.RWMutex
 	observerID  int
 	observers   map[int]observer
+
+	eventMu sync.RWMutex
+	states  map[uint64]State
+	ldrs    map[uint64]uint64
 }
 
 func (ee *events) register(filter func(event) bool) observer {
@@ -1002,6 +1011,9 @@ func (ee *events) trace() (trace Trace) {
 		})
 	}
 	trace.StateChanged = func(info Info) {
+		ee.eventMu.Lock()
+		ee.states[info.NID()] = info.State()
+		ee.eventMu.Unlock()
 		ee.sendEvent(event{
 			src:   info.NID(),
 			typ:   stateChanged,
@@ -1009,6 +1021,9 @@ func (ee *events) trace() (trace Trace) {
 		})
 	}
 	trace.LeaderChanged = func(info Info) {
+		ee.eventMu.Lock()
+		ee.ldrs[info.NID()] = info.Leader()
+		ee.eventMu.Unlock()
 		ee.sendEvent(event{
 			src:    info.NID(),
 			typ:    leaderChanged,
