@@ -183,6 +183,7 @@ func newCluster(t *testing.T) *cluster {
 		Trace:            c.events.trace(),
 	}
 	c.storeOpt = DefaultStorageOptions()
+	c.storeOpt.LogSegmentSize = 4 * 1024
 	return c
 }
 
@@ -432,7 +433,7 @@ func (c *cluster) waitForFollowers() *Raft {
 	c.Helper()
 	tdebug("waitForFollowers")
 	log := false
-	condition := func() bool {
+	condition := func(e *event) bool {
 		ldrs := c.getInState(Leader)
 		if len(ldrs) == 0 {
 			if log {
@@ -454,7 +455,7 @@ func (c *cluster) waitForFollowers() *Raft {
 	defer c.unregister(leaderChanged)
 	if !leaderChanged.waitFor(condition, c.longTimeout) {
 		log = true
-		condition()
+		condition(nil)
 		c.Fatalf("waitForFollowers timeout")
 	}
 	return c.getInState(Leader)[0]
@@ -464,7 +465,7 @@ func (c *cluster) waitForFollowers() *Raft {
 func (c *cluster) waitForState(r *Raft, timeout time.Duration, states ...State) {
 	c.Helper()
 	tdebug("waitForState:", host(r), timeout, states)
-	condition := func() bool {
+	condition := func(e *event) bool {
 		got := r.Info().State()
 		for _, want := range states {
 			if got == want {
@@ -486,9 +487,18 @@ func (c *cluster) waitForLeader(rr ...*Raft) *Raft {
 	if len(rr) == 0 {
 		rr = c.exclude()
 	}
-	condition := func() bool {
+	var ldr *Raft
+	condition := func(e *event) bool {
+		if e != nil {
+			if e.state == Leader {
+				ldr = c.rr[e.src]
+				return true
+			}
+			return false
+		}
 		for _, r := range rr {
 			if r.Info().State() == Leader {
+				ldr = r
 				return true
 			}
 		}
@@ -499,7 +509,7 @@ func (c *cluster) waitForLeader(rr ...*Raft) *Raft {
 	if !stateChanged.waitFor(condition, c.longTimeout) {
 		c.Fatalf("waitForLeader: timeout")
 	}
-	return c.getInState(Leader, rr...)[0]
+	return ldr
 }
 
 func (c *cluster) waitFSMLen(fsmLen uint64, rr ...*Raft) {
@@ -508,7 +518,7 @@ func (c *cluster) waitFSMLen(fsmLen uint64, rr ...*Raft) {
 	if len(rr) == 0 {
 		rr = c.exclude()
 	}
-	condition := func() bool {
+	condition := func(e *event) bool {
 		for _, r := range rr {
 			if got := fsm(r).len(); got != fsmLen {
 				return false
@@ -622,7 +632,7 @@ func (c *cluster) waitCatchup(rr ...*Raft) {
 func (c *cluster) waitUnreachableDetected(ldr, failed *Raft) {
 	c.Helper()
 	tdebug("waitUnreachableDetected: ldr:", host(ldr), "failed:", host(failed))
-	condition := func() bool {
+	condition := func(e *event) bool {
 		return !ldr.Info().Followers()[failed.NID()].Unreachable.IsZero()
 	}
 	unreachable := c.registerFor(unreachable, ldr)
@@ -635,7 +645,7 @@ func (c *cluster) waitUnreachableDetected(ldr, failed *Raft) {
 func (c *cluster) waitReachableDetected(ldr, failed *Raft) {
 	c.Helper()
 	tdebug("waitReachableDetected: ldr:", host(ldr), "failed:", host(failed))
-	condition := func() bool {
+	condition := func(e *event) bool {
 		return ldr.Info().Followers()[failed.NID()].Unreachable.IsZero()
 	}
 	unreachable := c.registerFor(unreachable, ldr)
@@ -917,15 +927,15 @@ func (ob observer) waitForEvent(timeout time.Duration) (event, error) {
 	}
 }
 
-func (ob observer) waitFor(condition func() bool, timeout time.Duration) bool {
+func (ob observer) waitFor(condition func(*event) bool, timeout time.Duration) bool {
 	timeoutCh := timeAfter(timeout)
-	if condition() {
+	if condition(nil) {
 		return true
 	}
 	for {
 		select {
-		case <-ob.ch:
-			if condition() {
+		case e := <-ob.ch:
+			if condition(&e) {
 				return true
 			}
 		case <-timeoutCh:
