@@ -180,6 +180,18 @@ func (l *Log) Append(b []byte) error {
 	return l.last.append(b)
 }
 
+func (l *Log) CanLTE(i uint64) uint64 {
+	s := l.first
+	for s != l.last {
+		if s.n > 0 && s.lastIndex() <= i {
+			s = s.next
+		} else {
+			break
+		}
+	}
+	return s.prevIndex
+}
+
 func (l *Log) RemoveLTE(i uint64) error {
 	if err := l.Sync(); err != nil {
 		return err
