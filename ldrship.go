@@ -106,29 +106,23 @@ func (l *ldrShip) storeEntry(ne newEntry) {
 	i, lastIndex, configIndex := 0, l.lastLogIndex, l.configs.Latest.Index
 	for {
 		i++
-		ne.entry.index, ne.entry.term = l.lastLogIndex+1, l.term
-		elem := l.newEntries.PushBack(ne)
-
-		if !ne.isLogEntry() {
-			l.applyCommitted()
-			break
-		}
-
 		if l.transfer.inProgress() {
-			l.newEntries.Remove(elem)
 			ne.reply(InProgressError("transferLeadership"))
 		} else {
-			debug(l, "log.append", ne.typ, ne.index)
-			l.storage.appendEntry(ne.entry)
-			if ne.typ == entryConfig {
-				config := Config{}
-				if err := config.decode(ne.entry); err != nil {
-					panic(bug(1, "config.decode: %v", err))
+			ne.entry.index, ne.entry.term = l.lastLogIndex+1, l.term
+			l.newEntries.PushBack(ne)
+			if ne.isLogEntry() {
+				debug(l, "log.append", ne.typ, ne.index)
+				l.storage.appendEntry(ne.entry)
+				if ne.typ == entryConfig {
+					config := Config{}
+					if err := config.decode(ne.entry); err != nil {
+						panic(bug(1, "config.decode: %v", err))
+					}
+					l.changeConfig(config)
 				}
-				l.changeConfig(config)
 			}
 		}
-
 		if i < maxAppendEntries {
 			select {
 			case t := <-l.fsmTaskCh:
@@ -138,6 +132,9 @@ func (l *ldrShip) storeEntry(ne newEntry) {
 			}
 		}
 		break
+	}
+	if l.newEntries.Len() > 0 && !l.newEntries.Front().Value.(newEntry).isLogEntry() {
+		l.applyCommitted()
 	}
 	if l.lastLogIndex > lastIndex {
 		debug(l, "syncLog", l.lastLogIndex-lastIndex, "entries")
