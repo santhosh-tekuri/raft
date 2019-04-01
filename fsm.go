@@ -127,8 +127,8 @@ func (fsm *stateMachine) onRestoreReq(t fsmRestoreReq) {
 		// todo: detect where err occurred in restoreFrom/sr.read
 		t.reply(opError(err, "FSM.RestoreFrom"))
 	} else {
-		fsm.index, fsm.term = snap.meta.Index, snap.meta.Term
-		debug(fsm, "restored snapshot", snap.meta.Index)
+		fsm.index, fsm.term = snap.meta.index, snap.meta.term
+		debug(fsm, "restored snapshot", snap.meta.index)
 		t.reply(nil)
 	}
 }
@@ -168,7 +168,7 @@ func (r *Raft) onTakeSnapshot(t takeSnapshot) {
 	}(r.snaps.index+t.threshold, r.configs.Committed)
 }
 
-func doTakeSnapshot(fsm *stateMachine, index uint64, config Config) (meta SnapshotMeta, err error) {
+func doTakeSnapshot(fsm *stateMachine, index uint64, config Config) (meta snapshotMeta, err error) {
 	// get fsm state
 	req := fsmSnapReq{task: newTask(), index: index}
 	fsm.ch <- req
@@ -217,11 +217,11 @@ func (r *Raft) onSnapshotTaken(t snapTaken) {
 		return
 	}
 
-	if r.storage.log.Contains(t.meta.Index) {
+	if r.storage.log.Contains(t.meta.index) {
 		// find compact index
 		// nowCompact: min of all matchIndex
 		// canCompact: min of online matchIndex
-		nowCompact, canCompact := t.meta.Index, t.meta.Index
+		nowCompact, canCompact := t.meta.index, t.meta.index
 		if r.state == Leader {
 			for _, f := range r.ldr.flrs {
 				if f.status.matchIndex < nowCompact {
@@ -244,7 +244,7 @@ func (r *Raft) onSnapshotTaken(t snapTaken) {
 			r.ldr.notifyFlr(false)
 		}
 	}
-	t.req.reply(t.meta.Index)
+	t.req.reply(t.meta.index)
 }
 
 // takeSnapshot() -> fsmLoop
@@ -263,7 +263,7 @@ type fsmSnapResp struct {
 // snapLoop -> raft (after snapshot taken)
 type snapTaken struct {
 	req  takeSnapshot
-	meta SnapshotMeta
+	meta snapshotMeta
 	err  error
 }
 

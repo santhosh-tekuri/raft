@@ -351,10 +351,10 @@ func (f *flr) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
 
 	req := &installSnapReq{
 		req:        appReq.req,
-		lastIndex:  snap.meta.Index,
-		lastTerm:   snap.meta.Term,
-		lastConfig: snap.meta.Config,
-		size:       snap.meta.Size,
+		lastIndex:  snap.meta.index,
+		lastTerm:   snap.meta.term,
+		lastConfig: snap.meta.config,
+		size:       snap.meta.size,
 	}
 	debug(f, ">>", req)
 	if err = c.writeReq(req); err != nil {

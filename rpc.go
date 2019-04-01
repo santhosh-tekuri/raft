@@ -251,15 +251,15 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq, reader io.Reader) (rpcR
 	}
 
 	discardLog := true
-	if r.storage.log.Contains(meta.Index) {
-		metaTerm, err := r.storage.getEntryTerm(meta.Index)
+	if r.storage.log.Contains(meta.index) {
+		metaTerm, err := r.storage.getEntryTerm(meta.index)
 		if err != nil {
 			return unexpectedErr, err
 		}
-		termsMatched := metaTerm == meta.Term
+		termsMatched := metaTerm == meta.term
 		if termsMatched {
 			// remove <=meta.index, but retain following it
-			if err = r.storage.removeLTE(meta.Index); err != nil {
+			if err = r.storage.removeLTE(meta.index); err != nil {
 				return unexpectedErr, err
 			}
 			discardLog = false
@@ -279,7 +279,7 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq, reader io.Reader) (rpcR
 			return unexpectedErr, err
 		}
 		// load snapshot config as cluster configuration
-		r.changeConfig(meta.Config)
+		r.changeConfig(meta.config)
 		r.commitConfig()
 	}
 

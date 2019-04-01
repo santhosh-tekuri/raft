@@ -46,7 +46,7 @@ func openSnapshots(dir string, opt StorageOptions) (*snapshots, error) {
 		if meta, err := s.meta(); err != nil {
 			return nil, err
 		} else {
-			s.term = meta.Term
+			s.term = meta.term
 		}
 	}
 	return s, nil
@@ -58,16 +58,16 @@ func (s *snapshots) latest() (index, term uint64) {
 	return s.index, s.term
 }
 
-func (s *snapshots) meta() (SnapshotMeta, error) {
+func (s *snapshots) meta() (snapshotMeta, error) {
 	if s.index == 0 {
-		return SnapshotMeta{Index: 0, Term: 0}, nil
+		return snapshotMeta{index: 0, term: 0}, nil
 	}
 	f, err := os.Open(metaFile(s.dir, s.index))
 	if err != nil {
-		return SnapshotMeta{}, err
+		return snapshotMeta{}, err
 	}
 	defer f.Close()
-	meta := SnapshotMeta{}
+	meta := snapshotMeta{}
 	return meta, meta.decode(f)
 }
 
@@ -99,22 +99,22 @@ func (s *snapshots) open() (*snapshot, error) {
 	if err != nil {
 		return nil, err
 	}
-	file := snapFile(s.dir, meta.Index)
+	file := snapFile(s.dir, meta.index)
 
 	// validate file size
 	info, err := os.Stat(file)
 	if err != nil {
 		return nil, err
 	}
-	if info.Size() != meta.Size {
-		return nil, fmt.Errorf("raft: size of %q is %d, want %d", file, info.Size(), meta.Size)
+	if info.Size() != meta.size {
+		return nil, fmt.Errorf("raft: size of %q is %d, want %d", file, info.Size(), meta.size)
 	}
 
 	f, err := os.Open(file)
 	if err != nil {
 		return nil, err
 	}
-	s.used[meta.Index]++
+	s.used[meta.index]++
 	return &snapshot{
 		snaps: s,
 		meta:  meta,
@@ -124,7 +124,7 @@ func (s *snapshots) open() (*snapshot, error) {
 
 type snapshot struct {
 	snaps *snapshots
-	meta  SnapshotMeta
+	meta  snapshotMeta
 	file  *os.File
 }
 
@@ -132,10 +132,10 @@ func (s *snapshot) release() {
 	_ = s.file.Close()
 	s.snaps.usedMu.Lock()
 	defer s.snaps.usedMu.Unlock()
-	if s.snaps.used[s.meta.Index] == 1 {
-		delete(s.snaps.used, s.meta.Index)
+	if s.snaps.used[s.meta.index] == 1 {
+		delete(s.snaps.used, s.meta.index)
 	} else {
-		s.snaps.used[s.meta.Index]--
+		s.snaps.used[s.meta.index]--
 	}
 }
 
@@ -148,18 +148,18 @@ func (s *snapshots) new(index, term uint64, config Config) (*snapshotSink, error
 	}
 	return &snapshotSink{
 		snaps: s,
-		meta:  SnapshotMeta{Index: index, Term: term, Config: config},
+		meta:  snapshotMeta{index: index, term: term, config: config},
 		file:  f,
 	}, nil
 }
 
 type snapshotSink struct {
 	snaps *snapshots
-	meta  SnapshotMeta
+	meta  snapshotMeta
 	file  *os.File
 }
 
-func (s *snapshotSink) done(err error) (SnapshotMeta, error) {
+func (s *snapshotSink) done(err error) (snapshotMeta, error) {
 	if err != nil {
 		_ = s.file.Close()
 		_ = os.Remove(s.file.Name())
@@ -177,7 +177,7 @@ func (s *snapshotSink) done(err error) (SnapshotMeta, error) {
 	if err != nil {
 		return s.meta, err
 	}
-	s.meta.Size = info.Size()
+	s.meta.size = info.Size()
 
 	file := filepath.Join(s.snaps.dir, "meta.tmp")
 	temp, err := os.OpenFile(file, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
@@ -196,13 +196,13 @@ func (s *snapshotSink) done(err error) (SnapshotMeta, error) {
 	if err = temp.Close(); err != nil {
 		return s.meta, err
 	}
-	file = metaFile(s.snaps.dir, s.meta.Index)
+	file = metaFile(s.snaps.dir, s.meta.index)
 	if err = os.Rename(temp.Name(), file); err != nil {
 		return s.meta, err
 	}
 	temp = nil
 	s.snaps.mu.Lock()
-	s.snaps.index, s.snaps.term = s.meta.Index, s.meta.Term
+	s.snaps.index, s.snaps.term = s.meta.index, s.meta.term
 	s.snaps.mu.Unlock()
 	_ = s.snaps.applyRetain() // todo: trace error
 	return s.meta, nil
@@ -210,44 +210,44 @@ func (s *snapshotSink) done(err error) (SnapshotMeta, error) {
 
 // snapshotMeta ----------------------------------------------------
 
-type SnapshotMeta struct {
-	Index  uint64
-	Term   uint64
-	Config Config
-	Size   int64
+type snapshotMeta struct {
+	index  uint64
+	term   uint64
+	config Config
+	size   int64
 }
 
-func (m *SnapshotMeta) encode(w io.Writer) error {
-	if err := writeUint64(w, m.Index); err != nil {
+func (m *snapshotMeta) encode(w io.Writer) error {
+	if err := writeUint64(w, m.index); err != nil {
 		return err
 	}
-	if err := writeUint64(w, m.Term); err != nil {
+	if err := writeUint64(w, m.term); err != nil {
 		return err
 	}
-	if err := m.Config.encode().encode(w); err != nil {
+	if err := m.config.encode().encode(w); err != nil {
 		return err
 	}
-	return writeUint64(w, uint64(m.Size))
+	return writeUint64(w, uint64(m.size))
 }
 
-func (m *SnapshotMeta) decode(r io.Reader) (err error) {
-	if m.Index, err = readUint64(r); err != nil {
+func (m *snapshotMeta) decode(r io.Reader) (err error) {
+	if m.index, err = readUint64(r); err != nil {
 		return err
 	}
-	if m.Term, err = readUint64(r); err != nil {
+	if m.term, err = readUint64(r); err != nil {
 		return err
 	}
 	e := &entry{}
 	if err = e.decode(r); err != nil {
 		return err
 	}
-	if err = m.Config.decode(e); err != nil {
+	if err = m.config.decode(e); err != nil {
 		return err
 	}
 	if size, err := readUint64(r); err != nil {
 		return err
 	} else {
-		m.Size = int64(size)
+		m.size = int64(size)
 	}
 	return nil
 }

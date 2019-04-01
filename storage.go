@@ -174,11 +174,11 @@ func openStorage(dir string, opt StorageOptions) (*storage, error) {
 		}
 	}
 	if need == 2 {
-		s.configs.Latest = meta.Config
+		s.configs.Latest = meta.config
 		need--
 	}
 	if need == 1 {
-		s.configs.Committed = meta.Config
+		s.configs.Committed = meta.config
 	}
 
 	return s, nil
