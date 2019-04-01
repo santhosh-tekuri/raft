@@ -2,7 +2,11 @@ package raft
 
 import (
 	"bufio"
+	"bytes"
+	"container/list"
 	"io"
+
+	"github.com/santhosh-tekuri/raft/log"
 )
 
 type FSM interface {
@@ -19,85 +23,124 @@ type FSMState interface {
 
 type stateMachine struct {
 	FSM
-	id uint64
-
-	taskCh chan Task
-	snaps  *snapshots
+	id    uint64
+	index uint64
+	term  uint64
+	ch    chan interface{}
+	snaps *snapshots
 }
 
 func (fsm *stateMachine) runLoop() {
-	var lastAppliedIndex, lastAppliedTerm uint64
-	for t := range fsm.taskCh {
+	for t := range fsm.ch {
+		debug(fsm, t)
 		switch t := t.(type) {
-		case newEntry:
-			debug(fsm.id, "fsm.execute", t.typ, t.index)
-			var resp interface{}
-			if t.typ == entryUpdate {
-				resp = fsm.Update(t.entry.data)
-				lastAppliedIndex, lastAppliedTerm = t.index, t.term
-			} else if t.typ == entryRead {
-				resp = fsm.Read(t.entry.data)
-			}
-			t.reply(resp)
+		case fsmApply:
+			fsm.onApply(t)
 		case fsmSnapReq:
-			if lastAppliedIndex == 0 {
-				t.reply(ErrNoUpdates)
-				continue
-			}
-			if lastAppliedIndex < t.index {
-				t.reply(ErrSnapshotThreshold)
-				continue
-			}
-			state, err := fsm.Snapshot()
-			if err != nil {
-				debug(fsm, "fsm.Snapshot failed", err)
-				// send to trace
-				t.reply(err)
-				continue
-			}
-			t.reply(fsmSnapResp{
-				index: lastAppliedIndex,
-				term:  lastAppliedTerm,
-				state: state,
-			})
+			fsm.onSnapReq(t)
 		case fsmRestoreReq:
-			meta, sr, err := fsm.snaps.open()
-			if err != nil {
-				debug(fsm, "snapshots.open failed", err)
-				t.reply(opError(err, "snapshots.open"))
-				continue
-			}
-			if err = fsm.RestoreFrom(sr); err != nil {
-				debug(fsm, "fsm.restore failed", err)
-				// todo: detect where err occurred in restoreFrom/sr.read
-				t.reply(opError(err, "FSM.RestoreFrom"))
-			} else {
-				lastAppliedIndex, lastAppliedTerm = meta.Index, meta.Term
-				debug(fsm, "restored snapshot", meta.Index)
-				t.reply(nil)
-			}
-			_ = sr.Close()
+			fsm.onRestoreReq(t)
 		}
 	}
 }
 
-func (r *Raft) applyEntry(ne newEntry) {
-	switch ne.typ {
-	case entryNop:
-		// do nothing
-	case entryConfig:
-		// we already processed in setCommitIndex
-		ne.reply(nil)
-	case entryUpdate:
-		debug(r, "fms <- {", ne.typ, ne.index, "}")
-		select {
-		case <-r.close:
-			ne.reply(ErrServerClosed)
-		case r.fsm.taskCh <- ne:
-		}
-	default:
-		fatal("raft.applyEntry: type %d", ne.typ)
+func (fsm *stateMachine) onApply(t fsmApply) {
+	var elem *list.Element
+	if t.newEntries != nil {
+		elem = t.newEntries.Front()
 	}
+	commitIndex := t.log.LastIndex()
+	for {
+		// process non log entries
+		for elem != nil {
+			ne := elem.Value.(newEntry)
+			if ne.index == fsm.index+1 && (ne.typ == entryRead || ne.typ == entryBarrier) {
+				elem = elem.Next()
+				debug(fsm, "fsm.apply", ne.typ, ne.index)
+				var resp interface{}
+				if ne.typ == entryRead {
+					resp = fsm.Read(ne.data)
+				}
+				ne.reply(resp)
+			} else {
+				break
+			}
+		}
+
+		if fsm.index+1 > commitIndex {
+			return
+		}
+
+		var ne newEntry
+		if elem != nil && elem.Value.(newEntry).index == fsm.index+1 {
+			ne = elem.Value.(newEntry)
+			elem = elem.Next()
+		} else {
+			b, err := t.log.Get(fsm.index + 1)
+			if err != nil {
+				panic(opError(err, "Log.Get(%d)", fsm.index+1))
+			}
+			ne.entry = &entry{}
+			if err := ne.entry.decode(bytes.NewReader(b)); err != nil {
+				panic(opError(err, "Log.Get(%d).decode", fsm.index+1))
+			}
+		}
+
+		debug(fsm, "fsm.apply", ne.typ, ne.index)
+		var resp interface{}
+		if ne.typ == entryUpdate {
+			resp = fsm.Update(ne.data)
+		}
+		ne.reply(resp)
+		fsm.index, fsm.term = ne.index, ne.term
+	}
+}
+
+func (fsm *stateMachine) onSnapReq(t fsmSnapReq) {
+	if fsm.index == 0 {
+		t.reply(ErrNoUpdates)
+		return
+	}
+	if fsm.index < t.index {
+		t.reply(ErrSnapshotThreshold)
+		return
+	}
+	state, err := fsm.Snapshot()
+	if err != nil {
+		debug(fsm, "fsm.Snapshot failed", err)
+		// todo: send to trace
+		t.reply(opError(err, "fsm.Snapshot"))
+		return
+	}
+	t.reply(fsmSnapResp{
+		index: fsm.index,
+		term:  fsm.term,
+		state: state,
+	})
+}
+
+func (fsm *stateMachine) onRestoreReq(t fsmRestoreReq) {
+	meta, sr, err := fsm.snaps.open()
+	if err != nil {
+		debug(fsm, "snapshots.open failed", err)
+		t.reply(opError(err, "snapshots.open"))
+		return
+	}
+	if err = fsm.RestoreFrom(sr); err != nil {
+		debug(fsm, "fsm.restore failed", err)
+		// todo: detect where err occurred in restoreFrom/sr.read
+		t.reply(opError(err, "FSM.RestoreFrom"))
+	} else {
+		fsm.index, fsm.term = meta.Index, meta.Term
+		debug(fsm, "restored snapshot", meta.Index)
+		t.reply(nil)
+	}
+	_ = sr.Close()
+}
+
+type fsmApply struct {
+	newEntries *list.List
+	log        *log.Log
 }
 
 // --------------------------------------------------------------------------
@@ -122,7 +165,7 @@ func (r *Raft) onTakeSnapshot(t takeSnapshot) {
 func doTakeSnapshot(fsm *stateMachine, index uint64, config Config) (meta SnapshotMeta, err error) {
 	// get fsm state
 	req := fsmSnapReq{task: newTask(), index: index}
-	fsm.taskCh <- req
+	fsm.ch <- req
 	<-req.Done()
 	if req.Err() != nil {
 		err = req.Err()
@@ -222,7 +265,7 @@ type snapTaken struct {
 
 func (r *Raft) restoreFSM() error {
 	req := fsmRestoreReq{task: newTask()}
-	r.fsm.taskCh <- req
+	r.fsm.ch <- req
 	<-req.Done()
 	if req.Err() != nil {
 		return req.Err()

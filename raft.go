@@ -61,10 +61,10 @@ func New(opt Options, fsm FSM, storage *Storage) (*Raft, error) {
 		return nil, ErrIdentityNotSet
 	}
 	sm := &stateMachine{
-		FSM:    fsm,
-		id:     store.nid,
-		taskCh: make(chan Task, 128), // todo configurable capacity
-		snaps:  store.snaps,
+		FSM:   fsm,
+		id:    store.nid,
+		ch:    make(chan interface{}, 1024), // todo configurable capacity
+		snaps: store.snaps,
 	}
 
 	r := &Raft{
@@ -122,7 +122,7 @@ func (r *Raft) Serve(l net.Listener) error {
 		r.fsm.runLoop()
 		debug(r, "fsmLoop shutdown")
 	}()
-	defer close(r.fsm.taskCh)
+	defer close(r.fsm.ch)
 
 	// restore fsm from last snapshot, if present
 	if r.snaps.index > 0 {

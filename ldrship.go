@@ -316,6 +316,9 @@ func (l *ldrShip) onMajorityCommit() {
 // if commitIndex > lastApplied: increment lastApplied, apply
 // log[lastApplied] to state machine
 func (l *ldrShip) applyCommitted() {
+	// todo: implement without using l.lastApplied
+	// todo: maintain newEntries as self made linkedlist, to avoid new list every time
+	newEntries := list.New()
 	for {
 		// send query/barrier entries if any to fsm
 		for l.newEntries.Len() > 0 {
@@ -323,20 +326,14 @@ func (l *ldrShip) applyCommitted() {
 			ne := elem.Value.(newEntry)
 			if ne.index == l.lastApplied+1 && (ne.typ == entryRead || ne.typ == entryBarrier) {
 				l.newEntries.Remove(elem)
-				debug(l, "fms <- {", ne.typ, ne.index, "}")
-				select {
-				case <-l.close:
-					ne.reply(ErrServerClosed)
-					return
-				case l.fsm.taskCh <- ne:
-				}
+				newEntries.PushBack(ne)
 			} else {
 				break
 			}
 		}
 
 		if l.lastApplied+1 > l.commitIndex {
-			return
+			break
 		}
 
 		// get lastApplied+1 entry
@@ -345,17 +342,15 @@ func (l *ldrShip) applyCommitted() {
 			elem := l.newEntries.Front()
 			if elem.Value.(newEntry).index == l.lastApplied+1 {
 				ne = l.newEntries.Remove(elem).(newEntry)
+				newEntries.PushBack(ne)
 			}
 		}
-		if ne.entry == nil {
-			ne.entry = &entry{}
-			l.storage.mustGetEntry(l.lastApplied+1, ne.entry)
-		}
-
-		l.applyEntry(ne)
 		l.lastApplied++
-		debug(l, "lastApplied", l.lastApplied)
 	}
+	debug(l, "lastApplied", l.lastApplied)
+	apply := fsmApply{newEntries, l.log.ViewAt(l.log.PrevIndex(), l.commitIndex)}
+	debug(l, apply)
+	l.fsm.ch <- apply
 }
 
 func (l *ldrShip) notifyFlr(includeConfig bool) {

@@ -48,7 +48,7 @@ func TestRaft(t *testing.T) {
 	t.Run("barrier", test_barrier)
 	t.Run("read", test_read)
 	t.Run("takeSnapshot", func(t *testing.T) {
-		t.Run("emptyFSM", test_takeSnapshot_emptyFSM)
+		t.Run("emptyLog", test_takeSnapshot_emptyLog)
 		t.Run("thresholdNotReached", test_takeSnapshot_thresholdNotReached)
 		//todo: test ErrSnapshotInProgress
 		t.Run("restartSendUpdates", test_takeSnapshot_restartSendUpdates)
@@ -702,7 +702,7 @@ func (c *cluster) takeSnapshot(r *Raft, threshold uint64, want error) {
 	r.Tasks() <- takeSnap
 	<-takeSnap.Done()
 	if takeSnap.Err() != want {
-		c.Fatalf("takeSnapshot(M%d).err: got %s, want %v", r.nid, takeSnap.Err(), want)
+		c.Fatalf("takeSnapshot(M%d).err: got %v, want %v", r.nid, takeSnap.Err(), want)
 	}
 }
 

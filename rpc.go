@@ -209,20 +209,11 @@ func (r *Raft) canCommit(req *appendEntriesReq, index, term uint64) bool {
 // if commitIndex > lastApplied: increment lastApplied, apply
 // log[lastApplied] to state machine
 func (r *Raft) applyCommitted(ne *entry) {
-	for r.lastApplied < r.commitIndex {
-		// get lastApplied+1 entry
-		var e *entry
-		if ne != nil && ne.index == r.lastApplied+1 {
-			e = ne
-		} else {
-			e = &entry{}
-			r.storage.mustGetEntry(r.lastApplied+1, e)
-		}
-
-		r.applyEntry(newEntry{entry: e})
-		r.lastApplied++
-		debug(r, "lastApplied", r.lastApplied)
-	}
+	apply := fsmApply{log: r.log.ViewAt(r.log.PrevIndex(), r.commitIndex)}
+	debug(r, apply)
+	r.fsm.ch <- apply
+	debug(r, "lastApplied", r.lastApplied)
+	r.lastApplied = r.commitIndex
 }
 
 // onInstallSnapRequest -------------------------------------------------

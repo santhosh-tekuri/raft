@@ -4,11 +4,12 @@ import (
 	"testing"
 )
 
-func test_takeSnapshot_emptyFSM(t *testing.T) {
-	c, ldr, _ := launchCluster(t, 1)
+func test_takeSnapshot_emptyLog(t *testing.T) {
+	c := newCluster(t)
+	ldr := c.launch(1, false)[1]
 	defer c.shutdown()
 
-	// with nothing committed, asking for a snapshot should return an error
+	// with empty log, asking for a snapshot should return an error
 	c.takeSnapshot(ldr, 0, ErrNoUpdates)
 }
 

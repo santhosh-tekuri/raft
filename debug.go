@@ -209,3 +209,20 @@ func (u noContact) String() string {
 func (u removeLTE) String() string {
 	return fmt.Sprintf("replUpdate{M%d removeLTE:%d}", u.status.id, u.val)
 }
+
+func (t fsmApply) String() string {
+	var newEntries string
+	if t.newEntries != nil && t.newEntries.Len() > 0 {
+		front := t.newEntries.Front().Value.(newEntry).index
+		back := t.newEntries.Back().Value.(newEntry).index
+		newEntries = fmt.Sprintf(", newEntries[%d..%d]", front, back)
+	}
+	return fmt.Sprintf("fsmApply{commitIndex:%d%s}", t.log.LastIndex(), newEntries)
+}
+
+func (t fsmSnapReq) String() string {
+	return fmt.Sprintf("fsmSnapReq{index:%d}", t.index)
+}
+func (t fsmRestoreReq) String() string {
+	return "fsmRestoreReq{}"
+}
