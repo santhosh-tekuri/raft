@@ -223,6 +223,11 @@ func (t fsmApply) String() string {
 func (t fsmSnapReq) String() string {
 	return fmt.Sprintf("fsmSnapReq{index:%d}", t.index)
 }
+
 func (t fsmRestoreReq) String() string {
 	return "fsmRestoreReq{}"
+}
+
+func (t lastApplied) String() string {
+	return "lastApplied{}"
 }
