@@ -16,7 +16,7 @@ type StorageOptions struct {
 	DirMode         os.FileMode
 	FileMode        os.FileMode
 	LogSegmentSize  int
-	SnapshotsRetain int ``
+	SnapshotsRetain int
 }
 
 func DefaultStorageOptions() StorageOptions {

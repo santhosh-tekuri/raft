@@ -105,7 +105,7 @@ func New(opt Options, fsm FSM, storage *Storage) (*Raft, error) {
 func (r *Raft) Serve(l net.Listener) error {
 	defer close(r.closed)
 
-	if r.isClosing() {
+	if r.isClosed() {
 		return ErrServerClosed
 	}
 	debug(r, "starting....")
@@ -294,12 +294,11 @@ func (r *Raft) Shutdown() <-chan struct{} {
 	return r.closed
 }
 
-func (r *Raft) Closing() <-chan struct{} {
+func (r *Raft) Closed() <-chan struct{} {
 	return r.close
 }
 
-// tells whether shutdown was called
-func (r *Raft) isClosing() bool {
+func (r *Raft) isClosed() bool {
 	return isClosed(r.close)
 }
 

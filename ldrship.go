@@ -60,7 +60,7 @@ func (l *ldrShip) release() {
 		var err error
 		if l.term > l.transfer.term {
 			err = nil
-		} else if l.isClosing() {
+		} else if l.isClosed() {
 			err = ErrServerClosed
 		} else {
 			err = ErrQuorumUnreachable
@@ -79,7 +79,7 @@ func (l *ldrShip) release() {
 
 	// respond to any pending user entries
 	var err error = NotLeaderError{l.leader, l.leaderAddr(), true}
-	if l.isClosing() {
+	if l.isClosed() {
 		err = ErrServerClosed
 	}
 	for ne := l.neHead; ne != nil; ne = ne.next {

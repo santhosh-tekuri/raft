@@ -897,7 +897,7 @@ func requestVote(from, to *Raft) (granted bool, err error) {
 		err = pool.doRPC(req, resp)
 		granted = resp.getResult() == success
 	}
-	if from.isClosing() {
+	if from.isClosed() {
 		fn(from)
 	} else {
 		ierr := from.inspect(fn)
