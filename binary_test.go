@@ -8,13 +8,12 @@ import (
 	"testing"
 )
 
-func TestUint64(t *testing.T) {
-	tests := []uint64{0, 123, math.MaxUint64}
-	for _, test := range tests {
+func TestBinary(t *testing.T) {
+	for _, test := range []uint64{0, 123, math.MaxUint64} {
 		name := fmt.Sprintf("uint64(%d)", test)
 		t.Run(name, func(t *testing.T) {
 			b := new(bytes.Buffer)
-			writeUint64(b, test)
+			_ = writeUint64(b, test)
 			if b.Len() != 8 {
 				t.Fatalf("wrote %d bytes. want %d bytes", b.Len(), 8)
 			}
@@ -30,15 +29,12 @@ func TestUint64(t *testing.T) {
 			}
 		})
 	}
-}
 
-func TestUint32(t *testing.T) {
-	tests := []uint32{0, 123, math.MaxUint32}
-	for _, test := range tests {
+	for _, test := range []uint32{0, 123, math.MaxUint32} {
 		name := fmt.Sprintf("uint32(%d)", test)
 		t.Run(name, func(t *testing.T) {
 			b := new(bytes.Buffer)
-			writeUint32(b, test)
+			_ = writeUint32(b, test)
 			if b.Len() != 4 {
 				t.Fatalf("wrote %d bytes. want %d bytes", b.Len(), 4)
 			}
@@ -54,25 +50,8 @@ func TestUint32(t *testing.T) {
 			}
 		})
 	}
-}
 
-type readWriter struct {
-	buf *bytes.Buffer
-}
-
-func (rw readWriter) Read(b []byte) (int, error) {
-	return rw.buf.Read(b)
-}
-func (rw readWriter) Write(b []byte) (int, error) {
-	return rw.buf.Write(b)
-}
-func (rw readWriter) Len() int {
-	return rw.buf.Len()
-}
-
-func TestUint8(t *testing.T) {
-	tests := []uint8{0, 100, math.MaxUint8}
-	for _, test := range tests {
+	for _, test := range []uint8{0, 100, math.MaxUint8} {
 		name := fmt.Sprintf("uint8(%d)", test)
 		t.Run(name, func(t *testing.T) {
 			bb := []interface {
@@ -83,7 +62,7 @@ func TestUint8(t *testing.T) {
 				readWriter{new(bytes.Buffer)},
 			}
 			for _, b := range bb {
-				writeUint8(b, test)
+				_ = writeUint8(b, test)
 				if b.Len() != 1 {
 					t.Fatalf("wrote %d bytes. want %d bytes", b.Len(), 1)
 				}
@@ -100,15 +79,12 @@ func TestUint8(t *testing.T) {
 			}
 		})
 	}
-}
 
-func TestBool(t *testing.T) {
-	tests := []bool{true, false}
-	for _, test := range tests {
+	for _, test := range []bool{true, false} {
 		name := fmt.Sprintf("bool(%v)", test)
 		t.Run(name, func(t *testing.T) {
 			b := new(bytes.Buffer)
-			writeBool(b, test)
+			_ = writeBool(b, test)
 			if b.Len() != 1 {
 				t.Fatalf("wrote %d bytes. want %d bytes", b.Len(), 1)
 			}
@@ -124,15 +100,12 @@ func TestBool(t *testing.T) {
 			}
 		})
 	}
-}
 
-func TestBytes(t *testing.T) {
-	tests := []string{"", "nonempty"}
-	for _, test := range tests {
+	for _, test := range []string{"", "nonempty"} {
 		name := fmt.Sprintf("bytes(%q)", test)
 		t.Run(name, func(t *testing.T) {
 			b := new(bytes.Buffer)
-			writeBytes(b, []byte(test))
+			_ = writeBytes(b, []byte(test))
 			b.WriteString("junk")
 			v, err := readBytes(b)
 			if err != nil {
@@ -146,15 +119,12 @@ func TestBytes(t *testing.T) {
 			}
 		})
 	}
-}
 
-func TestString(t *testing.T) {
-	tests := []string{"", "nonempty"}
-	for _, test := range tests {
+	for _, test := range []string{"", "nonempty"} {
 		name := fmt.Sprintf("string(%q)", test)
 		t.Run(name, func(t *testing.T) {
 			b := new(bytes.Buffer)
-			writeString(b, test)
+			_ = writeString(b, test)
 			b.WriteString("junk")
 			v, err := readString(b)
 			if err != nil {
@@ -168,4 +138,20 @@ func TestString(t *testing.T) {
 			}
 		})
 	}
+}
+
+// helpers --------------------------------------------
+
+type readWriter struct {
+	buf *bytes.Buffer
+}
+
+func (rw readWriter) Read(b []byte) (int, error) {
+	return rw.buf.Read(b)
+}
+func (rw readWriter) Write(b []byte) (int, error) {
+	return rw.buf.Write(b)
+}
+func (rw readWriter) Len() int {
+	return rw.buf.Len()
 }
