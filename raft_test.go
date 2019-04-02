@@ -64,17 +64,6 @@ func TestRaft(t *testing.T) {
 		t.Run("reconnects_catchesUp", test_nonvoter_reconnects_catchesUp)
 		t.Run("leaderChanged_followsNewLeader", test_nonvoter_leaderChanged_followsNewLeader)
 	})
-	t.Run("promote", func(t *testing.T) {
-		t.Run("newNode", func(t *testing.T) {
-			t.Run("singleRound", test_promote_newNode_singleRound)
-			t.Run("uptodateButConfigChangeInProgress", test_promote_newNode_uptodateButConfigChangeInProgress)
-			t.Run("multipleRound", test_promote_newNode_multipleRounds)
-		})
-		t.Run("existingNode", func(t *testing.T) {
-			t.Run("notUpToDate", test_promote_existingNode_notUpToDate)
-			t.Run("upToDate", test_promote_existingNode_upToDate)
-		})
-	})
 }
 
 // todo: test that non voter does not start election

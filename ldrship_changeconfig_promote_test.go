@@ -6,7 +6,7 @@ import (
 )
 
 // basically we are making 3 node cluster into 5 node cluster
-func test_promote_newNode_singleRound(t *testing.T) {
+func TestLdrSip_changeConfig_promote_newNode_singleRound(t *testing.T) {
 	// create 3 node cluster
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
@@ -66,11 +66,9 @@ func test_promote_newNode_singleRound(t *testing.T) {
 	}
 }
 
-func test_promote_newNode_multipleRounds(t *testing.T) {
-	t.Skip("test not implemented yet")
-}
+// todo: test promote newNode multipleRounds
 
-func test_promote_newNode_uptodateButConfigChangeInProgress(t *testing.T) {
+func TestLdrSip_changeConfig_promote_newNode_uptodateButConfigChangeInProgress(t *testing.T) {
 	// create 2 node cluster, with long quorumWait
 	c := newCluster(t)
 	c.opt.QuorumWait = 10 * time.Second
@@ -152,21 +150,8 @@ func test_promote_newNode_uptodateButConfigChangeInProgress(t *testing.T) {
 
 // ---------------------------------------------------------
 
-func test_promote_existingNode_notUpToDate(t *testing.T) {
-	t.Skip("test not implemented yet")
-}
+// todo: test promote existingNode notUptodate
 
-func test_promote_existingNode_upToDate(t *testing.T) {
-	t.Run("configCommitted", test_promote_existingNode_upToDate_configCommitted)
-	t.Run("configNotCommitted", test_promote_existingNode_upToDate_configNotCommitted)
-}
-
-// ---------------------------------------------------------
-
-func test_promote_existingNode_upToDate_configCommitted(t *testing.T) {
-	t.Skip("test not implemented yet")
-}
-
-func test_promote_existingNode_upToDate_configNotCommitted(t *testing.T) {
-	t.Skip("test not implemented yet")
-}
+// todo: test promote existingNode uptodate
+//       - configCommitted
+//       - configNotCommitted
