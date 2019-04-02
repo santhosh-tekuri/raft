@@ -271,6 +271,7 @@ func (f *flr) replicate(c *conn, req *appendEntriesReq) error {
 
 const maxAppendEntries = 64
 
+// note: never access f.matchIndex in this method, because this is used by pipeline writer also
 func (f *flr) writeAppendEntriesReq(c *conn, req *appendEntriesReq, sendEntries bool) error {
 	snapIndex, snapTerm := f.snaps.latest()
 
