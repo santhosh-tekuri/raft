@@ -231,9 +231,10 @@ func newCluster(t *testing.T) *cluster {
 		longTimeout:      5 * time.Second,
 		commitTimeout:    5 * time.Millisecond,
 		events: &events{
-			observers: make(map[int]observer),
-			states:    make(map[uint64]State),
-			ldrs:      make(map[uint64]uint64),
+			observers:   make(map[int]observer),
+			states:      make(map[uint64]State),
+			ldrs:        make(map[uint64]uint64),
+			commitReady: make(map[uint64]bool),
 		},
 	}
 	c.opt = Options{
@@ -572,6 +573,21 @@ func (c *cluster) waitForLeader(rr ...*Raft) *Raft {
 		c.Fatalf("waitForLeader: timeout")
 	}
 	return ldr
+}
+
+func (c *cluster) waitCommitReady(ldr *Raft) {
+	c.Helper()
+	tdebug("waitCommitReady:", host(ldr))
+	condition := func(e *event) bool {
+		c.eventMu.RLock()
+		defer c.eventMu.RUnlock()
+		return c.commitReady[ldr.nid]
+	}
+	commitReady := c.registerFor(commitReady)
+	defer c.unregister(commitReady)
+	if !commitReady.waitFor(condition, c.longTimeout) {
+		c.Fatalf("waitCommitReady: timeout")
+	}
 }
 
 func (c *cluster) waitFSMLen(fsmLen uint64, rr ...*Raft) {
@@ -922,6 +938,7 @@ const (
 	leaderChanged
 	electionStarted
 	electionAborted
+	commitReady
 	configChanged
 	configCommitted
 	configReverted
@@ -1012,9 +1029,10 @@ type events struct {
 	observerID  int
 	observers   map[int]observer
 
-	eventMu sync.RWMutex
-	states  map[uint64]State
-	ldrs    map[uint64]uint64
+	eventMu     sync.RWMutex
+	states      map[uint64]State
+	ldrs        map[uint64]uint64
+	commitReady map[uint64]bool
 }
 
 func (ee *events) register(filter func(event) bool) observer {
@@ -1071,6 +1089,7 @@ func (ee *events) trace() (trace Trace) {
 	trace.StateChanged = func(info Info) {
 		ee.eventMu.Lock()
 		ee.states[info.NID()] = info.State()
+		ee.commitReady[info.NID()] = false
 		ee.eventMu.Unlock()
 		ee.sendEvent(event{
 			src:   info.NID(),
@@ -1100,7 +1119,15 @@ func (ee *events) trace() (trace Trace) {
 			typ: electionAborted,
 		})
 	}
-
+	trace.CommitReady = func(info Info) {
+		ee.eventMu.Lock()
+		ee.commitReady[info.NID()] = true
+		ee.eventMu.Unlock()
+		ee.sendEvent(event{
+			src: info.NID(),
+			typ: commitReady,
+		})
+	}
 	trace.ConfigChanged = func(info Info) {
 		ee.sendEvent(event{
 			src:     info.NID(),

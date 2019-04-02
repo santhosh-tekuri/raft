@@ -17,6 +17,7 @@ func TestTransfer_singleVoter(t *testing.T) {
 
 	// launch new raft, and add him as nonvoter
 	c.launch(1, false)
+	c.waitCommitReady(ldr)
 	c.ensure(waitAddNonvoter(ldr, 2, id2Addr(2), false))
 
 	// transfer leadership, must return ErrLeadershipTransferNoVoter

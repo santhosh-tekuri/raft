@@ -74,6 +74,9 @@ func TestReplication_nonvoter_reconnects_catchesUp(t *testing.T) {
 	case <-time.After(5 * c.heartbeatTimeout):
 	}
 
+	// wait until leader is commit ready
+	c.waitCommitReady(ldr)
+
 	// add M4 as nonvoter, wait for success reply
 	c.ensure(waitAddNonvoter(ldr, m4.NID(), id2Addr(m4.NID()), false))
 
@@ -114,6 +117,9 @@ func TestReplication_nonvoter_leaderChanged_followsNewLeader(t *testing.T) {
 
 	// launch new raft instance M4, without bootstrap
 	m4 := c.launch(1, false)[4]
+
+	// wait until leader is commit ready
+	c.waitCommitReady(ldr)
 
 	// add M4 as nonvoter, wait for success reply
 	c.ensure(waitAddNonvoter(ldr, m4.NID(), id2Addr(m4.NID()), false))

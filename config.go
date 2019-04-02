@@ -388,6 +388,11 @@ func (l *leader) onWaitForStableConfig(t waitForStableConfig) {
 // ---------------------------------------------------------
 
 func (l *leader) setCommitIndex(index uint64) {
+	if l.commitIndex < l.startIndex && index >= l.startIndex {
+		if l.trace.CommitReady != nil {
+			l.trace.CommitReady(l.liveInfo())
+		}
+	}
 	configCommitted := l.Raft.setCommitIndex(index)
 	if configCommitted {
 		l.checkActions()

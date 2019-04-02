@@ -10,6 +10,9 @@ func TestChangeConfig_validations(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
+	// wait until leader is commit ready
+	c.waitCommitReady(ldr)
+
 	configs := ldr.Info().Configs()
 
 	// adding node with empty id should fail
@@ -49,6 +52,9 @@ func TestChangeConfig_trace(t *testing.T) {
 	// launch 2 node cluster M1, M2
 	c, ldr, followers := launchCluster(t, 2)
 	defer c.shutdown()
+
+	// wait until leader is commit ready
+	c.waitCommitReady(ldr)
 
 	// wait for bootstrap config committed by all
 	c.waitForCommitted(ldr.Info().LastLogIndex())
@@ -138,6 +144,9 @@ func TestChangeConfig_promote_newNode_singleRound(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
+	// wait until leader is commit ready
+	c.waitCommitReady(ldr)
+
 	promoting := c.registerFor(configActionStarted, ldr)
 	defer c.unregister(promoting)
 
@@ -201,6 +210,9 @@ func TestChangeConfig_promote_newNode_uptodateButConfigChangeInProgress(t *testi
 	c.opt.QuorumWait = 10 * time.Second
 	ldr, followers := c.ensureLaunch(2)
 	defer c.shutdown()
+
+	// wait until leader is commit ready
+	c.waitCommitReady(ldr)
 
 	// wait for bootstrap config committed by all
 	c.waitForCommitted(ldr.Info().LastLogIndex())
