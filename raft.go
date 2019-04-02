@@ -240,7 +240,7 @@ func (r *Raft) stateLoop() (err error) {
 				c.onVoteResult(v)
 
 			// leader --------------
-			case u := <-l.fromReplsCh:
+			case u := <-l.replUpdateCh:
 				assert(r.state == Leader, "M%d BUG: %v", r.nid, r.state)
 				l.checkReplUpdates(u)
 

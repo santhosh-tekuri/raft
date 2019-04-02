@@ -158,6 +158,27 @@ func (u leaderUpdate) String() string {
 	return fmt.Sprintf("leaderUpdate{last:%d, commit:%d, config: %v}", u.log.LastIndex(), u.commitIndex, u.config)
 }
 
+func (u replUpdate) String() string {
+	id := u.status.id
+	switch u := u.update.(type) {
+	case matchIndex:
+		return fmt.Sprintf("replUpdate{M%d matchIndex:%d}", id, u.val)
+	case newTerm:
+		return fmt.Sprintf("replUpdate{M%d newTerm:%d}", id, u.val)
+	case noContact:
+		if u.time.IsZero() {
+			return fmt.Sprintf("replUpdate{M%d yesContact}", id)
+		}
+		return fmt.Sprintf("replUpdate{M%d noContact err:%v}", id, u.err)
+	case removeLTE:
+		return fmt.Sprintf("replUpdate{M%d removeLTE:%d}", id, u.val)
+	case error:
+		return fmt.Sprintf("replUpdate{M%d error:%v}", id, u)
+	default:
+		return fmt.Sprintf("replUpdate{M%d %T}", id, u)
+	}
+}
+
 func (info *liveInfo) String() string {
 	return fmt.Sprintf("M%d %d %s |", info.NID(), info.Term(), string(info.State()))
 }
@@ -193,21 +214,6 @@ func (t transferLdr) String() string {
 
 func (r rpcResponse) String() string {
 	return fmt.Sprintf("M%d << %s err: %v", r.from, r.response, r.err)
-}
-
-func (u matchIndex) String() string {
-	return fmt.Sprintf("replUpdate{M%d matchIndex:%d}", u.status.id, u.val)
-}
-
-func (u noContact) String() string {
-	if u.time.IsZero() {
-		return fmt.Sprintf("replUpdate{M%d yesContact}", u.status.id)
-	}
-	return fmt.Sprintf("replUpdate{M%d noContact err:%v}", u.status.id, u.err)
-}
-
-func (u removeLTE) String() string {
-	return fmt.Sprintf("replUpdate{M%d removeLTE:%d}", u.status.id, u.val)
 }
 
 func (t fsmApply) String() string {

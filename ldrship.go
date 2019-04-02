@@ -25,7 +25,7 @@ type ldrShip struct {
 	wg   sync.WaitGroup
 
 	// to receive updates from replicators
-	fromReplsCh chan interface{} // todo: can we have some buffer ??
+	replUpdateCh chan replUpdate
 
 	transfer   transfer
 	waitStable []waitForStableConfig
@@ -38,7 +38,7 @@ func (l *ldrShip) init() {
 
 	l.voter = true
 	l.startIndex = l.lastLogIndex + 1
-	l.fromReplsCh = make(chan interface{}, 1024)
+	l.replUpdateCh = make(chan replUpdate, 1024)
 	l.removeLTE = l.log.PrevIndex()
 
 	// start replication routine for each follower
@@ -98,7 +98,7 @@ func (l *ldrShip) release() {
 
 	// wait for replicators to finish
 	l.wg.Wait()
-	l.fromReplsCh = nil
+	l.replUpdateCh = nil
 }
 
 func (l *ldrShip) storeEntry(ne *newEntry) {
@@ -150,22 +150,22 @@ func (l *ldrShip) storeEntry(ne *newEntry) {
 func (l *ldrShip) addFlr(n Node) {
 	assert(n.ID != l.nid, "adding leader as follower")
 	f := &flr{
-		voter:         n.Voter,
-		rtime:         newRandTime(),
-		status:        flrStatus{id: n.ID, removeLTE: l.removeLTE},
-		ldrStartIndex: l.startIndex,
-		ldrLastIndex:  l.lastLogIndex,
-		matchIndex:    0,
-		nextIndex:     l.lastLogIndex + 1,
-		connPool:      l.getConnPool(n.ID),
-		hbTimeout:     l.hbTimeout,
-		timer:         newSafeTimer(),
-		log:           l.storage.log.ViewAt(l.removeLTE, l.lastLogIndex),
-		snaps:         l.storage.snaps,
-		stopCh:        make(chan struct{}),
-		toLeaderCh:    l.fromReplsCh,
-		fromLeaderCh:  make(chan leaderUpdate, 1),
-		str:           fmt.Sprintf("%v M%d", l, n.ID),
+		voter:          n.Voter,
+		rtime:          newRandTime(),
+		status:         flrStatus{id: n.ID, removeLTE: l.removeLTE},
+		ldrStartIndex:  l.startIndex,
+		ldrLastIndex:   l.lastLogIndex,
+		matchIndex:     0,
+		nextIndex:      l.lastLogIndex + 1,
+		connPool:       l.getConnPool(n.ID),
+		hbTimeout:      l.hbTimeout,
+		timer:          newSafeTimer(),
+		log:            l.storage.log.ViewAt(l.removeLTE, l.lastLogIndex),
+		snaps:          l.storage.snaps,
+		stopCh:         make(chan struct{}),
+		replUpdateCh:   l.replUpdateCh,
+		leaderUpdateCh: make(chan leaderUpdate, 1),
+		str:            fmt.Sprintf("%v M%d", l, n.ID),
 	}
 	l.flrs[n.ID] = f
 
@@ -185,40 +185,42 @@ func (l *ldrShip) addFlr(n Node) {
 	}()
 }
 
-func (l *ldrShip) checkReplUpdates(u interface{}) {
+func (l *ldrShip) checkReplUpdates(u replUpdate) {
 	matchUpdated, noContactUpdated, removeLTEUpdated := false, false, false
 	for {
 		debug(l, "<<", u)
-		switch u := u.(type) {
-		case error:
-			panic(u)
-		case matchIndex:
-			matchUpdated = true
-			u.status.matchIndex = u.val
-			l.checkActionStatus(u.status)
-		case removeLTE:
-			removeLTEUpdated = true
-			u.status.removeLTE = u.val
-		case noContact:
-			noContactUpdated = true
-			u.status.noContact, u.status.err = u.time, u.err
-			if l.trace.Unreachable != nil {
-				l.trace.Unreachable(l.liveInfo(), u.status.id, u.time, u.err)
+		status := u.status
+		if !status.removed {
+			switch u := u.update.(type) {
+			case error:
+				panic(u)
+			case matchIndex:
+				matchUpdated = true
+				status.matchIndex = u.val
+				l.checkActionStatus(status)
+			case removeLTE:
+				removeLTEUpdated = true
+				status.removeLTE = u.val
+			case noContact:
+				noContactUpdated = true
+				status.noContact, status.err = u.time, u.err
+				if l.trace.Unreachable != nil {
+					l.trace.Unreachable(l.liveInfo(), status.id, u.time, u.err)
+				}
+			case newTerm:
+				// if response contains term T > currentTerm:
+				// set currentTerm = T, convert to follower
+				l.setState(Follower)
+				l.setLeader(0)
+				l.setTerm(u.val)
+				return
 			}
-		case newTerm:
-			// if response contains term T > currentTerm:
-			// set currentTerm = T, convert to follower
-			l.setState(Follower)
-			l.setLeader(0)
-			l.setTerm(u.val)
-			return
 		}
-
 		// get any waiting update
 		select {
 		case <-l.close:
 			return
-		case u = <-l.fromReplsCh:
+		case u = <-l.replUpdateCh:
 			continue
 		default:
 		}
@@ -351,9 +353,9 @@ func (l *ldrShip) notifyFlr(includeConfig bool) {
 	}
 	for _, f := range l.flrs {
 		select {
-		case f.fromLeaderCh <- update:
-		case <-f.fromLeaderCh:
-			f.fromLeaderCh <- update
+		case f.leaderUpdateCh <- update:
+		case <-f.leaderUpdateCh:
+			f.leaderUpdateCh <- update
 		}
 		debug(l, update, f.status.id)
 	}

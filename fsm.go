@@ -106,7 +106,6 @@ func (fsm *stateMachine) onSnapReq(t fsmSnapReq) {
 	state, err := fsm.Snapshot()
 	if err != nil {
 		debug(fsm, "fsm.Snapshot failed", err)
-		// todo: send to trace
 		t.reply(opError(err, "fsm.Snapshot"))
 		return
 	}

@@ -428,6 +428,7 @@ func (l *ldrShip) changeConfig(config Config) {
 	// remove flrs
 	for id, f := range l.flrs {
 		if _, ok := config.Nodes[id]; !ok {
+			f.status.removed = true
 			close(f.stopCh)
 			delete(l.flrs, id)
 		}

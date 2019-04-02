@@ -32,9 +32,9 @@ type flr struct {
 	// zero value means node is reachable
 	noContact time.Time
 
-	fromLeaderCh chan leaderUpdate
-	toLeaderCh   chan<- interface{}
-	stopCh       chan struct{}
+	leaderUpdateCh chan leaderUpdate
+	replUpdateCh   chan<- replUpdate
+	stopCh         chan struct{}
 
 	str string // used for debug() calls
 }
@@ -325,7 +325,7 @@ func (f *flr) onAppendEntriesResp(resp *appendEntriesResp, reqLastIndex uint64) 
 		if reqLastIndex > f.matchIndex {
 			f.matchIndex = reqLastIndex
 			debug(f, "matchIndex:", f.matchIndex)
-			f.notifyLdr(matchIndex{&f.status, f.matchIndex})
+			f.notifyLdr(matchIndex{f.matchIndex})
 		}
 		return nil
 	case prevEntryNotFound, prevTermMismatch:
@@ -384,7 +384,7 @@ func (f *flr) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
 		f.matchIndex = req.lastIndex
 		f.nextIndex = f.matchIndex + 1
 		debug(f, "matchIndex:", f.matchIndex, "nextIndex:", f.nextIndex)
-		f.notifyLdr(matchIndex{&f.status, f.matchIndex})
+		f.notifyLdr(matchIndex{f.matchIndex})
 		return nil
 	case unexpectedErr:
 		return remoteError{resp.err}
@@ -406,7 +406,7 @@ func (f *flr) checkLeaderUpdate(stopCh <-chan struct{}, req *appendEntriesReq, s
 		select {
 		case <-stopCh:
 			return false, errStop
-		case update := <-f.fromLeaderCh:
+		case update := <-f.leaderUpdateCh:
 			f.onLeaderUpdate(update, req)
 			return true, nil
 		case <-timerCh:
@@ -418,7 +418,7 @@ func (f *flr) checkLeaderUpdate(stopCh <-chan struct{}, req *appendEntriesReq, s
 		select {
 		case <-stopCh:
 			return false, errStop
-		case update := <-f.fromLeaderCh:
+		case update := <-f.leaderUpdateCh:
 			f.onLeaderUpdate(update, req)
 			return true, nil
 		default:
@@ -430,7 +430,7 @@ func (f *flr) checkLeaderUpdate(stopCh <-chan struct{}, req *appendEntriesReq, s
 func (f *flr) onLeaderUpdate(u leaderUpdate, req *appendEntriesReq) {
 	debug(f, u)
 	if u.log.PrevIndex() > f.log.PrevIndex() {
-		f.notifyLdr(removeLTE{&f.status, u.log.PrevIndex()})
+		f.notifyLdr(removeLTE{u.log.PrevIndex()})
 	}
 	f.log = u.log
 	f.ldrLastIndex, req.ldrCommitIndex = u.log.LastIndex(), u.commitIndex
@@ -442,7 +442,7 @@ func (f *flr) onLeaderUpdate(u leaderUpdate, req *appendEntriesReq) {
 func (f *flr) notifyLdr(u interface{}) {
 	select {
 	case <-f.stopCh:
-	case f.toLeaderCh <- u:
+	case f.replUpdateCh <- replUpdate{&f.status, u}:
 	}
 }
 
@@ -450,11 +450,11 @@ func (f *flr) notifyNoContact(err error) {
 	if err != nil {
 		f.noContact = time.Now()
 		debug(f, "noContact", err)
-		f.notifyLdr(noContact{&f.status, f.noContact, err})
+		f.notifyLdr(noContact{f.noContact, err})
 	} else {
 		f.noContact = time.Time{} // zeroing
 		debug(f, "yesContact")
-		f.notifyLdr(noContact{&f.status, f.noContact, nil})
+		f.notifyLdr(noContact{f.noContact, nil})
 	}
 }
 
@@ -491,20 +491,22 @@ type leaderUpdate struct {
 	config      *Config // nil if config not changed
 }
 
-type matchIndex struct {
+type replUpdate struct {
 	status *flrStatus
-	val    uint64
+	update interface{}
+}
+
+type matchIndex struct {
+	val uint64
 }
 
 type noContact struct {
-	status *flrStatus
-	time   time.Time
-	err    error
+	time time.Time
+	err  error
 }
 
 type removeLTE struct {
-	status *flrStatus
-	val    uint64
+	val uint64
 }
 
 type newTerm struct {
@@ -513,6 +515,10 @@ type newTerm struct {
 
 type flrStatus struct {
 	id uint64
+
+	// true when the flr is removed
+	// used to ignore replUpdate from removed flr
+	removed bool
 
 	// owned exclusively by leader goroutine
 	// used to compute majorityMatchIndex
