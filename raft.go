@@ -159,7 +159,7 @@ func (r *Raft) stateLoop() (err error) {
 		}
 	)
 	r.ldr = l
-	ships := map[State]state{
+	states := map[State]state{
 		Follower:  f,
 		Candidate: c,
 		Leader:    l,
@@ -176,18 +176,18 @@ func (r *Raft) stateLoop() (err error) {
 		debug(r, "stateLoop shutdown")
 	}()
 
-	var rstate State
+	var state State
 	defer func() {
-		ships[rstate].release()
+		states[state].release()
 		r.release()
 	}()
 	if r.snapInterval > 0 {
 		r.snapTimer.reset(r.rtime.duration(r.snapInterval))
 	}
 	for {
-		rstate = r.state
-		ships[rstate].init()
-		for r.state == rstate {
+		state = r.state
+		states[state].init()
+		for r.state == state {
 			select {
 			case <-r.close:
 				return ErrServerClosed
@@ -212,7 +212,7 @@ func (r *Raft) stateLoop() (err error) {
 
 			case <-r.timer.C:
 				r.timer.active = false
-				ships[r.state].onTimeout()
+				states[r.state].onTimeout()
 
 			case t := <-r.fsmTaskCh:
 				ne := t.newEntry()
@@ -257,7 +257,7 @@ func (r *Raft) stateLoop() (err error) {
 			}
 		}
 		r.timer.stop()
-		ships[rstate].release()
+		states[state].release()
 	}
 }
 
