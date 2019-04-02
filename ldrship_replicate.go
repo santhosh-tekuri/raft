@@ -374,8 +374,11 @@ func (f *flr) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
 		return errStop
 	case success:
 		// case: snapshot was taken before we got leaderUpdate about lastLogIndex
-		if req.lastIndex > f.ldrLastIndex {
-			f.ldrLastIndex = req.lastIndex
+		// we should wait until we get our logview gets updated
+		for req.lastIndex > f.ldrLastIndex {
+			if _, err := f.checkLeaderUpdate(f.stopCh, appReq, false); err != nil {
+				return err
+			}
 		}
 		f.matchIndex = req.lastIndex
 		f.nextIndex = f.matchIndex + 1
