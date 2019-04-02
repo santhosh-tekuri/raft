@@ -20,44 +20,137 @@ import (
 	"github.com/santhosh-tekuri/fnet"
 )
 
-func TestRaft(t *testing.T) {
-	//t.Run("voting", test_voting)
-	t.Run("shutdown", func(t *testing.T) {
-		t.Run("once", test_shutdown_once)
-		t.Run("twice", test_shutdown_twice)
-	})
-	t.Run("opError", func(t *testing.T) {
-		//t.Run("getVote", test_opError_getVote)
-		t.Run("voteOther", test_opError_voteOther)
-	})
-	t.Run("bootstrap", test_bootstrap)
-	t.Run("singleNode", test_singleNode)
-	t.Run("tripleNode", test_tripleNode)
-	t.Run("leader", func(t *testing.T) {
-		t.Run("stepDown", test_leader_stepDown)
-		t.Run("quorumWait", func(t *testing.T) {
-			t.Run("unreachable", test_leader_quorumWait_unreachable)
-			t.Run("reachable", test_leader_quorumWait_reachable)
-		})
-	})
-	t.Run("behindFollower", test_behindFollower)
-	t.Run("sendSnapshot", func(t *testing.T) {
-		t.Run("case1", func(t *testing.T) {
-			test_sendSnapshot_case(t, false)
-		})
-		t.Run("case2", func(t *testing.T) {
-			test_sendSnapshot_case(t, true)
-		})
-	})
-	t.Run("changeConfig", func(t *testing.T) {
-		t.Run("validations", test_changeConfig_validations)
-		t.Run("committedByAll", test_changeConfig_committedByAll)
-	})
-	t.Run("nonvoter", func(t *testing.T) {
-		t.Run("catchesUp_followsLeader", test_nonvoter_catchesUp_followsLeader)
-		t.Run("reconnects_catchesUp", test_nonvoter_reconnects_catchesUp)
-		t.Run("leaderChanged_followsNewLeader", test_nonvoter_leaderChanged_followsNewLeader)
-	})
+func TestRaft_shutdown_once(t *testing.T) {
+	c := newCluster(t)
+	c.launch(1, true)
+	c.shutdown()
+}
+
+func TestRaft_shutdown_twice(t *testing.T) {
+	c := newCluster(t)
+	c.launch(1, true)
+	c.shutdown()
+	c.shutdown()
+}
+
+func TestRaft_bootstrap(t *testing.T) {
+	c := newCluster(t)
+
+	electionAborted := c.registerFor(electionAborted)
+	defer c.unregister(electionAborted)
+
+	// launch cluster without bootstrapping
+	c.launch(3, false)
+	defer c.shutdown()
+
+	// all nodes should must abort election and only once
+	tdebug("waitForElectionAborted")
+	timeout := time.After(c.longTimeout)
+	aborted := make(map[uint64]bool)
+	for i := 0; i < 3; i++ {
+		select {
+		case e := <-electionAborted.ch:
+			if aborted[e.src] {
+				t.Fatalf("aborted twice")
+			}
+			aborted[e.src] = true
+		case <-timeout:
+			t.Fatal("timout in waiting for abort election")
+		}
+	}
+
+	// bootstrap one of the nodes
+	tdebug("prepareBootStrapConfig")
+	ldr := c.rr[1]
+	config := ldr.Info().Configs().Latest
+	for _, r := range c.rr {
+		if err := config.AddVoter(r.NID(), id2Addr(r.NID())); err != nil {
+			c.Fatal(err)
+		}
+	}
+	if err := waitBootstrap(ldr, config, c.longTimeout); err != nil {
+		t.Fatal(err)
+	}
+
+	// the bootstrapped node should be the leader
+	c.waitForLeader(ldr)
+	c.waitForFollowers()
+
+	// should be able to apply
+	if _, err := waitUpdate(ldr, "hello", 0); err != nil {
+		t.Fatal(err)
+	}
+	c.waitFSMLen(1)
+	c.ensureFSMSame([]string{"hello"})
+
+	// ensure bootstrap fails if already bootstrapped
+	if err := waitBootstrap(ldr, config, c.longTimeout); err != ErrConfigChanged {
+		t.Fatalf("got %v, want %v", err, ErrConfigChanged)
+	}
+	err := waitBootstrap(c.rr[2], config, c.longTimeout)
+	if _, ok := err.(NotLeaderError); !ok {
+		t.Fatalf("got %v, want NotLeaderError", err)
+	}
+
+	// disconnect leader, and ensure that new leader is chosen
+	c.disconnect(ldr)
+	c.waitForLeader(c.exclude(ldr)...)
+}
+
+func TestRaft_singleNode(t *testing.T) {
+	c, ldr, _ := launchCluster(t, 1)
+	defer c.shutdown()
+
+	// should be able to apply
+	resp, err := waitUpdate(ldr, "test", c.longTimeout)
+	if err != nil {
+		t.Fatalf("apply failed: %v", err)
+	}
+
+	// check response
+	if resp.msg != "test" {
+		t.Fatalf("apply response mismatch. got %s, want test", resp.msg)
+	}
+
+	// check index
+	if resp.index != 1 {
+		t.Fatalf("fsmReplyIndex: got %d want 1", resp.index)
+	}
+	if idx := fsm(ldr).len(); idx != 1 {
+		t.Fatalf("fsm.len: got %d want 1", idx)
+	}
+
+	// check that it is applied to the FSM
+	if cmd := fsm(ldr).lastCommand(); cmd != "test" {
+		t.Fatalf("fsm.lastCommand: got %s want test", cmd)
+	}
+
+	// shutdown and restart with fresh fsm
+	r := c.restart(ldr)
+
+	// ensure that fsm has been restored from log
+	c.waitFSMLen(fsm(ldr).len(), r)
+	if cmd := fsm(r).lastCommand(); cmd != "test" {
+		t.Fatalf("fsm.lastCommand: got %s want test", cmd)
+	}
+}
+
+func TestRaft_tripleNode(t *testing.T) {
+	c, ldr, _ := launchCluster(t, 3)
+	defer c.shutdown()
+
+	// should be able to apply
+	resp, err := waitUpdate(ldr, "test", c.longTimeout)
+	if err != nil {
+		t.Fatalf("apply failed: %v", err)
+	}
+	if resp.msg != "test" {
+		t.Fatalf("apply response mismatch. got %s, want test", resp.msg)
+	}
+	if resp.index != 1 {
+		t.Fatalf("fsmReplyIndex: got %d want 1", resp.index)
+	}
+	c.waitFSMLen(1)
 }
 
 // todo: test that non voter does not start election
@@ -67,6 +160,8 @@ func TestRaft(t *testing.T) {
 // todo: test removal of leader, removal of follower
 //       ensure that leader replies confChange
 //       ensure that removed node sits idle as follower
+
+// ---------------------------------------------------------------------------------------------
 
 var tempDir string
 
@@ -721,6 +816,7 @@ func waitTask(r *Raft, t Task, timeout time.Duration) (interface{}, error) {
 }
 
 func waitBootstrap(r *Raft, c Config, timeout time.Duration) error {
+	tdebug("waitBootstrap:", host(r), c, timeout)
 	_, err := waitTask(r, ChangeConfig(c), timeout)
 	return err
 }

@@ -4,7 +4,16 @@ import (
 	"testing"
 )
 
-func test_sendSnapshot_case(t *testing.T, updateFSMAfterSnap bool) {
+func TestLdrShip_replicate_installSnap(t *testing.T) {
+	t.Run("case1", func(t *testing.T) {
+		testInstallSnapCase(t, false)
+	})
+	t.Run("case2", func(t *testing.T) {
+		testInstallSnapCase(t, true)
+	})
+}
+
+func testInstallSnapCase(t *testing.T, updateFSMAfterSnap bool) {
 	// launch 3 node cluster
 	c := newCluster(t)
 	c.storeOpt.LogSegmentSize = 1024
