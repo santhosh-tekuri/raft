@@ -36,6 +36,9 @@ func isClosed(ch <-chan struct{}) bool {
 }
 
 func syncDir(dir string) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
 	d, err := os.Open(dir)
 	if err != nil {
 		return err
