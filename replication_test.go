@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func TestLdrShip_replicate_behindFollower(t *testing.T) {
+func TestReplication_behindFollower(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -31,7 +31,7 @@ func TestLdrShip_replicate_behindFollower(t *testing.T) {
 	c.ensureLeader(c.leader().NID())
 }
 
-func TestLdrShip_replicate_nonvoter_catchesUp_followsLeader(t *testing.T) {
+func TestReplication_nonvoter_catchesUp_followsLeader(t *testing.T) {
 	// launch 3 node cluster M1, M2, M3
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
@@ -54,7 +54,7 @@ func TestLdrShip_replicate_nonvoter_catchesUp_followsLeader(t *testing.T) {
 	c.waitFSMLen(20)
 }
 
-func TestLdrShip_replicate_nonvoter_reconnects_catchesUp(t *testing.T) {
+func TestReplication_nonvoter_reconnects_catchesUp(t *testing.T) {
 	// launch 3 node cluster M1, M2, M3
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
@@ -107,7 +107,7 @@ func TestLdrShip_replicate_nonvoter_reconnects_catchesUp(t *testing.T) {
 	}
 }
 
-func TestLdrShip_replicate_nonvoter_leaderChanged_followsNewLeader(t *testing.T) {
+func TestReplication_nonvoter_leaderChanged_followsNewLeader(t *testing.T) {
 	// launch 3 node cluster M1, M2, M3
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
@@ -130,7 +130,7 @@ func TestLdrShip_replicate_nonvoter_leaderChanged_followsNewLeader(t *testing.T)
 	c.ensureFSMSame(nil, c.exclude(ldr)...)
 }
 
-func TestLdrShip_replicate_installSnap(t *testing.T) {
+func TestReplication_installSnap(t *testing.T) {
 	t.Run("case1", func(t *testing.T) {
 		testInstallSnapCase(t, false)
 	})
