@@ -177,7 +177,8 @@ func (l *Log) Append(b []byte) error {
 		connect(l.last, s)
 		l.last = s
 	}
-	return l.last.append(b)
+	l.last.append(b)
+	return nil
 }
 
 func (l *Log) CanLTE(i uint64) uint64 {

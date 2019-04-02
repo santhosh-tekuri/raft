@@ -50,9 +50,8 @@ func (s *segment) offset(i uint64) int {
 	return int(byteOrder.Uint64(s.file.Data[s.at(i):]))
 }
 
-func (s *segment) setOffset(v uint64, i uint64) error {
+func (s *segment) setOffset(v uint64, i uint64) {
 	byteOrder.PutUint64(s.file.Data[s.at(i):], v)
-	return nil
 }
 
 func (s *segment) lastIndex() uint64 {
@@ -72,22 +71,17 @@ func (s *segment) available() int {
 	return int(s.at(s.n+2) - s.size)
 }
 
-func (s *segment) append(b []byte) error {
+func (s *segment) append(b []byte) {
 	copy(s.file.Data[s.size:], b)
 	size := s.size + int64(len(b))
-	if err := s.setOffset(uint64(size), s.n+2); err != nil {
-		return err
-	}
+	s.setOffset(uint64(size), s.n+2)
 	s.n, s.size, s.dirty = s.n+1, size, true
-	return nil
 }
 
 func (s *segment) removeGTE(i uint64) error {
 	n := i - s.prevIndex - 1
 	if n < s.n {
-		if err := s.setOffset(n, 0); err != nil {
-			return err
-		}
+		s.setOffset(n, 0)
 		s.n, s.size, s.dirty = n, int64(s.offset(n+1)), true
 	}
 	return s.sync()
@@ -102,9 +96,7 @@ func (s *segment) sync() error {
 		if err := s.file.Sync(); err != nil {
 			return err
 		}
-		if err := s.setOffset(s.n, 0); err != nil {
-			return err
-		}
+		s.setOffset(s.n, 0)
 		if err := s.file.Sync(); err != nil {
 			return err
 		}
