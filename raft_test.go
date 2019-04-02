@@ -81,22 +81,6 @@ func TestRaft(t *testing.T) {
 			t.Run("upToDate", test_promote_existingNode_upToDate)
 		})
 	})
-	t.Run("transferLeadership", func(t *testing.T) {
-		t.Run("singleVoter", test_transferLeadership_singleVoter)
-		t.Run("targetNotReady", func(t *testing.T) {
-			test_transferLeadership_fiveNodes(t, false)
-		})
-		t.Run("targetReady", func(t *testing.T) {
-			test_transferLeadership_fiveNodes(t, true)
-		})
-		t.Run("rejectAnotherTransferRequest", test_transferLeadership_rejectAnotherTransferRequest)
-		t.Run("rejectLogUpdateTasks", test_transferLeadership_rejectLogUpdateTasks)
-		t.Run("quorumUnreachable", test_transferLeadership_quorumUnreachable)
-		t.Run("onShutdownReplyServerClosed", test_transferLeadership_onShutdownReplyServerClosed)
-		t.Run("newTermDetected", test_transferLeadership_newTermDetected)
-		// todo: add test for timeoutError
-		// todo: if ldr knows that a node is unreachable it should not try sending timeoutNow
-	})
 }
 
 // todo: test that non voter does not start election

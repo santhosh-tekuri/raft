@@ -5,9 +5,12 @@ import (
 	"time"
 )
 
-// in cluster with single voter, leader should reject transferLeadership
+// todo: add test for timeoutError
+// todo: if ldr knows that a node is unreachable it should not try sending timeoutNow
+
+// in cluster with single voter, leader should reject transfer
 // requests with ErrLeadershipTransferNoVoter
-func test_transferLeadership_singleVoter(t *testing.T) {
+func TestLdrShip_transfer_singleVoter(t *testing.T) {
 	// launch single node cluster
 	c, ldr, _ := launchCluster(t, 1)
 	defer c.shutdown()
@@ -24,38 +27,46 @@ func test_transferLeadership_singleVoter(t *testing.T) {
 }
 
 // happy path: transfer leadership in 5 node cluster
-func test_transferLeadership_fiveNodes(t *testing.T, targetReady bool) {
-	// launch 5 node cluster
-	c, ldr, _ := launchCluster(t, 5)
-	defer c.shutdown()
+func TestLdrShip_transfer_fiveNodes(t *testing.T) {
+	doTransfer := func(t *testing.T, targetsReady bool) {
+		// launch 5 node cluster
+		c, ldr, _ := launchCluster(t, 5)
+		defer c.shutdown()
+		term := ldr.Info().Term()
 
-	term := ldr.Info().Term()
+		c.sendUpdates(ldr, 1, 20)
+		if targetsReady {
+			c.waitFSMLen(20)
+		}
 
-	c.sendUpdates(ldr, 1, 10)
-	if targetReady {
-		c.waitFSMLen(10)
+		// transfer leadership, ensure no error
+		c.ensure(waitTask(ldr, TransferLeadership(0, c.longTimeout), c.longTimeout))
+
+		// wait for new leader
+		newLdr := c.waitForLeader()
+
+		// check leader is changed
+		if ldr.NID() == newLdr.NID() {
+			c.Fatal("no change in leader")
+		}
+
+		// new leader term must be one greater than old leader term
+		if got := newLdr.Info().Term(); got != term+1 {
+			c.Fatalf("newLdr.term: got %d, want %d", got, term+1)
+		}
 	}
 
-	// transfer leadership, ensure no error
-	c.ensure(waitTask(ldr, TransferLeadership(0, c.longTimeout), c.longTimeout))
-
-	// wait for new leader
-	newLdr := c.waitForLeader()
-
-	// check leader is changed
-	if ldr.NID() == newLdr.NID() {
-		c.Fatal("no change in leader")
-	}
-
-	// new leader term must be one greater than old leader term
-	if got := newLdr.Info().Term(); got != term+1 {
-		c.Fatalf("newLdr.term: got %d, want %d", got, term+1)
-	}
+	t.Run("targetsReady", func(t *testing.T) {
+		doTransfer(t, true)
+	})
+	t.Run("targetsNotReady", func(t *testing.T) {
+		doTransfer(t, false)
+	})
 }
 
 // launches 3 node cluster, with given quorumWait
 // submits transferLeadership with given timeout
-func setupTransferLeadershipTimeout(t *testing.T, quorumWait, taskTimeout time.Duration) (c *cluster, ldr *Raft, flrs []*Raft, transfer Task) {
+func setupTransferTimeout(t *testing.T, quorumWait, taskTimeout time.Duration) (c *cluster, ldr *Raft, flrs []*Raft, transfer Task) {
 	// launch 3 node cluster, with given quorumWait
 	c = newCluster(t)
 	c.opt.QuorumWait = quorumWait
@@ -80,8 +91,8 @@ func setupTransferLeadershipTimeout(t *testing.T, quorumWait, taskTimeout time.D
 
 // leader should reject any transferLeadership requests,
 // while one is already in progress
-func test_transferLeadership_rejectAnotherTransferRequest(t *testing.T) {
-	c, ldr, _, _ := setupTransferLeadershipTimeout(t, time.Second, 5*time.Second)
+func TestLdrShip_transfer__rejectAnotherTransferRequest(t *testing.T) {
+	c, ldr, _, _ := setupTransferTimeout(t, time.Second, 5*time.Second)
 	defer c.shutdown()
 
 	// request another leadership transfer
@@ -95,8 +106,8 @@ func test_transferLeadership_rejectAnotherTransferRequest(t *testing.T) {
 
 // leader should reject any requests that update log,
 // while transferLeadership is in progress
-func test_transferLeadership_rejectLogUpdateTasks(t *testing.T) {
-	c, ldr, _, _ := setupTransferLeadershipTimeout(t, time.Second, 5*time.Second)
+func TestLdrShip_transfer_rejectLogUpdateTasks(t *testing.T) {
+	c, ldr, _, _ := setupTransferTimeout(t, time.Second, 5*time.Second)
 	defer c.shutdown()
 
 	// send updateFSM request, must be rejected with InProgressError
@@ -114,8 +125,8 @@ func test_transferLeadership_rejectLogUpdateTasks(t *testing.T) {
 
 // if quorum became unreachable during transferLeadership,
 // leader should reply ErrQuorumUnreachable
-func test_transferLeadership_quorumUnreachable(t *testing.T) {
-	c, _, _, transfer := setupTransferLeadershipTimeout(t, time.Second, 5*time.Second)
+func TestLdrShip_transfer_quorumUnreachable(t *testing.T) {
+	c, _, _, transfer := setupTransferTimeout(t, time.Second, 5*time.Second)
 	defer c.shutdown()
 
 	// transfer reply must be ErrQuorumUnreachable
@@ -124,8 +135,8 @@ func test_transferLeadership_quorumUnreachable(t *testing.T) {
 
 // if new term detected during transferLeadership before/after timeoutNow,
 // leader should reply success
-func test_transferLeadership_newTermDetected(t *testing.T) {
-	c, ldr, flrs, transfer := setupTransferLeadershipTimeout(t, time.Second, 5*time.Second)
+func TestLdrShip_transfer_newTermDetected(t *testing.T) {
+	c, ldr, flrs, transfer := setupTransferTimeout(t, time.Second, 5*time.Second)
 	defer c.shutdown()
 
 	// send requestVote with one of the follower as candidate with new term
@@ -139,8 +150,8 @@ func test_transferLeadership_newTermDetected(t *testing.T) {
 	c.waitTaskDone(transfer, 2*time.Second, nil)
 }
 
-func test_transferLeadership_onShutdownReplyServerClosed(t *testing.T) {
-	c, ldr, _, transfer := setupTransferLeadershipTimeout(t, time.Second, 5*time.Second)
+func TestLdrShip_transfer_onShutdownReplyServerClosed(t *testing.T) {
+	c, ldr, _, transfer := setupTransferTimeout(t, time.Second, 5*time.Second)
 	defer c.shutdown()
 
 	tdebug("shutting down leader")
