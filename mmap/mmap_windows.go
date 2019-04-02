@@ -10,9 +10,9 @@ import (
 
 // Based on: https://github.com/edsrzf/mmap-go
 
-type addrinfo struct {
+type winHandle struct {
 	file     *os.File
-	mapview  windows.Handle
+	mapping  windows.Handle
 	writable bool
 }
 
@@ -31,8 +31,8 @@ func openFile(file *os.File, flag int, size int) (*File, error) {
 	var off int64 = 0
 	maxSizeHigh := uint32((off + int64(size)) >> 32)
 	maxSizeLow := uint32((off + int64(size)) & 0xFFFFFFFF)
-	h, errno := windows.CreateFileMapping(windows.Handle(file.Fd()), nil, uint32(prot), maxSizeHigh, maxSizeLow, nil)
-	if h == 0 {
+	mapping, errno := windows.CreateFileMapping(windows.Handle(file.Fd()), nil, uint32(prot), maxSizeHigh, maxSizeLow, nil)
+	if mapping == 0 {
 		_ = file.Close()
 		return nil, os.NewSyscallError("CreateFileMapping", errno)
 	}
@@ -41,7 +41,7 @@ func openFile(file *os.File, flag int, size int) (*File, error) {
 	// is the length the user requested.
 	fileOffsetHigh := uint32(off >> 32)
 	fileOffsetLow := uint32(off & 0xFFFFFFFF)
-	addr, errno := windows.MapViewOfFile(h, uint32(access), fileOffsetHigh, fileOffsetLow, uintptr(size))
+	addr, errno := windows.MapViewOfFile(mapping, uint32(access), fileOffsetHigh, fileOffsetLow, uintptr(size))
 	if addr == 0 {
 		_ = file.Close()
 		return nil, os.NewSyscallError("MapViewOfFile", errno)
@@ -56,9 +56,9 @@ func openFile(file *os.File, flag int, size int) (*File, error) {
 	return &File{
 		name: file.Name(),
 		Data: b,
-		handle: &addrinfo{
+		handle: &winHandle{
 			file:     file,
-			mapview:  h,
+			mapping:  mapping,
 			writable: flag != os.O_RDONLY,
 		},
 	}, nil
@@ -70,7 +70,7 @@ func (f *File) Sync() error {
 	if errno != nil {
 		return os.NewSyscallError("FlushViewOfFile", errno)
 	}
-	handle := f.handle.(*addrinfo)
+	handle := f.handle.(*winHandle)
 	if handle.writable {
 		if err := windows.FlushFileBuffers(windows.Handle(handle.file.Fd())); err != nil {
 			return os.NewSyscallError("FlushFileBuffers", err)
@@ -85,11 +85,11 @@ func (f *File) Close() error {
 	}
 	header := (*reflect.SliceHeader)(unsafe.Pointer(&f.Data))
 	if err := windows.UnmapViewOfFile(header.Data); err != nil {
-		return err
+		return os.NewSyscallError("UnmapViewOfFile", err)
 	}
-	handle := f.handle.(*addrinfo)
-	if err := windows.CloseHandle(windows.Handle(handle.mapview)); err != nil {
-		return err
+	handle := f.handle.(*winHandle)
+	if err := windows.CloseHandle(handle.mapping); err != nil {
+		return os.NewSyscallError("CloseHandle", err)
 	}
 	return handle.file.Close()
 }
