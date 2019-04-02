@@ -393,7 +393,7 @@ func (r *Raft) executeTask(t Task) {
 	}
 }
 
-func (l *ldrShip) executeTask(t Task) {
+func (l *leader) executeTask(t Task) {
 	switch t := t.(type) {
 	case FSMTask:
 		t.reply(errors.New("raft: use Raft.FSMTasks() for FSMTask"))

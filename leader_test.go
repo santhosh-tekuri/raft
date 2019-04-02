@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func TestLdrShip_stepDown(t *testing.T) {
+func TestLeader_stepDown(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -63,7 +63,7 @@ func TestLdrShip_stepDown(t *testing.T) {
 	c.ensureFSMSame([]string{"test", "accept"})
 }
 
-func TestLdrShip_quorumWait_unreachable(t *testing.T) {
+func TestLeader_quorumWait_unreachable(t *testing.T) {
 	c := newCluster(t)
 	c.opt.QuorumWait = 2 * time.Second
 	ldr, followers := c.ensureLaunch(2)
@@ -112,7 +112,7 @@ func TestLdrShip_quorumWait_unreachable(t *testing.T) {
 	c.ensureLeader(0)
 }
 
-func TestLdrShip_quorumWait_reachable(t *testing.T) {
+func TestLeader_quorumWait_reachable(t *testing.T) {
 	c := newCluster(t)
 	c.opt.QuorumWait = 30 * time.Minute
 	ldr, followers := c.ensureLaunch(2)
@@ -155,7 +155,7 @@ func TestLdrShip_quorumWait_reachable(t *testing.T) {
 	}
 }
 
-func TestLdrShip_updateFSM_nonLeader(t *testing.T) {
+func TestLeader_updateFSM_nonLeader(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -173,7 +173,7 @@ func TestLdrShip_updateFSM_nonLeader(t *testing.T) {
 	}
 }
 
-func TestLdrShip_updateFSM_concurrent(t *testing.T) {
+func TestLeader_updateFSM_concurrent(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -204,7 +204,7 @@ func TestLdrShip_updateFSM_concurrent(t *testing.T) {
 	c.ensureFSMSame(nil)
 }
 
-func TODO_TestLdrShip_backPressure(t *testing.T) {
+func TODO_TestLeader_backPressure(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -240,7 +240,7 @@ func TODO_TestLdrShip_backPressure(t *testing.T) {
 	}
 }
 
-func TestLdrShip_barrierFSM(t *testing.T) {
+func TestLeader_barrierFSM(t *testing.T) {
 	c, ldr, followers := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -267,7 +267,7 @@ func TestLdrShip_barrierFSM(t *testing.T) {
 	}
 }
 
-func TestLdrShip_readFSM(t *testing.T) {
+func TestLeader_readFSM(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 

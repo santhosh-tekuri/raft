@@ -1,16 +1,16 @@
 package raft
 
-type candShip struct {
+type candidate struct {
 	*Raft
 	respCh      chan rpcResponse
 	votesNeeded int
 }
 
-func (c *candShip) init()      { c.startElection() }
-func (c *candShip) onTimeout() { c.startElection() }
-func (c *candShip) release()   { c.respCh = nil }
+func (c *candidate) init()      { c.startElection() }
+func (c *candidate) onTimeout() { c.startElection() }
+func (c *candidate) release()   { c.respCh = nil }
 
-func (c *candShip) startElection() {
+func (c *candidate) startElection() {
 	if !c.configs.Latest.isVoter(c.nid) {
 		panic(bug(1, "nonvoter %d became candidate", c.nid))
 	}
@@ -51,7 +51,7 @@ func (c *candShip) startElection() {
 	}
 }
 
-func (c *candShip) onVoteResult(resp rpcResponse) {
+func (c *candidate) onVoteResult(resp rpcResponse) {
 	if resp.from != c.nid {
 		debug(c, resp)
 	}

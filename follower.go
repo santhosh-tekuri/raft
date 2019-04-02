@@ -1,25 +1,25 @@
 package raft
 
-type flrShip struct {
+type follower struct {
 	*Raft
 	electionAborted bool
 }
 
-func (f *flrShip) init() {
+func (f *follower) init() {
 	f.timer.reset(f.rtime.duration(f.hbTimeout))
 	f.electionAborted = false
 }
 
-func (f *flrShip) release() {}
+func (f *follower) release() {}
 
-func (f *flrShip) resetTimer() {
+func (f *follower) resetTimer() {
 	if yes, _ := f.canStartElection(); yes {
 		f.electionAborted = false
 		f.timer.reset(f.rtime.duration(f.hbTimeout))
 	}
 }
 
-func (f *flrShip) onTimeout() {
+func (f *follower) onTimeout() {
 	debug(f, "heartbeatTimeout leader:", f.leader)
 	f.setLeader(0)
 	if can, reason := f.canStartElection(); !can {
@@ -33,7 +33,7 @@ func (f *flrShip) onTimeout() {
 	f.setState(Candidate)
 }
 
-func (f *flrShip) canStartElection() (can bool, reason string) {
+func (f *follower) canStartElection() (can bool, reason string) {
 	if f.configs.IsBootstrap() {
 		return false, "no known peers"
 	}

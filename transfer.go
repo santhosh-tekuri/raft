@@ -49,7 +49,7 @@ func (t *transfer) reply(err error) {
 
 // ----------------------------------------------------
 
-func (l *ldrShip) onTransfer(t transferLdr) {
+func (l *leader) onTransfer(t transferLdr) {
 	debug(l, "got", t)
 	if err := l.validateTransfer(t); err != nil {
 		debug(l, "transferLdr rejected:", err)
@@ -63,7 +63,7 @@ func (l *ldrShip) onTransfer(t transferLdr) {
 	l.tryTransfer()
 }
 
-func (l *ldrShip) validateTransfer(t transferLdr) error {
+func (l *leader) validateTransfer(t transferLdr) error {
 	if l.transfer.inProgress() {
 		return InProgressError("transferLeadership")
 	}
@@ -85,7 +85,7 @@ func (l *ldrShip) validateTransfer(t transferLdr) error {
 	return nil
 }
 
-func (l *ldrShip) tryTransfer() {
+func (l *leader) tryTransfer() {
 	// chose ready target
 	var target uint64
 	if l.transfer.target != 0 {
@@ -119,12 +119,12 @@ func (l *ldrShip) tryTransfer() {
 	}
 }
 
-func (l *ldrShip) onTransferTimeout() {
+func (l *leader) onTransferTimeout() {
 	l.transfer.reply(TimeoutError("transferLeadership"))
 	l.checkActions()
 }
 
-func (l *ldrShip) onTimeoutNowResult(rpc rpcResponse) {
+func (l *leader) onTimeoutNowResult(rpc rpcResponse) {
 	debug(l, rpc)
 	l.transfer.respCh = nil
 	if rpc.err != nil {
@@ -141,6 +141,6 @@ func (l *ldrShip) onTimeoutNowResult(rpc rpcResponse) {
 	}
 }
 
-func (l *ldrShip) onNewTermTimeout() {
+func (l *leader) onNewTermTimeout() {
 	l.tryTransfer()
 }

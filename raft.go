@@ -42,7 +42,7 @@ type Raft struct {
 	dialFn    dialFn // used for mocking in tests
 	connPools map[uint64]*connPool
 
-	ldr       *ldrShip
+	ldr       *leader
 	taskCh    chan Task
 	fsmTaskCh chan FSMTask
 
@@ -147,9 +147,9 @@ func (r *Raft) Serve(l net.Listener) error {
 
 func (r *Raft) stateLoop() (err error) {
 	var (
-		f = &flrShip{Raft: r}
-		c = &candShip{Raft: r}
-		l = &ldrShip{
+		f = &follower{Raft: r}
+		c = &candidate{Raft: r}
+		l = &leader{
 			Raft:  r,
 			repls: make(map[uint64]*replication),
 			transfer: transfer{
@@ -159,7 +159,7 @@ func (r *Raft) stateLoop() (err error) {
 		}
 	)
 	r.ldr = l
-	ships := map[State]stateShip{
+	ships := map[State]state{
 		Follower:  f,
 		Candidate: c,
 		Leader:    l,
@@ -377,7 +377,7 @@ func (s State) String() string {
 	return string(s)
 }
 
-type stateShip interface {
+type state interface {
 	init()
 	release()
 	onTimeout()

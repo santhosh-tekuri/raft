@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-type ldrShip struct {
+type leader struct {
 	*Raft
 
 	voter bool
@@ -33,7 +33,7 @@ type ldrShip struct {
 	removeLTE uint64
 }
 
-func (l *ldrShip) init() {
+func (l *leader) init() {
 	assert(l.leader == l.nid, "%v ldr.leader: got %d, want %d", l, l.leader, l.nid)
 
 	l.voter = true
@@ -53,9 +53,9 @@ func (l *ldrShip) init() {
 	l.storeEntry(&newEntry{entry: &entry{typ: entryNop}})
 }
 
-func (l *ldrShip) onTimeout() { l.checkQuorum(0) }
+func (l *leader) onTimeout() { l.checkQuorum(0) }
 
-func (l *ldrShip) release() {
+func (l *leader) release() {
 	if l.transfer.inProgress() {
 		var err error
 		if l.term > l.transfer.term {
@@ -101,7 +101,7 @@ func (l *ldrShip) release() {
 	l.replUpdateCh = nil
 }
 
-func (l *ldrShip) storeEntry(ne *newEntry) {
+func (l *leader) storeEntry(ne *newEntry) {
 	i, lastIndex, configIndex := 0, l.lastLogIndex, l.configs.Latest.Index
 	for {
 		i++
@@ -147,7 +147,7 @@ func (l *ldrShip) storeEntry(ne *newEntry) {
 	}
 }
 
-func (l *ldrShip) addReplication(n Node) {
+func (l *leader) addReplication(n Node) {
 	assert(n.ID != l.nid, "adding replication for leader")
 	repl := &replication{
 		voter:          n.Voter,
@@ -185,7 +185,7 @@ func (l *ldrShip) addReplication(n Node) {
 	}()
 }
 
-func (l *ldrShip) checkReplUpdates(u replUpdate) {
+func (l *leader) checkReplUpdates(u replUpdate) {
 	matchUpdated, noContactUpdated, removeLTEUpdated := false, false, false
 	for {
 		debug(l, "<<", u)
@@ -244,7 +244,7 @@ func (l *ldrShip) checkReplUpdates(u replUpdate) {
 	}
 }
 
-func (l *ldrShip) checkQuorum(wait time.Duration) {
+func (l *leader) checkQuorum(wait time.Duration) {
 	voters, reachable := 0, 0
 	for id, n := range l.configs.Latest.Nodes {
 		if n.Voter {
@@ -281,7 +281,7 @@ func (l *ldrShip) checkQuorum(wait time.Duration) {
 }
 
 // computes N such that, a majority of matchIndex[i] ≥ N
-func (l *ldrShip) majorityMatchIndex() uint64 {
+func (l *leader) majorityMatchIndex() uint64 {
 	matched := make(decrUint64Slice, len(l.configs.Latest.Nodes))
 	i := 0
 	for _, n := range l.configs.Latest.Nodes {
@@ -302,7 +302,7 @@ func (l *ldrShip) majorityMatchIndex() uint64 {
 
 // If majorityMatchIndex(N) > commitIndex,
 // and log[N].term == currentTerm: set commitIndex = N
-func (l *ldrShip) onMajorityCommit() {
+func (l *leader) onMajorityCommit() {
 	majorityMatchIndex := l.majorityMatchIndex()
 
 	// note: if majorityMatchIndex >= ldr.startIndex, it also mean
@@ -316,7 +316,7 @@ func (l *ldrShip) onMajorityCommit() {
 
 // if commitIndex > lastApplied: increment lastApplied, apply
 // log[lastApplied] to state machine
-func (l *ldrShip) applyCommitted() {
+func (l *leader) applyCommitted() {
 	// add all entries <=commitIndex & add only non-log entries at commitIndex+1
 	var prev, ne *newEntry = nil, l.neHead
 	for ne != nil {
@@ -343,7 +343,7 @@ func (l *ldrShip) applyCommitted() {
 	l.fsm.ch <- apply
 }
 
-func (l *ldrShip) notifyFlr(includeConfig bool) {
+func (l *leader) notifyFlr(includeConfig bool) {
 	update := leaderUpdate{
 		log:         l.log.ViewAt(l.removeLTE, l.lastLogIndex),
 		commitIndex: l.commitIndex,
@@ -364,7 +364,7 @@ func (l *ldrShip) notifyFlr(includeConfig bool) {
 	}
 }
 
-func (l *ldrShip) checkLogCompact() {
+func (l *leader) checkLogCompact() {
 	for _, repl := range l.repls {
 		if repl.status.removeLTE < l.removeLTE {
 			return

@@ -318,7 +318,7 @@ func (r *Raft) bootstrap(t changeConfig) {
 	r.setState(Candidate)
 }
 
-func (l *ldrShip) onChangeConfig(t changeConfig) {
+func (l *leader) onChangeConfig(t changeConfig) {
 	if !l.configs.IsCommitted() {
 		t.reply(InProgressError("configChange"))
 		return
@@ -369,14 +369,14 @@ func (l *ldrShip) onChangeConfig(t changeConfig) {
 	l.doChangeConfig(t.task, t.newConf)
 }
 
-func (l *ldrShip) doChangeConfig(t *task, config Config) {
+func (l *leader) doChangeConfig(t *task, config Config) {
 	l.storeEntry(&newEntry{
 		entry: config.encode(),
 		task:  t,
 	})
 }
 
-func (l *ldrShip) onWaitForStableConfig(t waitForStableConfig) {
+func (l *leader) onWaitForStableConfig(t waitForStableConfig) {
 	if l.configs.IsStable() {
 		t.reply(l.configs.Latest)
 		return
@@ -386,7 +386,7 @@ func (l *ldrShip) onWaitForStableConfig(t waitForStableConfig) {
 
 // ---------------------------------------------------------
 
-func (l *ldrShip) setCommitIndex(index uint64) {
+func (l *leader) setCommitIndex(index uint64) {
 	configCommitted := l.Raft.setCommitIndex(index)
 	if configCommitted {
 		l.checkActions()
@@ -421,7 +421,7 @@ func (r *Raft) setCommitIndex(index uint64) (configCommitted bool) {
 	return
 }
 
-func (l *ldrShip) changeConfig(config Config) {
+func (l *leader) changeConfig(config Config) {
 	l.voter = config.isVoter(l.nid)
 	l.Raft.changeConfig(config)
 

@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-// called on ldrShip.init and configChange
-func (l *ldrShip) onActionChange() {
+// called on leader.init and configChange
+func (l *leader) onActionChange() {
 	for id, repl := range l.repls {
 		n := l.configs.Latest.Nodes[id]
 		if !n.promote() {
@@ -22,7 +22,7 @@ func (l *ldrShip) onActionChange() {
 }
 
 // called on lastLogIndex update
-func (l *ldrShip) beginFinishedRounds() {
+func (l *leader) beginFinishedRounds() {
 	for id, repl := range l.repls {
 		r := repl.status.round
 		if r != nil && r.finished() {
@@ -35,7 +35,7 @@ func (l *ldrShip) beginFinishedRounds() {
 // checkActions finishes any postponed promotions
 //
 // called on configCommit and transferLdr.timout
-func (l *ldrShip) checkActions() {
+func (l *leader) checkActions() {
 	for _, repl := range l.repls {
 		l.checkActionStatus(&repl.status)
 	}
@@ -45,7 +45,7 @@ func (l *ldrShip) checkActions() {
 // promotes if threshold is satisfied.
 //
 // called when f.matchIndex is updated or by checkActions
-func (l *ldrShip) checkActionStatus(status *replicationStatus) {
+func (l *leader) checkActionStatus(status *replicationStatus) {
 	if status.round != nil {
 		r := status.round
 		if !r.finished() && status.matchIndex >= r.LastIndex {
@@ -110,7 +110,7 @@ func (l *ldrShip) checkActionStatus(status *replicationStatus) {
 	}
 }
 
-func (l *ldrShip) canChangeConfig() bool {
+func (l *leader) canChangeConfig() bool {
 	return l.configs.IsCommitted() && !l.transfer.inProgress()
 }
 
