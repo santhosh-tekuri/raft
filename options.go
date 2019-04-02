@@ -82,6 +82,7 @@ type Trace struct {
 	LeaderChanged       func(info Info)
 	ElectionStarted     func(info Info)
 	ElectionAborted     func(info Info, reason string)
+	CommitReady         func(info Info)
 	ConfigChanged       func(info Info)
 	ConfigCommitted     func(info Info)
 	ConfigReverted      func(info Info)
@@ -115,6 +116,9 @@ func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
 	}
 	trace.ElectionAborted = func(rinfo Info, reason string) {
 		info("raft: aborting election:", reason)
+	}
+	trace.CommitReady = func(rinfo Info) {
+		info("raft: ready for commit")
 	}
 	trace.ConfigChanged = func(rinfo Info) {
 		if rinfo.State() == Leader {

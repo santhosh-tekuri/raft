@@ -323,6 +323,7 @@ func (l *leader) onChangeConfig(t changeConfig) {
 		t.reply(InProgressError("configChange"))
 		return
 	}
+	// see https://groups.google.com/forum/#!msg/raft-dev/t4xj6dJTP6E/d2D9LrWRza8J
 	if l.commitIndex < l.startIndex {
 		t.reply(ErrNotCommitReady)
 		return
