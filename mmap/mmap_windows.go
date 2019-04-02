@@ -11,7 +11,7 @@ import (
 // Based on: https://github.com/edsrzf/mmap-go
 
 type addrinfo struct {
-	file     windows.Handle
+	file     *os.File
 	mapview  windows.Handle
 	writable bool
 }
@@ -57,7 +57,7 @@ func openFile(file *os.File, flag int, size int) (*File, error) {
 		name: file.Name(),
 		Data: b,
 		handle: &addrinfo{
-			file:     windows.Handle(file.Fd()),
+			file:     file,
 			mapview:  h,
 			writable: flag != os.O_RDONLY,
 		},
@@ -72,7 +72,7 @@ func (f *File) Sync() error {
 	}
 	handle := f.handle.(*addrinfo)
 	if handle.writable {
-		if err := windows.FlushFileBuffers(handle.file); err != nil {
+		if err := windows.FlushFileBuffers(windows.Handle(handle.file.Fd())); err != nil {
 			return os.NewSyscallError("FlushFileBuffers", err)
 		}
 	}
@@ -88,5 +88,8 @@ func (f *File) Close() error {
 		return err
 	}
 	handle := f.handle.(*addrinfo)
-	return windows.CloseHandle(windows.Handle(handle.mapview))
+	if err := windows.CloseHandle(windows.Handle(handle.mapview)); err != nil {
+		return err
+	}
+	return handle.file.Close()
 }
