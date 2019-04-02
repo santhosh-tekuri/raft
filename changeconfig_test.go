@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func TestLdrShip_changeConfig_validations(t *testing.T) {
+func TestChangeConfig_validations(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -45,7 +45,7 @@ func TestLdrShip_changeConfig_validations(t *testing.T) {
 	}
 }
 
-func TestLdrShip_changeConfig_trace(t *testing.T) {
+func TestChangeConfig_trace(t *testing.T) {
 	// launch 2 node cluster M1, M2
 	c, ldr, followers := launchCluster(t, 2)
 	defer c.shutdown()
@@ -133,7 +133,7 @@ func TestLdrShip_changeConfig_trace(t *testing.T) {
 }
 
 // basically we are making 3 node cluster into 5 node cluster
-func TestLdrShip_changeConfig_promote_newNode_singleRound(t *testing.T) {
+func TestChangeConfig_promote_newNode_singleRound(t *testing.T) {
 	// create 3 node cluster
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
@@ -195,7 +195,7 @@ func TestLdrShip_changeConfig_promote_newNode_singleRound(t *testing.T) {
 
 // todo: test promote newNode multipleRounds
 
-func TestLdrShip_changeConfig_promote_newNode_uptodateButConfigChangeInProgress(t *testing.T) {
+func TestChangeConfig_promote_newNode_uptodateButConfigChangeInProgress(t *testing.T) {
 	// create 2 node cluster, with long quorumWait
 	c := newCluster(t)
 	c.opt.QuorumWait = 10 * time.Second
