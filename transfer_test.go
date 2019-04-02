@@ -10,7 +10,7 @@ import (
 
 // in cluster with single voter, leader should reject transfer
 // requests with ErrLeadershipTransferNoVoter
-func TestLdrShip_transfer_singleVoter(t *testing.T) {
+func TestTransfer_singleVoter(t *testing.T) {
 	// launch single node cluster
 	c, ldr, _ := launchCluster(t, 1)
 	defer c.shutdown()
@@ -27,7 +27,7 @@ func TestLdrShip_transfer_singleVoter(t *testing.T) {
 }
 
 // happy path: transfer leadership in 5 node cluster
-func TestLdrShip_transfer_fiveNodes(t *testing.T) {
+func TestTransfer_fiveNodes(t *testing.T) {
 	doTransfer := func(t *testing.T, targetsReady bool) {
 		// launch 5 node cluster
 		c, ldr, _ := launchCluster(t, 5)
@@ -91,7 +91,7 @@ func setupTransferTimeout(t *testing.T, quorumWait, taskTimeout time.Duration) (
 
 // leader should reject any transferLeadership requests,
 // while one is already in progress
-func TestLdrShip_transfer_rejectAnotherTransferRequest(t *testing.T) {
+func TestTransfer_rejectAnotherTransferRequest(t *testing.T) {
 	c, ldr, _, _ := setupTransferTimeout(t, time.Second, 5*time.Second)
 	defer c.shutdown()
 
@@ -106,7 +106,7 @@ func TestLdrShip_transfer_rejectAnotherTransferRequest(t *testing.T) {
 
 // leader should reject any requests that update log,
 // while transferLeadership is in progress
-func TestLdrShip_transfer_rejectLogUpdateTasks(t *testing.T) {
+func TestTransfer_rejectLogUpdateTasks(t *testing.T) {
 	c, ldr, _, _ := setupTransferTimeout(t, time.Second, 5*time.Second)
 	defer c.shutdown()
 
@@ -125,7 +125,7 @@ func TestLdrShip_transfer_rejectLogUpdateTasks(t *testing.T) {
 
 // if quorum became unreachable during transferLeadership,
 // leader should reply ErrQuorumUnreachable
-func TestLdrShip_transfer_quorumUnreachable(t *testing.T) {
+func TestTransfer_quorumUnreachable(t *testing.T) {
 	c, _, _, transfer := setupTransferTimeout(t, time.Second, 5*time.Second)
 	defer c.shutdown()
 
@@ -135,7 +135,7 @@ func TestLdrShip_transfer_quorumUnreachable(t *testing.T) {
 
 // if new term detected during transferLeadership before/after timeoutNow,
 // leader should reply success
-func TestLdrShip_transfer_newTermDetected(t *testing.T) {
+func TestTransfer_newTermDetected(t *testing.T) {
 	c, ldr, flrs, transfer := setupTransferTimeout(t, time.Second, 5*time.Second)
 	defer c.shutdown()
 
@@ -150,7 +150,7 @@ func TestLdrShip_transfer_newTermDetected(t *testing.T) {
 	c.waitTaskDone(transfer, 2*time.Second, nil)
 }
 
-func TestLdrShip_transfer_onShutdownReplyServerClosed(t *testing.T) {
+func TestTransfer_onShutdownReplyServerClosed(t *testing.T) {
 	c, ldr, _, transfer := setupTransferTimeout(t, time.Second, 5*time.Second)
 	defer c.shutdown()
 
