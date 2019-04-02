@@ -159,7 +159,12 @@ func (r *Raft) stateLoop() (err error) {
 		}
 	)
 	r.ldr = l
-	states := map[State]state{
+
+	states := map[State]interface {
+		init()
+		release()
+		onTimeout()
+	}{
 		Follower:  f,
 		Candidate: c,
 		Leader:    l,
@@ -375,10 +380,4 @@ func (s State) String() string {
 		return "leader"
 	}
 	return string(s)
-}
-
-type state interface {
-	init()
-	release()
-	onTimeout()
 }
