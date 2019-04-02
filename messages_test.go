@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestMessages(t *testing.T) {
+func TestMessage(t *testing.T) {
 	type message interface {
 		decode(r io.Reader) error
 		encode(w io.Writer) error
@@ -44,7 +44,7 @@ func TestMessages(t *testing.T) {
 		&timeoutNowResp{resp{term: 5, result: success}},
 	}
 	for _, test := range tests {
-		name := fmt.Sprintf("message(%T)", test)
+		name := fmt.Sprintf("%T", test)
 		t.Run(name, func(t *testing.T) {
 			b := new(bytes.Buffer)
 			if err := test.encode(b); err != nil {
