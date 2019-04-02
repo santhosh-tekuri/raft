@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func test_update_nonLeader(t *testing.T) {
+func TestLdrShip_fsmTasks_update_nonLeader(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -25,7 +25,7 @@ func test_update_nonLeader(t *testing.T) {
 	}
 }
 
-func test_update_concurrent(t *testing.T) {
+func TestLdrShip_fsmTasks_update_concurrent(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -56,7 +56,7 @@ func test_update_concurrent(t *testing.T) {
 	c.ensureFSMSame(nil)
 }
 
-func TODO_TestRaft_BackPressure(t *testing.T) {
+func TODO_TestLdrShip_fsmTasks_backPressure(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -92,7 +92,7 @@ func TODO_TestRaft_BackPressure(t *testing.T) {
 	}
 }
 
-func test_barrier(t *testing.T) {
+func TestLdrShip_fsmTasks_barrier(t *testing.T) {
 	c, ldr, followers := launchCluster(t, 3)
 	defer c.shutdown()
 
@@ -119,7 +119,7 @@ func test_barrier(t *testing.T) {
 	}
 }
 
-func test_read(t *testing.T) {
+func TestLdrShip_fsmTasks_read(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 

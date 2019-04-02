@@ -41,12 +41,6 @@ func TestRaft(t *testing.T) {
 		})
 	})
 	t.Run("behindFollower", test_behindFollower)
-	t.Run("update", func(t *testing.T) {
-		t.Run("nonLeader", test_update_nonLeader)
-		t.Run("concurrent", test_update_concurrent)
-	})
-	t.Run("barrier", test_barrier)
-	t.Run("read", test_read)
 	t.Run("sendSnapshot", func(t *testing.T) {
 		t.Run("case1", func(t *testing.T) {
 			test_sendSnapshot_case(t, false)

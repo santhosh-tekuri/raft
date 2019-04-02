@@ -6,7 +6,7 @@ import (
 )
 
 // basically we are making 3 node cluster into 5 node cluster
-func TestLdrSip_changeConfig_promote_newNode_singleRound(t *testing.T) {
+func TestLdrShip_changeConfig_promote_newNode_singleRound(t *testing.T) {
 	// create 3 node cluster
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
@@ -68,7 +68,7 @@ func TestLdrSip_changeConfig_promote_newNode_singleRound(t *testing.T) {
 
 // todo: test promote newNode multipleRounds
 
-func TestLdrSip_changeConfig_promote_newNode_uptodateButConfigChangeInProgress(t *testing.T) {
+func TestLdrShip_changeConfig_promote_newNode_uptodateButConfigChangeInProgress(t *testing.T) {
 	// create 2 node cluster, with long quorumWait
 	c := newCluster(t)
 	c.opt.QuorumWait = 10 * time.Second
