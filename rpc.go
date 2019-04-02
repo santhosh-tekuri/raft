@@ -274,10 +274,10 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq, reader io.Reader) (rpcR
 		//       if restoreFSM fails panic and exit
 		//       if takeSnap req came meanwhile, reply inProgress(restoreFSM)
 
-		// reset fsm from this snapshot
-		if err = r.restoreFSM(); err != nil {
-			return unexpectedErr, err
-		}
+		// restore fsm from this snapshot
+		r.fsm.ch <- fsmRestoreReq{r.fsmRestoredCh}
+		r.commitIndex = r.snaps.index
+
 		// load snapshot config as cluster configuration
 		r.changeConfig(meta.config)
 		r.commitConfig()

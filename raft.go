@@ -16,6 +16,7 @@ type Raft struct {
 	rpcCh chan *rpc
 
 	fsm           *stateMachine
+	fsmRestoredCh chan error // fsm reports any errors during restore on this channel
 	snapTimer     *safeTimer
 	snapInterval  time.Duration
 	snapThreshold uint64
@@ -70,6 +71,7 @@ func New(opt Options, fsm FSM, storage *Storage) (*Raft, error) {
 		timer:            newSafeTimer(),
 		rpcCh:            make(chan *rpc),
 		fsm:              sm,
+		fsmRestoredCh:    make(chan error, 5),
 		snapTimer:        newSafeTimer(),
 		snapInterval:     opt.SnapshotInterval,
 		snapThreshold:    opt.SnapshotThreshold,
@@ -124,9 +126,11 @@ func (r *Raft) Serve(l net.Listener) error {
 
 	// restore fsm from last snapshot, if present
 	if r.snaps.index > 0 {
-		if err := r.restoreFSM(); err != nil {
+		r.fsm.ch <- fsmRestoreReq{r.fsmRestoredCh}
+		if err := <-r.fsmRestoredCh; err != nil {
 			return err
 		}
+		r.commitIndex = r.snaps.index
 	}
 
 	s := newServer(l)
@@ -187,6 +191,12 @@ func (r *Raft) stateLoop() (err error) {
 			select {
 			case <-r.close:
 				return ErrServerClosed
+
+			case err := <-r.fsmRestoredCh:
+				debug(r, "fsm restored with err", err)
+				if err != nil {
+					panic(err)
+				}
 
 			case <-r.snapTimer.C:
 				r.snapTimer.active = false

@@ -30,6 +30,7 @@ type stateMachine struct {
 }
 
 func (fsm *stateMachine) runLoop() {
+	// todo: panics are not handled by Raft
 	for t := range fsm.ch {
 		debug(fsm, t)
 		switch t := t.(type) {
@@ -120,18 +121,18 @@ func (fsm *stateMachine) onRestoreReq(t fsmRestoreReq) {
 	snap, err := fsm.snaps.open()
 	if err != nil {
 		debug(fsm, "snapshots.open failed", err)
-		t.reply(opError(err, "snapshots.open"))
+		t.err <- opError(err, "snapshots.open")
 		return
 	}
 	defer snap.release()
 	if err = fsm.RestoreFrom(bufio.NewReader(snap.file)); err != nil {
 		debug(fsm, "fsm.restore failed", err)
 		// todo: detect where err occurred in restoreFrom/sr.read
-		t.reply(opError(err, "FSM.RestoreFrom"))
+		t.err <- opError(err, "FSM.RestoreFrom")
 	} else {
 		fsm.index, fsm.term = snap.meta.index, snap.meta.term
 		debug(fsm, "restored snapshot", snap.meta.index)
-		t.reply(nil)
+		t.err <- nil
 	}
 }
 
@@ -151,7 +152,12 @@ func (r *Raft) lastApplied() uint64 {
 	return t.result.(uint64)
 }
 
-// --------------------------------------------------------------------------
+// raft(onRestart/onInstallSnapReq) -> fsmLoop
+type fsmRestoreReq struct {
+	err chan error
+}
+
+// takeSnapshot --------------------------------------------------------------------------
 
 // todo: trace snapshot start and finish
 func (r *Raft) onTakeSnapshot(t takeSnapshot) {
@@ -267,22 +273,4 @@ type snapTaken struct {
 	req  takeSnapshot
 	meta snapshotMeta
 	err  error
-}
-
-// ---------------------------------------------------------------------------
-
-func (r *Raft) restoreFSM() error {
-	req := fsmRestoreReq{task: newTask()}
-	r.fsm.ch <- req
-	<-req.Done()
-	if req.Err() != nil {
-		return req.Err()
-	}
-	r.commitIndex = r.snaps.index
-	return nil
-}
-
-// raft(onRestart/onInstallSnapReq) -> fsmLoop
-type fsmRestoreReq struct {
-	*task
 }
