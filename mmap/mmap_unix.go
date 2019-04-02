@@ -1,37 +1,34 @@
-// +build !windows,!plan9,!solaris
+// +build darwin dragonfly freebsd linux openbsd solaris netbsd
 
 package mmap
 
 import (
-	"fmt"
 	"os"
-	"syscall"
-	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
-func mmap(file *os.File, sz int) ([]byte, error) {
-	// Map the data file to memory.
-	b, err := syscall.Mmap(int(file.Fd()), 0, sz, syscall.PROT_READ, syscall.MAP_SHARED)
+func openFile(file *os.File, flag int, size int) (*File, error) {
+	defer file.Close()
+	var prot int
+	if flag == os.O_RDONLY {
+		prot = unix.PROT_READ
+	} else if flag == os.O_WRONLY {
+		prot = unix.PROT_WRITE
+	} else if flag == os.O_RDWR {
+		prot = unix.PROT_READ | unix.PROT_WRITE
+	}
+	b, err := unix.Mmap(int(file.Fd()), 0, size, prot, unix.MAP_SHARED)
 	if err != nil {
 		return nil, err
 	}
-
-	// Advise the kernel that the mmap is accessed randomly.
-	if err := madvise(b, syscall.MADV_RANDOM); err != nil {
-		return nil, fmt.Errorf("madvise: %s", err)
-	}
-	return b, nil
+	return &File{name: file.Name(), Data: b}, nil
 }
 
-func munmap(b []byte) error {
-	return syscall.Munmap(b)
+func (f *File) Sync() error {
+	return unix.Msync(f.Data, unix.MS_SYNC)
 }
 
-// NOTE: This function is copied from stdlib because it is not available on darwin.
-func madvise(b []byte, advice int) (err error) {
-	_, _, e1 := syscall.Syscall(syscall.SYS_MADVISE, uintptr(unsafe.Pointer(&b[0])), uintptr(len(b)), uintptr(advice))
-	if e1 != 0 {
-		err = e1
-	}
-	return
+func (f File) Close() error {
+	return unix.Munmap(f.Data)
 }

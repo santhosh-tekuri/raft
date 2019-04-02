@@ -1,9 +1,7 @@
 package log
 
 import (
-	"bufio"
 	"encoding/binary"
-	"io"
 	"os"
 
 	"github.com/santhosh-tekuri/raft/mmap"
@@ -17,10 +15,9 @@ type segment struct {
 	next      *segment
 
 	file  *mmap.File // index file
-	bufw  *bufio.Writer
-	n     uint64 // number of entries
-	size  int64  // log size
-	dirty bool   // is sync needed ?
+	n     uint64     // number of entries
+	size  int64      // log size
+	dirty bool       // is sync needed ?
 }
 
 func openSegment(dir string, prevIndex uint64, opt Options) (*segment, error) {
@@ -39,19 +36,14 @@ func openSegment(dir string, prevIndex uint64, opt Options) (*segment, error) {
 	s := &segment{
 		prevIndex: prevIndex,
 		file:      file,
-		bufw:      bufio.NewWriter(file.File),
 	}
 	s.n = uint64(s.offset(0))
 	s.size = int64(s.offset(s.n + 1))
-	if _, err := s.file.Seek(s.size, io.SeekStart); err != nil {
-		_ = s.close()
-		return s, err
-	}
 	return s, nil
 }
 
 func (s *segment) at(i uint64) int64 {
-	return s.file.Size() - int64(i*8) - 8
+	return int64(len(s.file.Data)) - int64(i*8) - 8
 }
 
 func (s *segment) offset(i uint64) int {
@@ -59,10 +51,8 @@ func (s *segment) offset(i uint64) int {
 }
 
 func (s *segment) setOffset(v uint64, i uint64) error {
-	b := make([]byte, 8)
-	byteOrder.PutUint64(b, v)
-	_, err := s.file.WriteAt(b, s.at(i))
-	return err
+	byteOrder.PutUint64(s.file.Data[s.at(i):], v)
+	return nil
 }
 
 func (s *segment) lastIndex() uint64 {
@@ -83,9 +73,7 @@ func (s *segment) available() int {
 }
 
 func (s *segment) append(b []byte) error {
-	if _, err := s.bufw.Write(b); err != nil {
-		return err
-	}
+	copy(s.file.Data[s.size:], b)
 	size := s.size + int64(len(b))
 	if err := s.setOffset(uint64(size), s.n+2); err != nil {
 		return err
@@ -101,29 +89,23 @@ func (s *segment) removeGTE(i uint64) error {
 			return err
 		}
 		s.n, s.size, s.dirty = n, int64(s.offset(n+1)), true
-		if _, err := s.file.Seek(s.size, io.SeekStart); err != nil {
-			return err
-		}
 	}
 	return s.sync()
 }
 
 func (s *segment) flush() error {
-	return s.bufw.Flush()
+	return nil
 }
 
 func (s *segment) sync() error {
 	if s.dirty {
-		if err := s.bufw.Flush(); err != nil {
-			return err
-		}
-		if err := s.file.SyncData(); err != nil {
+		if err := s.file.Sync(); err != nil {
 			return err
 		}
 		if err := s.setOffset(s.n, 0); err != nil {
 			return err
 		}
-		if err := s.file.SyncData(); err != nil {
+		if err := s.file.Sync(); err != nil {
 			return err
 		}
 		s.dirty = false
