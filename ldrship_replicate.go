@@ -11,9 +11,9 @@ import (
 	"github.com/santhosh-tekuri/raft/log"
 )
 
-type flr struct {
+type replication struct {
 	rtime  randTime
-	status flrStatus // owned by ldr goroutine
+	status replicationStatus // owned by ldr goroutine
 
 	connPool  *connPool
 	log       *log.Log
@@ -39,19 +39,19 @@ type flr struct {
 	str string // used for debug() calls
 }
 
-func (f *flr) runLoop(req *appendEntriesReq) {
-	debug(f, "f.start")
+func (r *replication) runLoop(req *appendEntriesReq) {
+	debug(r, "r.start")
 	var c *conn
 	defer func() {
 		if c != nil && c.rwc != nil {
-			f.connPool.returnConn(c)
+			r.connPool.returnConn(c)
 		}
 		if v := recover(); v != nil {
-			debug(f, "got panic:", v)
+			debug(r, "got panic:", v)
 			if _, ok := v.(runtime.Error); ok {
 				panic(v)
 			}
-			f.notifyLdr(toErr(v))
+			r.notifyLdr(toErr(v))
 		}
 	}()
 
@@ -59,36 +59,36 @@ func (f *flr) runLoop(req *appendEntriesReq) {
 	for {
 		if failures > 0 {
 			if failures == 1 {
-				f.notifyNoContact(err)
+				r.notifyNoContact(err)
 			}
-			f.timer.reset(backOff(failures, f.hbTimeout/2))
+			r.timer.reset(backOff(failures, r.hbTimeout/2))
 			select {
-			case <-f.stopCh:
+			case <-r.stopCh:
 				return
-			case <-f.timer.C:
-				f.timer.active = false
+			case <-r.timer.C:
+				r.timer.active = false
 			}
-			if _, err = f.checkLeaderUpdate(f.stopCh, req, false); err == errStop {
+			if _, err = r.checkLeaderUpdate(r.stopCh, req, false); err == errStop {
 				return
 			}
 		}
 
 		if c == nil {
-			if c, err = f.connPool.getConn(); err != nil {
+			if c, err = r.connPool.getConn(); err != nil {
 				failures++
 				continue
 			}
 			if failures > 0 {
 				failures = 0
-				f.notifyNoContact(nil)
-				if _, err = f.checkLeaderUpdate(f.stopCh, req, false); err == errStop {
+				r.notifyNoContact(nil)
+				if _, err = r.checkLeaderUpdate(r.stopCh, req, false); err == errStop {
 					return
 				}
 			}
 		}
 
-		assert(f.matchIndex < f.nextIndex, "%v assert %d<%d", f, f.matchIndex, f.nextIndex)
-		err = f.replicate(c, req)
+		assert(r.matchIndex < r.nextIndex, "%v assert %d<%d", r, r.matchIndex, r.nextIndex)
+		err = r.replicate(c, req)
 		if err == errStop {
 			return
 		} else if _, ok := err.(OpError); ok {
@@ -105,14 +105,14 @@ func (f *flr) runLoop(req *appendEntriesReq) {
 }
 
 // always returns non-nil error
-func (f *flr) replicate(c *conn, req *appendEntriesReq) error {
+func (r *replication) replicate(c *conn, req *appendEntriesReq) error {
 	resp := &appendEntriesResp{}
 	for {
 		// find matchIndex ---------------------------------------------------
 		for {
-			err := f.writeAppendEntriesReq(c, req, false)
+			err := r.writeAppendEntriesReq(c, req, false)
 			if err == errNoEntryFound {
-				if err = f.sendInstallSnapReq(c, req); err == nil {
+				if err = r.sendInstallSnapReq(c, req); err == nil {
 					continue
 				}
 			}
@@ -123,19 +123,19 @@ func (f *flr) replicate(c *conn, req *appendEntriesReq) error {
 			if err = c.readResp(resp); err != nil {
 				return err
 			}
-			if err = f.onAppendEntriesResp(resp, f.nextIndex-1); err != nil {
+			if err = r.onAppendEntriesResp(resp, r.nextIndex-1); err != nil {
 				return err
 			}
-			if _, err = f.checkLeaderUpdate(f.stopCh, req, false); err != nil {
+			if _, err = r.checkLeaderUpdate(r.stopCh, req, false); err != nil {
 				return err
 			}
-			if f.matchIndex+1 == f.nextIndex {
+			if r.matchIndex+1 == r.nextIndex {
 				break
 			}
 		}
 
-		if f.nextIndex < f.ldrLastIndex && !f.log.Contains(f.nextIndex) {
-			if err := f.sendInstallSnapReq(c, req); err == nil {
+		if r.nextIndex < r.ldrLastIndex && !r.log.Contains(r.nextIndex) {
+			if err := r.sendInstallSnapReq(c, req); err == nil {
 				continue
 			}
 		}
@@ -143,7 +143,7 @@ func (f *flr) replicate(c *conn, req *appendEntriesReq) error {
 		// todo: before starting pipeline, check if sending snap
 		//       is better than sending lots of entries
 
-		debug(f, "pipelining.............................")
+		debug(r, "pipelining.............................")
 		// pipelining ---------------------------------------------------------
 		type result struct {
 			lastIndex uint64
@@ -168,27 +168,27 @@ func (f *flr) replicate(c *conn, req *appendEntriesReq) error {
 				}
 			}()
 			for {
-				err := f.writeAppendEntriesReq(c, req, true)
+				err := r.writeAppendEntriesReq(c, req, true)
 				select {
 				case <-stopCh:
 					return
-				case resultCh <- result{f.nextIndex - 1, err}:
+				case resultCh <- result{r.nextIndex - 1, err}:
 				}
 				if err != nil {
 					return
 				}
 				for {
-					ldrUpdate, errStop := f.checkLeaderUpdate(stopCh, req, true)
+					ldrUpdate, errStop := r.checkLeaderUpdate(stopCh, req, true)
 					if errStop != nil {
 						return
 					}
-					if ldrUpdate || len(resultCh) == 0 || f.nextIndex <= f.ldrLastIndex {
+					if ldrUpdate || len(resultCh) == 0 || r.nextIndex <= r.ldrLastIndex {
 						break
 					}
 					// we have not received responses for all requests yet
 					// so no need to flood him with heartbeat
 					// take a nap and check again
-					debug(f, "no heartbeat, pending resps:", len(resultCh))
+					debug(r, "no heartbeat, pending resps:", len(resultCh))
 				}
 			}
 		}()
@@ -208,16 +208,16 @@ func (f *flr) replicate(c *conn, req *appendEntriesReq) error {
 			}()
 			select {
 			case err := <-drained:
-				debug(f, "drain completed with error:", err)
+				debug(r, "drain completed with error:", err)
 				if err != nil {
 					_ = c.rwc.Close()
 					c.rwc = nil // to signal runLoop that we closed the conn
 				}
 			case <-time.After(timeout):
-				debug(f, "drain timeout, closing conn")
+				debug(r, "drain timeout, closing conn")
 				_ = c.rwc.Close()
 				<-drained
-				debug(f, "drain completed")
+				debug(r, "drain completed")
 				c.rwc = nil // to signal runLoop that we closed the conn
 			}
 		}
@@ -226,15 +226,15 @@ func (f *flr) replicate(c *conn, req *appendEntriesReq) error {
 		for {
 			var result result
 			select {
-			case <-f.stopCh:
-				debug(f, "ending pipeline, got stop signal from ldr")
+			case <-r.stopCh:
+				debug(r, "ending pipeline, got stop signal from ldr")
 				close(stopCh)
-				drainRespsTimeout(f.hbTimeout / 2)
+				drainRespsTimeout(r.hbTimeout / 2)
 				return errStop
 			case result = <-resultCh:
 			}
 			if result.err != nil {
-				debug(f, "pipeline ended with", result.err)
+				debug(r, "pipeline ended with", result.err)
 				if result.err == errNoEntryFound {
 					break
 				}
@@ -242,7 +242,7 @@ func (f *flr) replicate(c *conn, req *appendEntriesReq) error {
 			}
 			err = c.readResp(resp)
 			if err != nil {
-				debug(f, "ending pipeline, error in reading resp:", err)
+				debug(r, "ending pipeline, error in reading resp:", err)
 				close(stopCh)
 				_ = c.rwc.Close()
 				for range resultCh {
@@ -251,13 +251,13 @@ func (f *flr) replicate(c *conn, req *appendEntriesReq) error {
 				return err
 			}
 			if resp.result == success {
-				_ = f.onAppendEntriesResp(resp, result.lastIndex)
+				_ = r.onAppendEntriesResp(resp, result.lastIndex)
 			} else {
-				debug(f, "ending pipeline, got resp.result", resp.result)
+				debug(r, "ending pipeline, got resp.result", resp.result)
 				close(stopCh)
 				if resp.result == staleTerm {
-					drainRespsTimeout(f.hbTimeout / 2)
-					return f.onAppendEntriesResp(resp, result.lastIndex) // notifies ldr and return errStop
+					drainRespsTimeout(r.hbTimeout / 2)
+					return r.onAppendEntriesResp(resp, result.lastIndex) // notifies ldr and return errStop
 				} else {
 					if err = drainResps(); err != nil {
 						return err
@@ -272,17 +272,17 @@ func (f *flr) replicate(c *conn, req *appendEntriesReq) error {
 const maxAppendEntries = 64
 
 // note: never access f.matchIndex in this method, because this is used by pipeline writer also
-func (f *flr) writeAppendEntriesReq(c *conn, req *appendEntriesReq, sendEntries bool) error {
-	snapIndex, snapTerm := f.snaps.latest()
+func (r *replication) writeAppendEntriesReq(c *conn, req *appendEntriesReq, sendEntries bool) error {
+	snapIndex, snapTerm := r.snaps.latest()
 
 	// fill req.prevLogXXX
-	req.prevLogIndex = f.nextIndex - 1
+	req.prevLogIndex = r.nextIndex - 1
 	if req.prevLogIndex == 0 {
 		req.prevLogTerm = 0
 	} else if req.prevLogIndex == snapIndex {
 		req.prevLogTerm = snapTerm
 	} else {
-		term, err := f.getEntryTerm(req.prevLogIndex)
+		term, err := r.getEntryTerm(req.prevLogIndex)
 		if err != nil { // should be in snapshot
 			return err
 		}
@@ -291,50 +291,50 @@ func (f *flr) writeAppendEntriesReq(c *conn, req *appendEntriesReq, sendEntries 
 
 	req.numEntries = 0
 	if sendEntries {
-		req.numEntries = min(f.ldrLastIndex-req.prevLogIndex, maxAppendEntries)
-		if req.numEntries > 0 && !f.log.Contains(f.nextIndex) {
+		req.numEntries = min(r.ldrLastIndex-req.prevLogIndex, maxAppendEntries)
+		if req.numEntries > 0 && !r.log.Contains(r.nextIndex) {
 			return errNoEntryFound
 		}
 	}
 
 	if sendEntries && req.numEntries == 0 {
-		debug(f, ">> heartbeat")
+		debug(r, ">> heartbeat")
 	} else {
-		debug(f, ">>", req)
+		debug(r, ">>", req)
 	}
 	if err := c.writeReq(req); err != nil {
 		return err
 	}
 	if req.numEntries > 0 {
-		if err := f.writeEntriesTo(c, f.nextIndex, req.numEntries); err != nil {
+		if err := r.writeEntriesTo(c, r.nextIndex, req.numEntries); err != nil {
 			return err
 		}
-		f.nextIndex += req.numEntries
-		debug(f, "nextIndex:", f.nextIndex)
+		r.nextIndex += req.numEntries
+		debug(r, "nextIndex:", r.nextIndex)
 	}
 	return nil
 }
 
-func (f *flr) onAppendEntriesResp(resp *appendEntriesResp, reqLastIndex uint64) error {
-	debug(f, "<<", resp)
+func (r *replication) onAppendEntriesResp(resp *appendEntriesResp, reqLastIndex uint64) error {
+	debug(r, "<<", resp)
 	switch resp.result {
 	case staleTerm:
-		f.notifyLdr(newTerm{resp.getTerm()})
+		r.notifyLdr(newTerm{resp.getTerm()})
 		return errStop
 	case success:
-		if reqLastIndex > f.matchIndex {
-			f.matchIndex = reqLastIndex
-			debug(f, "matchIndex:", f.matchIndex)
-			f.notifyLdr(matchIndex{f.matchIndex})
+		if reqLastIndex > r.matchIndex {
+			r.matchIndex = reqLastIndex
+			debug(r, "matchIndex:", r.matchIndex)
+			r.notifyLdr(matchIndex{r.matchIndex})
 		}
 		return nil
 	case prevEntryNotFound, prevTermMismatch:
-		if resp.lastLogIndex < f.matchIndex {
+		if resp.lastLogIndex < r.matchIndex {
 			// this happens if someone restarted follower storage with empty storage
 			return ErrFaultyFollower
 		}
-		f.nextIndex = min(f.nextIndex-1, resp.lastLogIndex+1)
-		debug(f, "nextIndex:", f.nextIndex)
+		r.nextIndex = min(r.nextIndex-1, resp.lastLogIndex+1)
+		debug(r, "nextIndex:", r.nextIndex)
 		return nil
 	case unexpectedErr:
 		return remoteError{resp.err}
@@ -343,8 +343,8 @@ func (f *flr) onAppendEntriesResp(resp *appendEntriesResp, reqLastIndex uint64) 
 	}
 }
 
-func (f *flr) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
-	snap, err := f.snaps.open()
+func (r *replication) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
+	snap, err := r.snaps.open()
 	if err != nil {
 		return opError(err, "snapshots.open")
 	}
@@ -357,7 +357,7 @@ func (f *flr) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
 		lastConfig: snap.meta.config,
 		size:       snap.meta.size,
 	}
-	debug(f, ">>", req)
+	debug(r, ">>", req)
 	if err = c.writeReq(req); err != nil {
 		return err
 	}
@@ -371,20 +371,20 @@ func (f *flr) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
 	}
 	switch resp.result {
 	case staleTerm:
-		f.notifyLdr(newTerm{resp.getTerm()})
+		r.notifyLdr(newTerm{resp.getTerm()})
 		return errStop
 	case success:
 		// case: snapshot was taken before we got leaderUpdate about lastLogIndex
 		// we should wait until we get our logview gets updated
-		for req.lastIndex > f.ldrLastIndex {
-			if _, err := f.checkLeaderUpdate(f.stopCh, appReq, false); err != nil {
+		for req.lastIndex > r.ldrLastIndex {
+			if _, err := r.checkLeaderUpdate(r.stopCh, appReq, false); err != nil {
 				return err
 			}
 		}
-		f.matchIndex = req.lastIndex
-		f.nextIndex = f.matchIndex + 1
-		debug(f, "matchIndex:", f.matchIndex, "nextIndex:", f.nextIndex)
-		f.notifyLdr(matchIndex{f.matchIndex})
+		r.matchIndex = req.lastIndex
+		r.nextIndex = r.matchIndex + 1
+		debug(r, "matchIndex:", r.matchIndex, "nextIndex:", r.nextIndex)
+		r.notifyLdr(matchIndex{r.matchIndex})
 		return nil
 	case unexpectedErr:
 		return remoteError{resp.err}
@@ -393,24 +393,24 @@ func (f *flr) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
 	}
 }
 
-func (f *flr) checkLeaderUpdate(stopCh <-chan struct{}, req *appendEntriesReq, sendEntries bool) (ldrUpdate bool, err error) {
-	if sendEntries && f.nextIndex > f.ldrLastIndex {
+func (r *replication) checkLeaderUpdate(stopCh <-chan struct{}, req *appendEntriesReq, sendEntries bool) (ldrUpdate bool, err error) {
+	if sendEntries && r.nextIndex > r.ldrLastIndex {
 		// for nonvoter, dont send heartbeats
 		var timerCh <-chan time.Time
-		if f.voter {
-			f.timer.reset(f.hbTimeout / 2)
-			timerCh = f.timer.C
+		if r.voter {
+			r.timer.reset(r.hbTimeout / 2)
+			timerCh = r.timer.C
 		}
 
 		// nothing to send. start heartbeat timer
 		select {
 		case <-stopCh:
 			return false, errStop
-		case update := <-f.leaderUpdateCh:
-			f.onLeaderUpdate(update, req)
+		case update := <-r.leaderUpdateCh:
+			r.onLeaderUpdate(update, req)
 			return true, nil
 		case <-timerCh:
-			f.timer.active = false
+			r.timer.active = false
 			return false, nil
 		}
 	} else {
@@ -418,8 +418,8 @@ func (f *flr) checkLeaderUpdate(stopCh <-chan struct{}, req *appendEntriesReq, s
 		select {
 		case <-stopCh:
 			return false, errStop
-		case update := <-f.leaderUpdateCh:
-			f.onLeaderUpdate(update, req)
+		case update := <-r.leaderUpdateCh:
+			r.onLeaderUpdate(update, req)
 			return true, nil
 		default:
 		}
@@ -427,39 +427,39 @@ func (f *flr) checkLeaderUpdate(stopCh <-chan struct{}, req *appendEntriesReq, s
 	return false, nil
 }
 
-func (f *flr) onLeaderUpdate(u leaderUpdate, req *appendEntriesReq) {
-	debug(f, u)
-	if u.log.PrevIndex() > f.log.PrevIndex() {
-		f.notifyLdr(removeLTE{u.log.PrevIndex()})
+func (r *replication) onLeaderUpdate(u leaderUpdate, req *appendEntriesReq) {
+	debug(r, u)
+	if u.log.PrevIndex() > r.log.PrevIndex() {
+		r.notifyLdr(removeLTE{u.log.PrevIndex()})
 	}
-	f.log = u.log
-	f.ldrLastIndex, req.ldrCommitIndex = u.log.LastIndex(), u.commitIndex
+	r.log = u.log
+	r.ldrLastIndex, req.ldrCommitIndex = u.log.LastIndex(), u.commitIndex
 	if u.config != nil {
-		f.voter = u.config.Nodes[f.status.id].Voter
+		r.voter = u.config.Nodes[r.status.id].Voter
 	}
 }
 
-func (f *flr) notifyLdr(u interface{}) {
+func (r *replication) notifyLdr(u interface{}) {
 	select {
-	case <-f.stopCh:
-	case f.replUpdateCh <- replUpdate{&f.status, u}:
+	case <-r.stopCh:
+	case r.replUpdateCh <- replUpdate{&r.status, u}:
 	}
 }
 
-func (f *flr) notifyNoContact(err error) {
+func (r *replication) notifyNoContact(err error) {
 	if err != nil {
-		f.noContact = time.Now()
-		debug(f, "noContact", err)
-		f.notifyLdr(noContact{f.noContact, err})
+		r.noContact = time.Now()
+		debug(r, "noContact", err)
+		r.notifyLdr(noContact{r.noContact, err})
 	} else {
-		f.noContact = time.Time{} // zeroing
-		debug(f, "yesContact")
-		f.notifyLdr(noContact{f.noContact, nil})
+		r.noContact = time.Time{} // zeroing
+		debug(r, "yesContact")
+		r.notifyLdr(noContact{r.noContact, nil})
 	}
 }
 
-func (f *flr) getEntryTerm(i uint64) (uint64, error) {
-	b, err := f.log.Get(i)
+func (r *replication) getEntryTerm(i uint64) (uint64, error) {
+	b, err := r.log.Get(i)
 	if err == errNoEntryFound {
 		return 0, err
 	} else if err != nil {
@@ -472,8 +472,8 @@ func (f *flr) getEntryTerm(i uint64) (uint64, error) {
 	return e.term, nil
 }
 
-func (f *flr) writeEntriesTo(c *conn, from uint64, n uint64) error {
-	buffs, err := f.log.GetN(from, n)
+func (r *replication) writeEntriesTo(c *conn, from uint64, n uint64) error {
+	buffs, err := r.log.GetN(from, n)
 	if err != nil {
 		panic(opError(err, "Log.GetN(%d, %d)", from, n))
 	}
@@ -492,7 +492,7 @@ type leaderUpdate struct {
 }
 
 type replUpdate struct {
-	status *flrStatus
+	status *replicationStatus
 	update interface{}
 }
 
@@ -513,11 +513,11 @@ type newTerm struct {
 	val uint64
 }
 
-type flrStatus struct {
+type replicationStatus struct {
 	id uint64
 
-	// true when the flr is removed
-	// used to ignore replUpdate from removed flr
+	// true when the replication is removed
+	// used to ignore replUpdate from removed replication
 	removed bool
 
 	// owned exclusively by leader goroutine

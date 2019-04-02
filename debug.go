@@ -146,8 +146,8 @@ func (r *Raft) String() string {
 }
 
 //go:norace
-func (f *flr) String() string {
-	return fmt.Sprintf("%s %d %d %d |", f.str, f.matchIndex, f.nextIndex, f.ldrLastIndex)
+func (r *replication) String() string {
+	return fmt.Sprintf("%s %d %d %d |", r.str, r.matchIndex, r.nextIndex, r.ldrLastIndex)
 }
 
 func (fsm *stateMachine) String() string {

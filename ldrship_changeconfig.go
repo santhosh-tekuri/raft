@@ -7,15 +7,15 @@ import (
 
 // called on ldrShip.init and configChange
 func (l *ldrShip) onActionChange() {
-	for id, f := range l.flrs {
+	for id, repl := range l.repls {
 		n := l.configs.Latest.Nodes[id]
 		if !n.promote() {
-			f.status.round = nil
-		} else if f.status.round == nil {
+			repl.status.round = nil
+		} else if repl.status.round == nil {
 			// start first round
-			f.status.round = new(Round)
-			f.status.round.begin(f.ldrLastIndex)
-			debug(l, id, "started:", f.status.round)
+			repl.status.round = new(Round)
+			repl.status.round.begin(repl.ldrLastIndex)
+			debug(l, id, "started:", repl.status.round)
 		}
 	}
 	l.checkActions()
@@ -23,10 +23,10 @@ func (l *ldrShip) onActionChange() {
 
 // called on lastLogIndex update
 func (l *ldrShip) beginFinishedRounds() {
-	for id, f := range l.flrs {
-		r := f.status.round
+	for id, repl := range l.repls {
+		r := repl.status.round
 		if r != nil && r.finished() {
-			r.begin(f.ldrLastIndex)
+			r.begin(repl.ldrLastIndex)
 			debug(l, id, "started:", r)
 		}
 	}
@@ -36,8 +36,8 @@ func (l *ldrShip) beginFinishedRounds() {
 //
 // called on configCommit and transferLdr.timout
 func (l *ldrShip) checkActions() {
-	for _, f := range l.flrs {
-		l.checkActionStatus(&f.status)
+	for _, repl := range l.repls {
+		l.checkActionStatus(&repl.status)
 	}
 }
 
@@ -45,7 +45,7 @@ func (l *ldrShip) checkActions() {
 // promotes if threshold is satisfied.
 //
 // called when f.matchIndex is updated or by checkActions
-func (l *ldrShip) checkActionStatus(status *flrStatus) {
+func (l *ldrShip) checkActionStatus(status *replicationStatus) {
 	if status.round != nil {
 		r := status.round
 		if !r.finished() && status.matchIndex >= r.LastIndex {

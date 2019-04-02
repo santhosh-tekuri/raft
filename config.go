@@ -425,20 +425,20 @@ func (l *ldrShip) changeConfig(config Config) {
 	l.voter = config.isVoter(l.nid)
 	l.Raft.changeConfig(config)
 
-	// remove flrs
-	for id, f := range l.flrs {
+	// remove repls
+	for id, repl := range l.repls {
 		if _, ok := config.Nodes[id]; !ok {
-			f.status.removed = true
-			close(f.stopCh)
-			delete(l.flrs, id)
+			repl.status.removed = true
+			close(repl.stopCh)
+			delete(l.repls, id)
 		}
 	}
 
-	// add new flrs
+	// add new repls
 	for id, n := range config.Nodes {
 		if id != l.nid {
-			if _, ok := l.flrs[id]; !ok {
-				l.addFlr(n)
+			if _, ok := l.repls[id]; !ok {
+				l.addReplication(n)
 			}
 		}
 	}

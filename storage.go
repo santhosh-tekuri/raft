@@ -290,7 +290,7 @@ func (r *Raft) compactLog(lte uint64) {
 	}
 }
 
-// no flr.replicate is going on when this called
+// no replication is going on when this called
 // todo: are you sure about this ???
 func (s *storage) clearLog() error {
 	if err := s.log.Reset(s.snaps.index); err != nil {

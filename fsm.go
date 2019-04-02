@@ -230,12 +230,12 @@ func (r *Raft) onSnapshotTaken(t snapTaken) {
 		// canCompact: min of online matchIndex
 		nowCompact, canCompact := t.meta.index, t.meta.index
 		if r.state == Leader {
-			for _, f := range r.ldr.flrs {
-				if f.status.matchIndex < nowCompact {
-					nowCompact = f.status.matchIndex
+			for _, repl := range r.ldr.repls {
+				if repl.status.matchIndex < nowCompact {
+					nowCompact = repl.status.matchIndex
 				}
-				if f.status.noContact.IsZero() && f.status.matchIndex < canCompact {
-					canCompact = f.status.matchIndex
+				if repl.status.noContact.IsZero() && repl.status.matchIndex < canCompact {
+					canCompact = repl.status.matchIndex
 				}
 			}
 		}
@@ -246,7 +246,7 @@ func (r *Raft) onSnapshotTaken(t snapTaken) {
 			r.compactLog(nowCompact)
 		}
 		if canCompact > nowCompact {
-			// notify flrs with new logView
+			// notify repls with new logView
 			r.ldr.removeLTE = canCompact
 			r.ldr.notifyFlr(false)
 		}

@@ -21,8 +21,8 @@ type ldrShip struct {
 	neHead, neTail *newEntry
 
 	// holds running replications, key is addr
-	flrs map[uint64]*flr
-	wg   sync.WaitGroup
+	repls map[uint64]*replication
+	wg    sync.WaitGroup
 
 	// to receive updates from replicators
 	replUpdateCh chan replUpdate
@@ -44,7 +44,7 @@ func (l *ldrShip) init() {
 	// start replication routine for each follower
 	for id, n := range l.configs.Latest.Nodes {
 		if id != l.nid {
-			l.addFlr(n)
+			l.addReplication(n)
 		}
 	}
 	l.onActionChange()
@@ -69,9 +69,9 @@ func (l *ldrShip) release() {
 	}
 
 	debug(l, "stopping followers")
-	for id, f := range l.flrs {
-		close(f.stopCh)
-		delete(l.flrs, id)
+	for id, repl := range l.repls {
+		close(repl.stopCh)
+		delete(l.repls, id)
 	}
 	if l.leader == l.nid {
 		l.setLeader(0)
@@ -147,12 +147,12 @@ func (l *ldrShip) storeEntry(ne *newEntry) {
 	}
 }
 
-func (l *ldrShip) addFlr(n Node) {
-	assert(n.ID != l.nid, "adding leader as follower")
-	f := &flr{
+func (l *ldrShip) addReplication(n Node) {
+	assert(n.ID != l.nid, "adding replication for leader")
+	repl := &replication{
 		voter:          n.Voter,
 		rtime:          newRandTime(),
-		status:         flrStatus{id: n.ID, removeLTE: l.removeLTE},
+		status:         replicationStatus{id: n.ID, removeLTE: l.removeLTE},
 		ldrStartIndex:  l.startIndex,
 		ldrLastIndex:   l.lastLogIndex,
 		matchIndex:     0,
@@ -167,7 +167,7 @@ func (l *ldrShip) addFlr(n Node) {
 		leaderUpdateCh: make(chan leaderUpdate, 1),
 		str:            fmt.Sprintf("%v M%d", l, n.ID),
 	}
-	l.flrs[n.ID] = f
+	l.repls[n.ID] = repl
 
 	// send initial empty AppendEntries RPCs (heartbeat) to each follower
 	req := &appendEntriesReq{
@@ -180,8 +180,8 @@ func (l *ldrShip) addFlr(n Node) {
 	l.wg.Add(1)
 	go func() {
 		defer l.wg.Done()
-		f.runLoop(req)
-		debug(f, "f.replicateEnd")
+		repl.runLoop(req)
+		debug(repl, "repl.End")
 	}()
 }
 
@@ -249,7 +249,7 @@ func (l *ldrShip) checkQuorum(wait time.Duration) {
 	for id, n := range l.configs.Latest.Nodes {
 		if n.Voter {
 			voters++
-			if id == l.nid || l.flrs[id].status.noContact.IsZero() {
+			if id == l.nid || l.repls[id].status.noContact.IsZero() {
 				reachable++
 			}
 		}
@@ -289,7 +289,7 @@ func (l *ldrShip) majorityMatchIndex() uint64 {
 			if n.ID == l.nid {
 				matched[i] = l.lastLogIndex
 			} else {
-				matched[i] = l.flrs[n.ID].status.matchIndex
+				matched[i] = l.repls[n.ID].status.matchIndex
 			}
 			i++
 		}
@@ -351,13 +351,13 @@ func (l *ldrShip) notifyFlr(includeConfig bool) {
 	if includeConfig {
 		update.config = &l.configs.Latest
 	}
-	for _, f := range l.flrs {
+	for _, repl := range l.repls {
 		select {
-		case f.leaderUpdateCh <- update:
-		case <-f.leaderUpdateCh:
-			f.leaderUpdateCh <- update
+		case repl.leaderUpdateCh <- update:
+		case <-repl.leaderUpdateCh:
+			repl.leaderUpdateCh <- update
 		}
-		debug(l, update, f.status.id)
+		debug(l, update, repl.status.id)
 	}
 	if l.voter {
 		l.onMajorityCommit()
@@ -365,8 +365,8 @@ func (l *ldrShip) notifyFlr(includeConfig bool) {
 }
 
 func (l *ldrShip) checkLogCompact() {
-	for _, f := range l.flrs {
-		if f.status.removeLTE < l.removeLTE {
+	for _, repl := range l.repls {
+		if repl.status.removeLTE < l.removeLTE {
 			return
 		}
 	}

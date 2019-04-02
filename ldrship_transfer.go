@@ -89,15 +89,15 @@ func (l *ldrShip) tryTransfer() {
 	// chose ready target
 	var target uint64
 	if l.transfer.target != 0 {
-		f := l.flrs[l.transfer.target]
-		if f.status.noContact.IsZero() && f.status.matchIndex == l.lastLogIndex {
+		repl := l.repls[l.transfer.target]
+		if repl.status.noContact.IsZero() && repl.status.matchIndex == l.lastLogIndex {
 			target = l.transfer.target
 		}
 	} else {
 		for id, n := range l.configs.Latest.Nodes {
 			if id != l.nid && n.Voter {
-				f := l.flrs[id]
-				if f.status.noContact.IsZero() && f.status.matchIndex == l.lastLogIndex {
+				repl := l.repls[id]
+				if repl.status.noContact.IsZero() && repl.status.matchIndex == l.lastLogIndex {
 					target = id
 					break
 				}
@@ -128,9 +128,9 @@ func (l *ldrShip) onTimeoutNowResult(rpc rpcResponse) {
 	debug(l, rpc)
 	l.transfer.respCh = nil
 	if rpc.err != nil {
-		f := l.flrs[rpc.from]
-		if f.status.noContact.IsZero() {
-			f.status.noContact = time.Now()
+		repl := l.repls[rpc.from]
+		if repl.status.noContact.IsZero() {
+			repl.status.noContact = time.Now()
 		}
 		if l.transfer.target == 0 {
 			l.tryTransfer()

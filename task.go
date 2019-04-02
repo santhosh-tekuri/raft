@@ -164,19 +164,19 @@ func (info liveInfo) Followers() map[uint64]FlrStatus {
 		return nil
 	}
 	flrs := make(map[uint64]FlrStatus)
-	for id, f := range info.r.ldr.flrs {
+	for id, repl := range info.r.ldr.repls {
 		errMessage := ""
-		if f.status.err != nil {
-			errMessage = f.status.err.Error()
+		if repl.status.err != nil {
+			errMessage = repl.status.err.Error()
 		}
 		var round uint64
-		if f.status.round != nil {
-			round = f.status.round.Ordinal
+		if repl.status.round != nil {
+			round = repl.status.round.Ordinal
 		}
 		flrs[id] = FlrStatus{
-			MatchIndex:  f.status.matchIndex,
-			Unreachable: f.status.noContact,
-			Err:         f.status.err,
+			MatchIndex:  repl.status.matchIndex,
+			Unreachable: repl.status.noContact,
+			Err:         repl.status.err,
 			ErrMessage:  errMessage,
 			Round:       round,
 		}

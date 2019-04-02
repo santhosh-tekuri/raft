@@ -37,7 +37,7 @@ type Raft struct {
 	shutdownOnRemove bool
 	trace            Trace
 
-	// dialing flrs
+	// dialing
 	resolver  *resolver
 	dialFn    dialFn // used for mocking in tests
 	connPools map[uint64]*connPool
@@ -150,8 +150,8 @@ func (r *Raft) stateLoop() (err error) {
 		f = &flrShip{Raft: r}
 		c = &candShip{Raft: r}
 		l = &ldrShip{
-			Raft: r,
-			flrs: make(map[uint64]*flr),
+			Raft:  r,
+			repls: make(map[uint64]*replication),
 			transfer: transfer{
 				timer:        newSafeTimer(),
 				newTermTimer: newSafeTimer(),
