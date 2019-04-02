@@ -47,12 +47,6 @@ func TestRaft(t *testing.T) {
 	})
 	t.Run("barrier", test_barrier)
 	t.Run("read", test_read)
-	t.Run("takeSnapshot", func(t *testing.T) {
-		t.Run("emptyLog", test_takeSnapshot_emptyLog)
-		t.Run("thresholdNotReached", test_takeSnapshot_thresholdNotReached)
-		//todo: test ErrSnapshotInProgress
-		t.Run("restartSendUpdates", test_takeSnapshot_restartSendUpdates)
-	})
 	t.Run("sendSnapshot", func(t *testing.T) {
 		t.Run("case1", func(t *testing.T) {
 			test_sendSnapshot_case(t, false)

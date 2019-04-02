@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-func test_takeSnapshot_emptyLog(t *testing.T) {
+func TestFSM_takeSnap_emptyLog(t *testing.T) {
 	c := newCluster(t)
 	ldr := c.launch(1, false)[1]
 	defer c.shutdown()
@@ -13,7 +13,7 @@ func test_takeSnapshot_emptyLog(t *testing.T) {
 	c.takeSnapshot(ldr, 0, ErrNoUpdates)
 }
 
-func test_takeSnapshot_thresholdNotReached(t *testing.T) {
+func TestFSM_takeSnap_thresholdNotReached(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 1)
 	defer c.shutdown()
 
@@ -25,7 +25,7 @@ func test_takeSnapshot_thresholdNotReached(t *testing.T) {
 	c.takeSnapshot(ldr, 2000, ErrSnapshotThreshold)
 }
 
-func test_takeSnapshot_restartSendUpdates(t *testing.T) {
+func TestFSM_takeSnap_restartSendUpdates(t *testing.T) {
 	c := newCluster(t)
 	c.storeOpt.LogSegmentSize = 1024
 	ldr, _ := c.ensureLaunch(1)

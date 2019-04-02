@@ -91,7 +91,7 @@ func setupTransferTimeout(t *testing.T, quorumWait, taskTimeout time.Duration) (
 
 // leader should reject any transferLeadership requests,
 // while one is already in progress
-func TestLdrShip_transfer__rejectAnotherTransferRequest(t *testing.T) {
+func TestLdrShip_transfer_rejectAnotherTransferRequest(t *testing.T) {
 	c, ldr, _, _ := setupTransferTimeout(t, time.Second, 5*time.Second)
 	defer c.shutdown()
 
