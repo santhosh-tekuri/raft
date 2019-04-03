@@ -3,8 +3,6 @@ package raft
 import (
 	"errors"
 	"fmt"
-
-	"github.com/santhosh-tekuri/raft/log"
 )
 
 // todo: retryable errors should implement canRetry()
@@ -31,9 +29,8 @@ var (
 )
 
 var (
-	errInvalidTask  = errors.New("raft: invalid task")
-	errNoEntryFound = log.ErrNotFound //todo: use log.ErrNotFound directly
-	errStop         = errors.New("raft: got stop signal")
+	errInvalidTask = errors.New("raft: invalid task")
+	errStop        = errors.New("raft: got stop signal")
 )
 
 // -----------------------------------------------------------

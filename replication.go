@@ -111,7 +111,7 @@ func (r *replication) replicate(c *conn, req *appendEntriesReq) error {
 		// find matchIndex ---------------------------------------------------
 		for {
 			err := r.writeAppendEntriesReq(c, req, false)
-			if err == errNoEntryFound {
+			if err == log.ErrNotFound {
 				if err = r.sendInstallSnapReq(c, req); err == nil {
 					continue
 				}
@@ -235,7 +235,7 @@ func (r *replication) replicate(c *conn, req *appendEntriesReq) error {
 			}
 			if result.err != nil {
 				debug(r, "pipeline ended with", result.err)
-				if result.err == errNoEntryFound {
+				if result.err == log.ErrNotFound {
 					break
 				}
 				return result.err
@@ -293,7 +293,7 @@ func (r *replication) writeAppendEntriesReq(c *conn, req *appendEntriesReq, send
 	if sendEntries {
 		req.numEntries = min(r.ldrLastIndex-req.prevLogIndex, maxAppendEntries)
 		if req.numEntries > 0 && !r.log.Contains(r.nextIndex) {
-			return errNoEntryFound
+			return log.ErrNotFound
 		}
 	}
 
@@ -460,7 +460,7 @@ func (r *replication) notifyNoContact(err error) {
 
 func (r *replication) getEntryTerm(i uint64) (uint64, error) {
 	b, err := r.log.Get(i)
-	if err == errNoEntryFound {
+	if err == log.ErrNotFound {
 		return 0, err
 	} else if err != nil {
 		panic(opError(err, "Log.Get(%d)", i))

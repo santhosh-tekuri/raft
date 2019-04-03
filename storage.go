@@ -223,7 +223,7 @@ func (s *storage) getEntryTerm(index uint64) (uint64, error) {
 // never called with invalid index
 func (s *storage) getEntry(index uint64, e *entry) error {
 	b, err := s.log.Get(index)
-	if err == errNoEntryFound {
+	if err == log.ErrNotFound {
 		return err
 	} else if err != nil {
 		panic(opError(err, "Log.Get(%d)", index))
