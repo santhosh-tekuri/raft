@@ -15,7 +15,7 @@ type segment struct {
 	next      *segment
 
 	file  *mmap.File // index file
-	n     uint64     // number of entries
+	n     int        // number of entries
 	size  int        // log size
 	dirty bool       // is sync needed ?
 }
@@ -37,49 +37,49 @@ func openSegment(dir string, prevIndex uint64, opt Options) (*segment, error) {
 		prevIndex: prevIndex,
 		file:      file,
 	}
-	s.n = uint64(s.offset(0))
+	s.n = s.offset(0)
 	s.size = s.offset(s.n + 1)
 	return s, nil
 }
 
-func (s *segment) at(i uint64) int {
-	return len(s.file.Data) - int(i*8) - 8
+func (s *segment) at(i int) int {
+	return len(s.file.Data) - i*8 - 8
 }
 
-func (s *segment) offset(i uint64) int {
+func (s *segment) offset(i int) int {
 	return int(byteOrder.Uint64(s.file.Data[s.at(i):]))
 }
 
-func (s *segment) setOffset(v uint64, i uint64) {
-	byteOrder.PutUint64(s.file.Data[s.at(i):], v)
+func (s *segment) setOffset(off int, i int) {
+	byteOrder.PutUint64(s.file.Data[s.at(i):], uint64(off))
 }
 
 func (s *segment) lastIndex() uint64 {
-	return s.prevIndex + s.n
+	return s.prevIndex + uint64(s.n)
 }
 
 func (s *segment) get(i uint64, n uint64) []byte {
-	if i <= s.prevIndex {
-		panic("i<=prevIndex")
+	if i > s.prevIndex {
+		i := int(i - s.prevIndex)
+		from, to := s.offset(i), s.offset(i+int(n))
+		return s.file.Data[from:to]
 	}
-	i -= s.prevIndex
-	from, to := s.offset(i), s.offset(i+n)
-	return s.file.Data[from:to]
+	panic("i<=prevIndex")
 }
 
 func (s *segment) available() int {
-	return int(s.at(s.n+2) - s.size)
+	return s.at(s.n+2) - s.size
 }
 
 func (s *segment) append(b []byte) {
 	copy(s.file.Data[s.size:], b)
 	size := s.size + len(b)
-	s.setOffset(uint64(size), s.n+2)
+	s.setOffset(size, s.n+2)
 	s.n, s.size, s.dirty = s.n+1, size, true
 }
 
 func (s *segment) removeGTE(i uint64) error {
-	n := i - s.prevIndex - 1
+	n := int(i - s.prevIndex - 1)
 	if n < s.n {
 		s.setOffset(n, 0)
 		s.n, s.size, s.dirty = n, s.offset(n+1), true
