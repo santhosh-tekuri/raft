@@ -193,7 +193,7 @@ func (l *Log) CanLTE(i uint64) uint64 {
 }
 
 func (l *Log) RemoveLTE(i uint64) error {
-	if err := l.Sync(); err != nil {
+	if err := l.Commit(); err != nil {
 		return err
 	}
 	for l.first != l.last {
@@ -212,7 +212,7 @@ func (l *Log) RemoveLTE(i uint64) error {
 }
 
 func (l *Log) RemoveGTE(i uint64) error {
-	if err := l.Sync(); err != nil {
+	if err := l.Commit(); err != nil {
 		return err
 	}
 	for {
@@ -272,8 +272,8 @@ func (l *Log) Reset(lastIndex uint64) error {
 	return nil
 }
 
-// SyncN commits at least n entries to stable storage.
-func (l *Log) SyncN(n uint64) error {
+// CommitN commits at least n entries to stable storage.
+func (l *Log) CommitN(n uint64) error {
 	for s := l.last; s != nil; s = s.prev {
 		if !s.dirty() {
 			break
@@ -286,14 +286,14 @@ func (l *Log) SyncN(n uint64) error {
 	return nil
 }
 
-// Sync commits all entries to stable storage.
-func (l *Log) Sync() error {
-	return l.SyncN(l.LastIndex())
+// Commit commits all entries to stable storage.
+func (l *Log) Commit() error {
+	return l.CommitN(l.LastIndex())
 }
 
 // Close commits all entries and closes
 func (l *Log) Close() error {
-	err := l.Sync()
+	err := l.Commit()
 	for s := l.last; s != nil; s = s.prev {
 		if e := s.close(); err == nil {
 			err = e

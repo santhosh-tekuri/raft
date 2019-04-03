@@ -150,8 +150,8 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq, reader io.Reader) (
 	if req.numEntries > 0 {
 		defer func() {
 			if syncLog {
-				debug(r, "syncLog")
-				r.storage.syncLog(r.lastLogIndex)
+				debug(r, "commitLog")
+				r.storage.commitLog(r.lastLogIndex)
 				if r.canCommit(req, index, term) {
 					r.setCommitIndex(index)
 					r.applyCommitted(nil)

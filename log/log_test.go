@@ -54,7 +54,7 @@ func TestLog_Get(t *testing.T) {
 			n++
 			appendEntry(t, l)
 		}
-		if err := l.Sync(); err != nil {
+		if err := l.Commit(); err != nil {
 			t.Fatal(err)
 		}
 		numSeg += 2
@@ -88,7 +88,7 @@ func TestLog_GetN(t *testing.T) {
 		n++
 		appendEntry(t, l)
 	}
-	if err := l.Sync(); err != nil {
+	if err := l.Commit(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -158,7 +158,7 @@ func TestLog_ViewAt(t *testing.T) {
 		n++
 		appendEntry(t, l)
 	}
-	if err := l.Sync(); err != nil {
+	if err := l.Commit(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -203,7 +203,7 @@ func TestLog_ViewAt(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := l.Sync(); err != nil {
+	if err := l.Commit(); err != nil {
 		t.Fatal(err)
 	}
 	stop <- struct{}{}
@@ -225,7 +225,7 @@ func TestLog_RemoveLTE(t *testing.T) {
 			n++
 			appendEntry(t, l)
 		}
-		if err := l.Sync(); err != nil {
+		if err := l.Commit(); err != nil {
 			t.Fatal(err)
 		}
 		return l
@@ -322,7 +322,7 @@ func TestLog_RemoveGTE(t *testing.T) {
 			n++
 			appendEntry(t, l)
 		}
-		if err := l.Sync(); err != nil {
+		if err := l.Commit(); err != nil {
 			t.Fatal(err)
 		}
 		return l

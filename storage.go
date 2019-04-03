@@ -264,9 +264,9 @@ func (s *storage) appendEntry(e *entry) {
 	}
 }
 
-func (s *storage) syncLog(n uint64) {
-	if err := s.log.SyncN(n); err != nil {
-		panic(opError(err, "Log.SyncN(%d)", n))
+func (s *storage) commitLog(n uint64) {
+	if err := s.log.CommitN(n); err != nil {
+		panic(opError(err, "Log.CommitN(%d)", n))
 	}
 }
 
@@ -328,7 +328,7 @@ func (s *storage) bootstrap(config Config) (err error) {
 		}
 	}()
 	s.appendEntry(config.encode())
-	s.syncLog(1)
+	s.commitLog(1)
 	s.setTerm(1)
 	s.lastLogIndex, s.lastLogTerm = config.Index, config.Term
 	s.configs.Committed, s.configs.Latest = config, config

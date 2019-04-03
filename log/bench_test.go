@@ -11,7 +11,7 @@ func BenchmarkLog_Get(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
-	if err := l.Sync(); err != nil {
+	if err := l.Commit(); err != nil {
 		b.Fatal(err)
 	}
 	b.ResetTimer()
@@ -42,7 +42,7 @@ func BenchmarkLog_AppendSync(b *testing.B) {
 		if err := l.Append([]byte("data")); err != nil {
 			b.Fatal(err)
 		}
-		if err := l.Sync(); err != nil {
+		if err := l.Commit(); err != nil {
 			b.Fatal(err)
 		}
 	}
