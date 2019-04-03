@@ -13,15 +13,15 @@ var (
 	ErrNodeRemoved = errors.New("raft: node removed")
 
 	// ErrIdentityAlreadySet is returned by Storage.SetIdentity, if you are trying
-	// to override current identity
+	// to override current identity.
 	ErrIdentityAlreadySet = errors.New("raft: identity already set")
 
-	// ErrIdentityNotSet is returned by Raft.New, if no identity set in storage
+	// ErrIdentityNotSet is returned by Raft.New, if no identity set in storage.
 	ErrIdentityNotSet = errors.New("raft: identity not set")
 
 	// ErrFaultyFollower signals that the follower is faulty, and should be
 	// removed from cluster. Such follower is treated as unreachable by leader.
-	// This used use by Trace.Unreachable and FlrStatus.Err
+	// This used use by Trace.Unreachable and FlrStatus.Err.
 	ErrFaultyFollower = errors.New("raft: faulty follower, denies matchIndex")
 
 	// ErrNotCommitReady is returned by ChangeConfig, if leader is not yet ready to commit.
