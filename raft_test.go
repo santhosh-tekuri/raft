@@ -188,7 +188,11 @@ func id2Host(id uint64) string {
 }
 
 func (c *cluster) id2Addr(id uint64) string {
-	return fmt.Sprintf("%s:%d", id2Host(id), c.port)
+	port, ok := c.ports[id]
+	if !ok {
+		port = c.port
+	}
+	return fmt.Sprintf("%s:%d", id2Host(id), port)
 }
 
 func launchCluster(t *testing.T, n int) (c *cluster, ldr *Raft, flrs []*Raft) {
@@ -201,15 +205,15 @@ func launchCluster(t *testing.T, n int) (c *cluster, ldr *Raft, flrs []*Raft) {
 var clusters = make(map[string]int) // map[testname]numClusters
 
 func newCluster(t *testing.T) *cluster {
-	debug()
-	debug("-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8--")
-	debug()
-	tdebug(t.Name(), "--------------------------")
 	heartbeatTimeout := 1000 * time.Millisecond
 	var checkLeak func()
 	var testTimeout *time.Timer
 	clusters[t.Name()]++
 	if clusters[t.Name()] == 1 { // first cluster in test, initialize network and checks
+		debug()
+		debug("-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8--")
+		debug()
+		tdebug(t.Name(), "--------------------------")
 		network = fnet.New()
 		checkLeak = leaktest.Check(t)
 		testTimeout = time.AfterFunc(time.Minute, func() {
@@ -234,6 +238,7 @@ func newCluster(t *testing.T) *cluster {
 		checkLeak:        checkLeak,
 		testTimeout:      testTimeout,
 		rr:               make(map[uint64]*Raft),
+		ports:            make(map[uint64]int),
 		storage:          make(map[uint64]*Storage),
 		serveErr:         make(map[uint64]chan error),
 		heartbeatTimeout: heartbeatTimeout,
@@ -267,6 +272,7 @@ type cluster struct {
 	checkLeak        func()
 	testTimeout      *time.Timer
 	rr               map[uint64]*Raft
+	ports            map[uint64]int
 	storage          map[uint64]*Storage
 	serverErrMu      sync.RWMutex
 	serveErr         map[uint64]chan error
