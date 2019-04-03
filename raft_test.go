@@ -63,7 +63,7 @@ func TestRaft_bootstrap(t *testing.T) {
 	ldr := c.rr[1]
 	config := ldr.Info().Configs().Latest
 	for _, r := range c.rr {
-		if err := config.AddVoter(r.NID(), id2Addr(r.NID())); err != nil {
+		if err := config.AddVoter(r.NID(), c.id2Addr(r.NID())); err != nil {
 			c.Fatal(err)
 		}
 	}
@@ -187,8 +187,8 @@ func id2Host(id uint64) string {
 	return fmt.Sprintf("M%d", id)
 }
 
-func id2Addr(id uint64) string {
-	return id2Host(id) + ":8888"
+func (c *cluster) id2Addr(id uint64) string {
+	return fmt.Sprintf("%s:%d", id2Host(id), c.port)
 }
 
 func launchCluster(t *testing.T, n int) (c *cluster, ldr *Raft, flrs []*Raft) {
@@ -221,6 +221,7 @@ func newCluster(t *testing.T) *cluster {
 	c := &cluster{
 		T:                t,
 		id:               clusterID,
+		port:             8888 + int(clusterID),
 		checkLeak:        leaktest.Check(t),
 		testTimeout:      testTimeout,
 		network:          fnet.New(),
@@ -253,6 +254,7 @@ var clusterID uint64 = 0
 type cluster struct {
 	*testing.T
 	id               uint64
+	port             int
 	checkLeak        func()
 	testTimeout      *time.Timer
 	rr               map[uint64]*Raft
@@ -299,7 +301,7 @@ func (c *cluster) launch(n int, bootstrap bool) map[uint64]*Raft {
 	nodes := make(map[uint64]Node, n)
 	for i := 1; i <= n; i++ {
 		id := uint64(i + len(c.rr))
-		nodes[id] = Node{ID: id, Addr: id2Addr(id), Voter: true}
+		nodes[id] = Node{ID: id, Addr: c.id2Addr(id), Voter: true}
 	}
 
 	launched := make(map[uint64]*Raft)
@@ -344,7 +346,7 @@ func (c *cluster) serve(r *Raft) {
 	host := c.network.Host(id2Host(r.NID()))
 	r.dialFn = host.DialTimeout
 
-	l, err := host.Listen("tcp", id2Addr(r.NID()))
+	l, err := host.Listen("tcp", c.id2Addr(r.NID()))
 	if err != nil {
 		c.Fatalf("raft.listen failed: %v", err)
 	}

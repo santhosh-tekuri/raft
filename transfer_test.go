@@ -18,7 +18,7 @@ func TestTransfer_singleVoter(t *testing.T) {
 	// launch new raft, and add him as nonvoter
 	c.launch(1, false)
 	c.waitCommitReady(ldr)
-	c.ensure(waitAddNonvoter(ldr, 2, id2Addr(2), false))
+	c.ensure(waitAddNonvoter(ldr, 2, c.id2Addr(2), false))
 
 	// transfer leadership, must return ErrLeadershipTransferNoVoter
 	_, err := waitTask(ldr, TransferLeadership(0, c.longTimeout), c.longTimeout)
@@ -118,7 +118,7 @@ func TestTransfer_rejectLogUpdateTasks(t *testing.T) {
 	}
 
 	// send configChange request, must be rejected with InProgressError
-	err = waitAddNonvoter(ldr, 5, id2Addr(5), false)
+	err = waitAddNonvoter(ldr, 5, c.id2Addr(5), false)
 	if _, ok := err.(InProgressError); !ok {
 		t.Fatalf("err: got %#v, want InProgressError", err)
 	}

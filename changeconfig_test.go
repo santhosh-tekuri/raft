@@ -63,7 +63,7 @@ func TestChangeConfig_trace(t *testing.T) {
 	defer c.unregister(configRelated)
 
 	// add M3 as nonvoter, wait for success reply
-	c.ensure(waitAddNonvoter(ldr, 3, id2Addr(3), false))
+	c.ensure(waitAddNonvoter(ldr, 3, c.id2Addr(3), false))
 
 	// ensure that leader raised configChange
 	select {
@@ -156,7 +156,7 @@ func TestChangeConfig_promote_newNode_singleRound(t *testing.T) {
 		nr := c.launch(1, false)[id]
 
 		// add him as nonvoter with promote=true
-		c.ensure(waitAddNonvoter(ldr, id, id2Addr(id), true))
+		c.ensure(waitAddNonvoter(ldr, id, c.id2Addr(id), true))
 
 		// wait until leader promotes him to voter
 		e, err := promoting.waitForEvent(c.longTimeout)
@@ -225,7 +225,7 @@ func TestChangeConfig_promote_newNode_uptodateButConfigChangeInProgress(t *testi
 	defer c.unregister(roundCompleted)
 	promoting := c.registerFor(configActionStarted, ldr)
 	defer c.unregister(promoting)
-	task := addNonvoter(ldr, 3, id2Addr(3), true)
+	task := addNonvoter(ldr, 3, c.id2Addr(3), true)
 	select {
 	case <-task.Done():
 		t.Fatalf("should not be done: %v", task.Err())
