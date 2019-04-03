@@ -25,3 +25,30 @@ func TestConnPool_getConn_IdentityError(t *testing.T) {
 		c1.Fatalf("got %v, want IdentityError", err)
 	}
 }
+
+// tests that addr update in config is picked up by connPool
+func TestConnPool_getConn_ConfigAddrUpdate(t *testing.T) {
+	// launch 3 node cluster
+	c, ldr, flrs := launchCluster(t, 3)
+	defer c.shutdown()
+
+	// stop one of follower
+	c.shutdown(flrs[0])
+
+	// wait for leader to detect that follower is unreachable
+	_, _ = c.waitUnreachableDetected(ldr, flrs[0])
+
+	// restart follower at different address
+	c.ports[flrs[0].nid] = 9999
+	c.restart(flrs[0])
+
+	// submit ChangeConfig with new addr
+	config := ldr.Info().Configs().Latest
+	if err := config.SetAddr(flrs[0].nid, c.id2Addr(flrs[0].nid)); err != nil {
+		t.Fatal(err)
+	}
+	c.ensure(waitTask(ldr, ChangeConfig(config), c.longTimeout))
+
+	// wait for leader to detect that follower is reachable
+	c.waitReachableDetected(ldr, flrs[0])
+}
