@@ -281,7 +281,14 @@ type cluster struct {
 	commitTimeout    time.Duration
 	opt              Options
 	storeOpt         StorageOptions
+	resolverMu       sync.RWMutex
 	*events
+}
+
+func (c *cluster) LookupID(id uint64) (addr string, err error) {
+	c.resolverMu.RLock()
+	defer c.resolverMu.RUnlock()
+	return c.id2Addr(id), nil
 }
 
 // if last param is error, call t.Fatal

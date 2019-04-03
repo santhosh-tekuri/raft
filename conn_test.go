@@ -55,3 +55,27 @@ func TestConnPool_getConn_ConfigAddrUpdate(t *testing.T) {
 	// wait for leader to detect that follower is reachable
 	c.waitReachableDetected(ldr, flrs[0])
 }
+
+// tests that addr update from Resolver is picked up by connPool
+func TestConnPool_getConn_Resolver(t *testing.T) {
+	// launch 3 node cluster with Resolver set
+	c := newCluster(t)
+	c.opt.Resolver = c
+	ldr, flrs := c.ensureLaunch(3)
+	defer c.shutdown()
+
+	// stop one of follower
+	c.shutdown(flrs[0])
+
+	// wait for leader to detect that follower is unreachable
+	_, _ = c.waitUnreachableDetected(ldr, flrs[0])
+
+	// restart follower at different address with resolver addr updated
+	c.resolverMu.Lock()
+	c.ports[flrs[0].nid] = 9999
+	c.resolverMu.Unlock()
+	c.restart(flrs[0])
+
+	// wait for leader to detect that follower is reachable at new addr
+	c.waitReachableDetected(ldr, flrs[0])
+}
