@@ -42,6 +42,9 @@ func TestConnPool_getConn_ConfigAddrUpdate(t *testing.T) {
 	c.ports[flrs[0].nid] = 9999
 	c.restart(flrs[0])
 
+	// wait until leader becomes commit ready
+	c.waitCommitReady(ldr)
+
 	// submit ChangeConfig with new addr
 	config := ldr.Info().Configs().Latest
 	if err := config.SetAddr(flrs[0].nid, c.id2Addr(flrs[0].nid)); err != nil {
