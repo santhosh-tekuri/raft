@@ -151,7 +151,7 @@ func (r *replication) String() string {
 }
 
 func (fsm *stateMachine) String() string {
-	return fmt.Sprintf("M%d", fsm.id)
+	return fmt.Sprintf("M%d FSM", fsm.id)
 }
 
 func (u leaderUpdate) String() string {

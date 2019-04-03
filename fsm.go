@@ -65,7 +65,7 @@ func (fsm *stateMachine) onApply(t fsmApply) {
 		if e.index != fsm.index+1 {
 			panic(bug(1, "e.index=%d, fsm.index=%d", e.index, fsm.index))
 		}
-		debug(fsm, "fsm.apply", e.typ, e.index)
+		debug(fsm, "apply", e.typ, e.index)
 		if e.typ == entryUpdate {
 			fsm.Update(e.data)
 		}
