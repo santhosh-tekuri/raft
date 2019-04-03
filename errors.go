@@ -131,7 +131,7 @@ type IdentityError struct {
 }
 
 func (e IdentityError) Error() string {
-	return fmt.Sprintf("raft: server at %s does not has cluster %d node %d", e.Addr, e.Cluster, e.Node)
+	return fmt.Sprintf("raft: identity of server at %s is not cid=%d nid=%d", e.Addr, e.Cluster, e.Node)
 }
 
 // -----------------------------------------------------------

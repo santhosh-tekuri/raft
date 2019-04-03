@@ -108,7 +108,7 @@ func (r *Raft) Serve(l net.Listener) error {
 	if r.isClosed() {
 		return ErrServerClosed
 	}
-	debug(r, "starting....")
+	debug(r, "serving at", l.Addr())
 	if r.trace.Starting != nil {
 		r.trace.Starting(r.liveInfo())
 	}

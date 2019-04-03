@@ -198,33 +198,41 @@ func launchCluster(t *testing.T, n int) (c *cluster, ldr *Raft, flrs []*Raft) {
 	return
 }
 
+var clusters = make(map[string]int) // map[testname]numClusters
+
 func newCluster(t *testing.T) *cluster {
 	debug()
 	debug("-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8--")
 	debug()
 	tdebug(t.Name(), "--------------------------")
 	heartbeatTimeout := 1000 * time.Millisecond
-	testTimeout := time.AfterFunc(time.Minute, func() {
-		fmt.Printf("test %s timed out; failing...", t.Name())
-		buf := make([]byte, 1024)
-		for {
-			n := runtime.Stack(buf, true)
-			if n < len(buf) {
-				buf = buf[:n]
-				fmt.Println(string(buf))
-				return
+	var checkLeak func()
+	var testTimeout *time.Timer
+	clusters[t.Name()]++
+	if clusters[t.Name()] == 1 { // first cluster in test, initialize network and checks
+		network = fnet.New()
+		checkLeak = leaktest.Check(t)
+		testTimeout = time.AfterFunc(time.Minute, func() {
+			fmt.Printf("test %s timed out; failing...", t.Name())
+			buf := make([]byte, 1024)
+			for {
+				n := runtime.Stack(buf, true)
+				if n < len(buf) {
+					buf = buf[:n]
+					fmt.Println(string(buf))
+					return
+				}
+				buf = make([]byte, 2*len(buf))
 			}
-			buf = make([]byte, 2*len(buf))
-		}
-	})
+		})
+	}
 	clusterID++
 	c := &cluster{
 		T:                t,
 		id:               clusterID,
 		port:             8888 + int(clusterID),
-		checkLeak:        leaktest.Check(t),
+		checkLeak:        checkLeak,
 		testTimeout:      testTimeout,
-		network:          fnet.New(),
 		rr:               make(map[uint64]*Raft),
 		storage:          make(map[uint64]*Storage),
 		serveErr:         make(map[uint64]chan error),
@@ -250,6 +258,7 @@ func newCluster(t *testing.T) *cluster {
 }
 
 var clusterID uint64 = 0
+var network = fnet.New()
 
 type cluster struct {
 	*testing.T
@@ -261,7 +270,6 @@ type cluster struct {
 	storage          map[uint64]*Storage
 	serverErrMu      sync.RWMutex
 	serveErr         map[uint64]chan error
-	network          *fnet.Network
 	heartbeatTimeout time.Duration
 	longTimeout      time.Duration
 	commitTimeout    time.Duration
@@ -343,7 +351,7 @@ func (c *cluster) launch(n int, bootstrap bool) map[uint64]*Raft {
 func (c *cluster) serve(r *Raft) {
 	c.Helper()
 	// switch to fake transport
-	host := c.network.Host(id2Host(r.NID()))
+	host := network.Host(id2Host(r.NID()))
 	r.dialFn = host.DialTimeout
 
 	l, err := host.Listen("tcp", c.id2Addr(r.NID()))
@@ -397,7 +405,9 @@ func (c *cluster) shutdownErr(ok bool, rr ...*Raft) {
 		c.FailNow()
 	}
 	if checkLeak && c.checkLeak != nil {
-		c.testTimeout.Stop()
+		if c.testTimeout != nil {
+			c.testTimeout.Stop()
+		}
 		c.checkLeak()
 		c.checkLeak = nil
 	}
@@ -713,17 +723,20 @@ func (c *cluster) waitCatchup(rr ...*Raft) {
 	}
 }
 
-func (c *cluster) waitUnreachableDetected(ldr, failed *Raft) {
+func (c *cluster) waitUnreachableDetected(ldr, failed *Raft) (since time.Time, err error) {
 	c.Helper()
 	tdebug("waitUnreachableDetected: ldr:", host(ldr), "failed:", host(failed))
 	condition := func(e *event) bool {
-		return !ldr.Info().Followers()[failed.NID()].Unreachable.IsZero()
+		flr := ldr.Info().Followers()[failed.NID()]
+		since, err = flr.Unreachable, flr.Err
+		return !flr.Unreachable.IsZero()
 	}
 	unreachable := c.registerFor(unreachable, ldr)
 	defer c.unregister(unreachable)
 	if !unreachable.waitFor(condition, c.longTimeout) {
 		c.Fatalf("waitUnreachableDetected: ldr M%d failed to detect M%d is unreachable", ldr.NID(), failed.NID())
 	}
+	return
 }
 
 func (c *cluster) waitReachableDetected(ldr, failed *Raft) {
@@ -787,19 +800,19 @@ func (c *cluster) takeSnapshot(r *Raft, threshold uint64, want error) {
 func (c *cluster) disconnect(rr ...*Raft) {
 	tdebug("disconnect:", hosts(rr))
 	if len(rr) == 0 {
-		c.network.SetFirewall(fnet.AllowSelf)
+		network.SetFirewall(fnet.AllowSelf)
 		return
 	}
 	var hosts []string
 	for _, r := range rr {
 		hosts = append(hosts, id2Host(r.NID()))
 	}
-	c.network.SetFirewall(fnet.Split(hosts, fnet.AllowAll))
+	network.SetFirewall(fnet.Split(hosts, fnet.AllowAll))
 }
 
 func (c *cluster) connect() {
 	tdebug("reconnecting")
-	c.network.SetFirewall(fnet.AllowAll)
+	network.SetFirewall(fnet.AllowAll)
 }
 
 func (c *cluster) snaps(r *Raft) []uint64 {
