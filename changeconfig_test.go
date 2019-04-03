@@ -301,6 +301,38 @@ func TestChangeConfig_promote_newNode_uptodateButConfigChangeInProgress(t *testi
 	waitForCondition(isVoter, c.commitTimeout, c.longTimeout)
 }
 
+// tests that we can convert 5 node cluster into two node cluster with single ChangeConfig
+func TestChangeConfig_removeVoters(t *testing.T) {
+	// launch 5 node cluster
+	c, ldr, flrs := launchCluster(t, 5)
+	defer c.shutdown()
+
+	// wait for commit ready
+	c.waitCommitReady(ldr)
+
+	// submit ChangeConfig with two voters removed, and wait for completion
+	config := ldr.Info().Configs().Latest
+	if err := config.SetAction(flrs[0].nid, Remove); err != nil {
+		t.Fatal(err)
+	}
+	if err := config.SetAction(flrs[1].nid, Remove); err != nil {
+		t.Fatal(err)
+	}
+	c.ensure(waitTask(ldr, ChangeConfig(config), c.longTimeout))
+
+	// wait for stable config
+	c.ensure(waitTask(ldr, WaitForStableConfig(), c.longTimeout))
+
+	// shutdown the removed nodes, and one more voter
+	c.shutdown(flrs[0], flrs[1])
+
+	// shutdown the leader
+	c.shutdown(ldr)
+
+	// wait for leader among the remaining two nodes
+	c.waitForLeader(flrs[2], flrs[3])
+}
+
 // ---------------------------------------------------------
 
 // todo: test promote existingNode notUptodate
