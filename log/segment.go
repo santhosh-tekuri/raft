@@ -87,10 +87,6 @@ func (s *segment) removeGTE(i uint64) error {
 	return s.sync()
 }
 
-func (s *segment) flush() error {
-	return nil
-}
-
 func (s *segment) sync() error {
 	if s.dirty {
 		if err := s.file.Sync(); err != nil {

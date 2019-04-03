@@ -273,17 +273,6 @@ func (l *Log) Reset(lastIndex uint64) error {
 	return nil
 }
 
-func (l *Log) Flush() error {
-	for s := l.last; s != nil; s = s.prev {
-		if !s.dirty {
-			break
-		} else if err := s.flush(); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (l *Log) Sync() error {
 	for s := l.last; s != nil; s = s.prev {
 		if !s.dirty {
