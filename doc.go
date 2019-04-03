@@ -10,3 +10,9 @@ package raft
 // todo: can we provide type safe tasks: task.Result() now returns interface{}
 
 // todo: nonvoter should not bother leader with matchIndex updates until round is completed
+
+// todo:
+//  nonvoter with none action, should not send matchIndex updates
+//  in such case:
+//     info.followers.matchIndex will not be reflected for them
+//     promotion might require to fetch matchIndex first
