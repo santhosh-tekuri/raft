@@ -173,7 +173,6 @@ func (l *Log) Append(b []byte) error {
 		if err != nil {
 			return err
 		}
-		s.dirty = l.last.dirty
 		connect(l.last, s)
 		l.last = s
 	}
@@ -275,7 +274,7 @@ func (l *Log) Reset(lastIndex uint64) error {
 
 func (l *Log) Sync() error {
 	for s := l.last; s != nil; s = s.prev {
-		if !s.dirty {
+		if !s.dirty() {
 			break
 		} else if err := s.sync(); err != nil {
 			return err

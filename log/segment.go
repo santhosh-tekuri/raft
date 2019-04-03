@@ -14,10 +14,10 @@ type segment struct {
 	prev      *segment
 	next      *segment
 
-	file  *mmap.File // index file
-	n     int        // number of entries
-	size  int        // log size
-	dirty bool       // is sync needed ?
+	file   *mmap.File // index file
+	n      int        // number of entries
+	size   int        // log size
+	synced int        // number of entries synced, will be -1 on GTE
 }
 
 func openSegment(dir string, prevIndex uint64, opt Options) (*segment, error) {
@@ -38,6 +38,7 @@ func openSegment(dir string, prevIndex uint64, opt Options) (*segment, error) {
 		file:      file,
 	}
 	s.n = s.offset(0)
+	s.synced = s.n
 	s.size = s.offset(s.n + 1)
 	return s, nil
 }
@@ -75,20 +76,24 @@ func (s *segment) append(b []byte) {
 	copy(s.file.Data[s.size:], b)
 	size := s.size + len(b)
 	s.setOffset(size, s.n+2)
-	s.n, s.size, s.dirty = s.n+1, size, true
+	s.n, s.size = s.n+1, size
 }
 
 func (s *segment) removeGTE(i uint64) error {
 	n := int(i - s.prevIndex - 1)
 	if n < s.n {
 		s.setOffset(n, 0)
-		s.n, s.size, s.dirty = n, s.offset(n+1), true
+		s.n, s.size, s.synced = n, s.offset(n+1), -1
 	}
 	return s.sync()
 }
 
+func (s *segment) dirty() bool {
+	return s.synced < s.n
+}
+
 func (s *segment) sync() error {
-	if s.dirty {
+	if s.dirty() {
 		if err := s.file.Sync(); err != nil {
 			return err
 		}
@@ -96,7 +101,7 @@ func (s *segment) sync() error {
 		if err := s.file.Sync(); err != nil {
 			return err
 		}
-		s.dirty = false
+		s.synced = s.n
 	}
 	return nil
 }
