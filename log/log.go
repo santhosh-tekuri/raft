@@ -272,10 +272,13 @@ func (l *Log) Reset(lastIndex uint64) error {
 	return nil
 }
 
-func (l *Log) Sync() error {
+// SyncN commits at least n entries to stable storage.
+func (l *Log) SyncN(n uint64) error {
 	for s := l.last; s != nil; s = s.prev {
 		if !s.dirty() {
 			break
+		} else if s.prevIndex >= n {
+			continue
 		} else if err := s.sync(); err != nil {
 			return err
 		}
@@ -283,6 +286,12 @@ func (l *Log) Sync() error {
 	return nil
 }
 
+// Sync commits all entries to stable storage.
+func (l *Log) Sync() error {
+	return l.SyncN(l.LastIndex())
+}
+
+// Close commits all entries and closes
 func (l *Log) Close() error {
 	err := l.Sync()
 	for s := l.last; s != nil; s = s.prev {
