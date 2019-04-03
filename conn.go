@@ -74,11 +74,8 @@ func (r *resolver) update(config Config) {
 }
 
 func (r *resolver) lookupID(id uint64) (string, error) {
-	var addr string
-	var err error
-
 	if r.delegate != nil {
-		addr, err = r.delegate.LookupID(id)
+		addr, err := r.delegate.LookupID(id)
 		if err == nil {
 			return addr, nil
 		}
@@ -87,10 +84,10 @@ func (r *resolver) lookupID(id uint64) (string, error) {
 		}
 	}
 
+	// fallback
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	addr = r.addrs[id]
-	return addr, nil
+	return r.addrs[id], nil
 }
 
 // --------------------------------------------------------------------
@@ -108,33 +105,34 @@ type connPool struct {
 }
 
 func (pool *connPool) getConn() (*conn, error) {
+	var c *conn
 	pool.mu.Lock()
-	defer pool.mu.Unlock()
-
-	num := len(pool.conns)
-	if num == 0 {
-		addr, err := pool.resolver.lookupID(pool.nid)
-		if err != nil {
-			return nil, err
-		}
-		c, err := dial(pool.dialFn, addr, pool.timeout)
-		if err != nil {
-			return nil, err
-		}
-
-		// check identity
-		resp := &identityResp{}
-		err = c.doRPC(&identityReq{cid: pool.cid, nid: pool.nid}, resp)
-		if err != nil || resp.result != success {
-			_ = c.rwc.Close()
-			return nil, IdentityError{pool.cid, pool.nid, addr}
-		}
-
+	if num := len(pool.conns); num > 0 {
+		c, pool.conns[num-1] = pool.conns[num-1], nil
+		pool.conns = pool.conns[:num-1]
+	}
+	pool.mu.Unlock()
+	if c != nil {
 		return c, nil
 	}
-	var c *conn
-	c, pool.conns[num-1] = pool.conns[num-1], nil
-	pool.conns = pool.conns[:num-1]
+
+	// dial ---------
+	addr, err := pool.resolver.lookupID(pool.nid)
+	if err != nil {
+		return nil, err
+	}
+	c, err = dial(pool.dialFn, addr, pool.timeout)
+	if err != nil {
+		return nil, err
+	}
+
+	// check identity ---------
+	resp := &identityResp{}
+	err = c.doRPC(&identityReq{cid: pool.cid, nid: pool.nid}, resp)
+	if err != nil || resp.result != success {
+		_ = c.rwc.Close()
+		return nil, IdentityError{pool.cid, pool.nid, addr}
+	}
 	return c, nil
 }
 
