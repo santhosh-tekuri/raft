@@ -8,3 +8,7 @@ package raft
 // todo: resolver should catch latest resolved addr
 // todo: leader should back pressure on newEntryCh
 // todo: can we provide type safe tasks: task.Result() now returns interface{}
+
+// todo: leader can do log.sync just before updating commitIndex
+// todo: maintain log.syncIndex and avoid log.sync if possible
+//       note that on log.removeGTE update log.syncIndex
