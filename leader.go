@@ -149,7 +149,7 @@ func (l *leader) storeEntry(ne *newEntry) {
 func (l *leader) addReplication(n Node) {
 	assert(n.ID != l.nid, "adding replication for leader")
 	repl := &replication{
-		voter:          n.Voter,
+		node:           n,
 		rtime:          newRandTime(),
 		status:         replicationStatus{id: n.ID, removeLTE: l.removeLTE},
 		ldrStartIndex:  l.startIndex,

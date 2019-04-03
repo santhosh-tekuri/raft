@@ -26,7 +26,7 @@ type replication struct {
 	matchIndex    uint64
 	nextIndex     uint64
 
-	voter bool
+	node Node
 
 	// from this time node is unreachable
 	// zero value means node is reachable
@@ -397,7 +397,7 @@ func (r *replication) checkLeaderUpdate(stopCh <-chan struct{}, req *appendEntri
 	if sendEntries && r.nextIndex > r.ldrLastIndex {
 		// for nonvoter, dont send heartbeats
 		var timerCh <-chan time.Time
-		if r.voter {
+		if r.node.Voter {
 			r.timer.reset(r.hbTimeout / 2)
 			timerCh = r.timer.C
 		}
@@ -435,7 +435,7 @@ func (r *replication) onLeaderUpdate(u leaderUpdate, req *appendEntriesReq) {
 	r.log = u.log
 	r.ldrLastIndex, req.ldrCommitIndex = u.log.LastIndex(), u.commitIndex
 	if u.config != nil {
-		r.voter = u.config.Nodes[r.status.id].Voter
+		r.node = u.config.Nodes[r.status.id]
 	}
 }
 
