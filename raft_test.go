@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"math/rand"
 	"os"
 	"reflect"
 	"runtime"
@@ -218,9 +217,10 @@ func newCluster(t *testing.T) *cluster {
 			buf = make([]byte, 2*len(buf))
 		}
 	})
+	clusterID++
 	c := &cluster{
 		T:                t,
-		id:               rand.Uint64(),
+		id:               clusterID,
 		checkLeak:        leaktest.Check(t),
 		testTimeout:      testTimeout,
 		network:          fnet.New(),
@@ -247,6 +247,8 @@ func newCluster(t *testing.T) *cluster {
 	c.storeOpt.LogSegmentSize = 4 * 1024
 	return c
 }
+
+var clusterID uint64 = 0
 
 type cluster struct {
 	*testing.T
