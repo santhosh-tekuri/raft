@@ -388,6 +388,7 @@ func (l *leader) onWaitForStableConfig(t waitForStableConfig) {
 // ---------------------------------------------------------
 
 func (l *leader) setCommitIndex(index uint64) {
+	l.storage.syncLog(index)
 	if l.commitIndex < l.startIndex && index >= l.startIndex {
 		if l.trace.CommitReady != nil {
 			l.trace.CommitReady(l.liveInfo())

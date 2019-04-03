@@ -140,8 +140,7 @@ func (l *leader) storeEntry(ne *newEntry) {
 		l.applyCommitted()
 	}
 	if l.lastLogIndex > lastIndex {
-		debug(l, "syncLog", l.lastLogIndex-lastIndex, "entries")
-		l.storage.syncLog()
+		debug(l, "got batch of", l.lastLogIndex-lastIndex, "entries")
 		l.beginFinishedRounds()
 		l.notifyFlr(l.configs.Latest.Index > configIndex)
 	}
