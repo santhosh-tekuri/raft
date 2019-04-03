@@ -5,19 +5,29 @@ import (
 	"fmt"
 )
 
-// todo: retryable errors should implement canRetry()
-
 var (
-	// ErrServerClosed is returned by the Raft's Serve and ListenAndServe
-	// methods after a call to Shutdown
+	// ErrServerClosed is returned by the Raft.Serve if it was closed due to Shutdown call
 	ErrServerClosed = errors.New("raft: server closed")
-	ErrNodeRemoved  = errors.New("raft: node removed")
 
+	// ErrNodeRemoved is returned by the Raft.Serve if current node is removed from cluster
+	ErrNodeRemoved = errors.New("raft: node removed")
+
+	// ErrIdentityAlreadySet is returned by Storage.SetIdentity, if you are trying
+	// to override current identity
 	ErrIdentityAlreadySet = errors.New("raft: identity already set")
-	ErrIdentityNotSet     = errors.New("raft: identity not set")
-	ErrFaultyFollower     = errors.New("raft: faulty follower, denies matchIndex")
 
-	ErrNotCommitReady                   = errors.New("raft.configChange: not ready to commit")
+	// ErrIdentityNotSet is returned by Raft.New, if no identity set in storage
+	ErrIdentityNotSet = errors.New("raft: identity not set")
+
+	// ErrFaultyFollower signals that the follower is faulty, and should be
+	// removed from cluster. Such follower is treated as unreachable by leader.
+	// This used use by Trace.Unreachable and FlrStatus.Err
+	ErrFaultyFollower = errors.New("raft: faulty follower, denies matchIndex")
+
+	// ErrNotCommitReady is returned by ChangeConfig, if leader is not yet ready to commit.
+	// User can retry ChangeConfig after some time in case of this error.
+	ErrNotCommitReady = temporaryError("raft.configChange: not ready to commit")
+
 	ErrConfigChanged                    = errors.New("raft.configChange: config changed meanwhile")
 	ErrSnapshotThreshold                = errors.New("raft.takeSnapshot: not enough outstanding logs to snapshot")
 	ErrNoUpdates                        = errors.New("raft.takeSnapshot: no updates to FSM")
@@ -73,11 +83,15 @@ func (e InProgressError) Error() string {
 	return fmt.Sprintf("raft: another %s in progress", string(e))
 }
 
+func (e InProgressError) Temporary() {}
+
 type TimeoutError string
 
 func (e TimeoutError) Error() string {
 	return fmt.Sprintf("raft: %s timeout", string(e))
 }
+
+func (e TimeoutError) Temporary() {}
 
 // -----------------------------------------------------------
 
@@ -119,3 +133,25 @@ type IdentityError struct {
 func (e IdentityError) Error() string {
 	return fmt.Sprintf("raft: server at %s does not has cluster %d node %d", e.Addr, e.Cluster, e.Node)
 }
+
+// -----------------------------------------------------------
+
+// The TemporaryError interface identifies an error that is temporary.
+// This signals user to retry the operation after some time.
+type TemporaryError interface {
+	error
+
+	// Temporary is a no-op function but
+	// serves to distinguish errors that are temporary
+	// from ordinary errors: an error is temporary
+	// if it has a Temporary method.
+	Temporary()
+}
+
+type temporaryError string
+
+func (e temporaryError) Error() string {
+	return string(e)
+}
+
+func (e temporaryError) Temporary() {}
