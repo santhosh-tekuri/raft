@@ -112,6 +112,7 @@ func (r *Raft) Serve(l net.Listener) error {
 	if r.trace.Starting != nil {
 		r.trace.Starting(r.liveInfo())
 	}
+	defer debug(r, "<< shutdown()")
 
 	var wg sync.WaitGroup
 	defer wg.Wait()

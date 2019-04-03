@@ -376,13 +376,15 @@ func (c *cluster) shutdownErr(ok bool, rr ...*Raft) {
 	}
 	for _, r := range rr {
 		tdebug("shutting down", host(r))
+		r.Shutdown()
+	}
+	for _, r := range rr {
 		<-r.Shutdown()
 		c.serverErrMu.RLock()
 		ch := c.serveErr[r.NID()]
 		c.serverErrMu.RUnlock()
 		got := <-ch
 		ch <- ErrServerClosed
-		tdebug(host(r), "is shutdown", got)
 		if ok != (got == ErrServerClosed) {
 			c.Errorf("M%d.shutdown: got %v, want ErrServerClosed=%v", r.NID(), got, ok)
 		}
