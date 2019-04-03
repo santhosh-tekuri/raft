@@ -8,3 +8,5 @@ package raft
 // todo: resolver should catch latest resolved addr
 // todo: leader should back pressure on newEntryCh
 // todo: can we provide type safe tasks: task.Result() now returns interface{}
+
+// todo: nonvoter should not bother leader with matchIndex updates until round is completed
