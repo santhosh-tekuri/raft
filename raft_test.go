@@ -1,3 +1,17 @@
+// Copyright 2019 Santhosh Kumar Tekuri
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package raft
 
 import (
@@ -262,7 +276,7 @@ func newCluster(t *testing.T) *cluster {
 	return c
 }
 
-var clusterID uint64 = 0
+var clusterID uint64
 var network = fnet.New()
 
 type cluster struct {
@@ -1271,16 +1285,15 @@ func (fsm *fsmMock) Read(cmd []byte) interface{} {
 			return errNoCommands
 		}
 		return fsmReply{fsm.cmds[sz-1], sz - 1}
-	} else {
-		i, err := strconv.Atoi(s)
-		if err != nil {
-			return err
-		}
-		if i < 0 || i >= len(fsm.cmds) {
-			return errNoCommandAt
-		}
-		return fsmReply{fsm.cmds[i], i}
 	}
+	i, err := strconv.Atoi(s)
+	if err != nil {
+		return err
+	}
+	if i < 0 || i >= len(fsm.cmds) {
+		return errNoCommandAt
+	}
+	return fsmReply{fsm.cmds[i], i}
 }
 
 func (fsm *fsmMock) len() uint64 {
@@ -1309,10 +1322,7 @@ type stateMock struct {
 }
 
 func (state stateMock) WriteTo(w io.Writer) error {
-	if err := gob.NewEncoder(w).Encode(state.cmds); err != nil {
-		return err
-	}
-	return nil
+	return gob.NewEncoder(w).Encode(state.cmds)
 }
 
 func (state stateMock) Release() {}
