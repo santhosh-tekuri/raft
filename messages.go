@@ -156,7 +156,7 @@ type rpcResult uint8
 
 const (
 	success rpcResult = iota + 1
-	idMismatch
+	identityMismatch
 	staleTerm
 	alreadyVoted
 	leaderKnown
