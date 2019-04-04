@@ -210,7 +210,7 @@ func (l *leader) checkReplUpdates(u replUpdate) {
 			case matchIndex:
 				matchUpdated = true
 				status.matchIndex = u.val
-				if l.configs.IsCommitted() && !status.node.Voter && status.node.Action != None {
+				if !status.node.Voter && status.node.Action != None {
 					// matchIndex update required only for remove and promote
 					l.checkConfigAction(nil, l.configs.Latest, status)
 				}
@@ -288,6 +288,7 @@ func (l *leader) checkQuorum(wait time.Duration) {
 		}
 	}
 	if wait == 0 {
+		debug(l, "quorumUnreachable: stepping down")
 		l.setState(Follower)
 		l.setLeader(0)
 	} else if !l.timer.active {
