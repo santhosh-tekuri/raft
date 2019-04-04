@@ -56,8 +56,8 @@ func (c *candidate) startElection() {
 	}
 	for _, n := range c.configs.Latest.Nodes {
 		if n.Voter && n.ID != c.nid {
-			pool := c.getConnPool(n.ID)
 			debug(c, n, ">>", req)
+			pool := c.getConnPool(n.ID)
 			go func(ch chan<- rpcResponse) {
 				resp := &voteResp{}
 				err := pool.doRPC(req, resp)

@@ -24,6 +24,10 @@ import (
 	"github.com/fatih/color"
 )
 
+const (
+	trace = true
+)
+
 var colorT = color.New(color.BgBlue, color.FgHiYellow)
 var colorL = color.New(color.FgWhite)
 var colorC = color.New(color.FgRed)
@@ -219,6 +223,9 @@ func (t takeSnapshot) String() string {
 }
 
 func (t transferLdr) String() string {
+	if t.target == 0 {
+		return fmt.Sprintf("transferLdr{%s}", t.timeout)
+	}
 	return fmt.Sprintf("transferLdr{M%d %s}", t.target, t.timeout)
 }
 

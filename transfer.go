@@ -53,7 +53,9 @@ func (t transfer) targetChosen() bool {
 
 func (t *transfer) reply(err error) {
 	if t.timer.active {
-		debug("reply leadership transfer:", err)
+		if trace {
+			debug("transferLdr.reply err:", err)
+		}
 		t.task.reply(err)
 	}
 	t.timer.stop()
@@ -64,13 +66,16 @@ func (t *transfer) reply(err error) {
 // ----------------------------------------------------
 
 func (l *leader) onTransfer(t transferLdr) {
-	debug(l, "got", t)
+	if trace {
+		debug(l, "got", t)
+	}
 	if err := l.validateTransfer(t); err != nil {
-		debug(l, "transferLdr rejected:", err)
+		if trace {
+			debug(l, "transferLdr invalid:", err)
+		}
 		t.reply(err)
 		return
 	}
-
 	l.transfer.term = l.term
 	l.transfer.transferLdr = t
 	l.transfer.timer.reset(t.timeout)
@@ -120,11 +125,12 @@ func (l *leader) tryTransfer() {
 	}
 
 	if target != 0 {
-		debug(l, "transferring leadership:", target)
-		pool := l.getConnPool(target)
 		l.transfer.respCh = make(chan rpcResponse, 1)
 		req := &timeoutNowReq{req{l.term, l.nid}}
-		debug(l, target, ">>", req)
+		if trace {
+			debug(l, target, ">>", req)
+		}
+		pool := l.getConnPool(target)
 		go func(ch chan<- rpcResponse) {
 			resp := &timeoutNowResp{}
 			err := pool.doRPC(req, resp)
@@ -139,7 +145,9 @@ func (l *leader) onTransferTimeout() {
 }
 
 func (l *leader) onTimeoutNowResult(rpc rpcResponse) {
-	debug(l, rpc)
+	if trace {
+		debug(l, rpc)
+	}
 	l.transfer.respCh = nil
 	if rpc.err != nil {
 		repl := l.repls[rpc.from]

@@ -18,6 +18,10 @@ package raft
 
 import "fmt"
 
+const (
+	trace = false
+)
+
 func debug(args ...interface{}) {}
 func assert(b bool, format string, args ...interface{}) {
 	if !b {

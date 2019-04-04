@@ -39,18 +39,21 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 		return
 	case *disconnected:
 		if r.leader != 0 && r.leader == req.src {
-			debug(r, "leader", r.leader, "disconnected")
 			r.setLeader(0)
 		}
 		return
 	}
 
-	debug(r, "<<", rpc.req)
+	if trace {
+		debug(r, "<<", rpc.req)
+	}
 	result, err := r.onRequest(rpc.req, rpc.reader)
 	rpc.resp = rpc.req.rpcType().createResp(r, result, err)
-	debug(r, ">>", rpc.resp)
 	if result == readErr {
 		rpc.readErr = err
+	}
+	if trace {
+		debug(r, ">>", rpc.resp)
 	}
 	close(rpc.done)
 
@@ -186,7 +189,9 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq, reader io.Reader) (
 	if req.numEntries > 0 {
 		defer func() {
 			if syncLog {
-				debug(r, "log.Commit", r.lastLogIndex)
+				if trace {
+					debug(r, "log.Commit", r.lastLogIndex)
+				}
 				r.storage.commitLog(r.lastLogIndex)
 				if r.canCommit(req, index, term) {
 					r.setCommitIndex(index)
@@ -215,14 +220,18 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq, reader io.Reader) (
 
 			// new entry conflicts with our entry
 			// delete it and all that follow it
-			debug(r, "log.removeGTE", ne.index)
+			if trace {
+				debug(r, "log.removeGTE", ne.index)
+			}
 			r.storage.removeGTE(ne.index, prevTerm)
 			if ne.index <= r.configs.Latest.Index {
 				r.revertConfig()
 			}
 		}
 		// new entry not in the log, append it
-		debug(r, "log.append", ne.typ, ne.index)
+		if trace {
+			debug(r, "log.append", ne.typ, ne.index)
+		}
 		r.storage.appendEntry(ne)
 		syncLog = true
 		if ne.typ == entryConfig {
@@ -246,7 +255,9 @@ func (r *Raft) canCommit(req *appendEntriesReq, index, term uint64) bool {
 // log[lastApplied] to state machine
 func (r *Raft) applyCommitted(ne *entry) {
 	apply := fsmApply{log: r.log.ViewAt(r.log.PrevIndex(), r.commitIndex)}
-	debug(r, apply)
+	if trace {
+		debug(r, apply)
+	}
 	r.fsm.ch <- apply
 }
 
