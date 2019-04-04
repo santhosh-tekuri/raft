@@ -324,7 +324,7 @@ func TestChangeConfig_removeVoters(t *testing.T) {
 	// wait for stable config
 	c.ensure(waitTask(ldr, WaitForStableConfig(), c.longTimeout))
 
-	// shutdown the removed nodes, and one more voter
+	// shutdown the removed nodes
 	c.shutdown(flrs[0], flrs[1])
 
 	// shutdown the leader
