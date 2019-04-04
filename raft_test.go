@@ -612,7 +612,7 @@ func (c *cluster) waitForLeader(rr ...*Raft) *Raft {
 	}
 	stateChanged := c.registerFor(stateChanged)
 	defer c.unregister(stateChanged)
-	if !stateChanged.waitFor(condition, c.longTimeout) {
+	if !stateChanged.waitFor(condition, c.longTimeout+3*time.Second) {
 		c.Fatalf("waitForLeader: timeout")
 	}
 	return ldr
@@ -947,12 +947,13 @@ func waitRead(r *Raft, read string, timeout time.Duration) (fsmReply, error) {
 	return waitFSMTask(r, ReadFSM([]byte(read)), timeout)
 }
 
-func requestVote(from, to *Raft) (granted bool, err error) {
+func requestVote(from, to *Raft, transfer bool) (granted bool, err error) {
 	fn := func(r *Raft) {
 		req := &voteReq{
 			req:          req{r.term, r.nid},
 			lastLogIndex: r.lastLogIndex,
 			lastLogTerm:  r.lastLogTerm,
+			transfer:     transfer,
 		}
 		pool := from.getConnPool(to.nid)
 		resp := &timeoutNowResp{}

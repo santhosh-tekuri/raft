@@ -56,7 +56,9 @@ type Raft struct {
 	dialFn    dialFn // used for mocking in tests
 	connPools map[uint64]*connPool
 
-	ldr       *leader
+	ldr *leader
+	cnd *candidate
+
 	taskCh    chan Task
 	fsmTaskCh chan FSMTask
 
@@ -173,7 +175,7 @@ func (r *Raft) stateLoop() (err error) {
 			},
 		}
 	)
-	r.ldr = l
+	r.ldr, r.cnd = l, c
 
 	states := map[State]interface {
 		init()

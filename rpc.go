@@ -86,6 +86,21 @@ func (r *Raft) onVoteRequest(req *voteReq) (rpcResult, error) {
 		r.setVotedFor(term, votedFor)
 	}()
 
+	// 4.2.3: to solve the problem of disruptive servers:
+	// if a server receives a RequestVote request within the minimum
+	// election timeout of hearing from a current leader, it does not
+	// update its term or grant its vote.
+	//
+	// RequestVote requests used for leadership transfer can include
+	// a special flag to indicate this behavior:
+	// "I have permission to disrupt the leader—it told me to!"
+	if !req.transfer && r.leader != 0 {
+		if req.src == r.leader {
+			return success, nil
+		}
+		return leaderKnown, nil
+	}
+
 	if req.term < r.term {
 		return staleTerm, nil
 	} else if req.term > r.term {
@@ -305,5 +320,6 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq, reader io.Reader) (rpcR
 func (r *Raft) onTimeoutNowRequest() (rpcResult, error) {
 	r.setState(Candidate)
 	r.setLeader(0)
+	r.cnd.transfer = true
 	return success, nil
 }

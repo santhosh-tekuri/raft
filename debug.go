@@ -115,8 +115,8 @@ func (resp *identityResp) String() string {
 }
 
 func (req *voteReq) String() string {
-	format := "voteReq{T%d M%d last:(%d,%d)}"
-	return fmt.Sprintf(format, req.term, req.src, req.lastLogIndex, req.lastLogTerm)
+	format := "voteReq{T%d M%d last:(%d,%d) transfer:%v}"
+	return fmt.Sprintf(format, req.term, req.src, req.lastLogIndex, req.lastLogTerm, req.transfer)
 }
 
 func (resp *voteResp) String() string {
@@ -230,7 +230,7 @@ func (r rpcResponse) String() string {
 	if r.err == nil {
 		return fmt.Sprintf("M%d << %s", r.from, r.response)
 	}
-	return fmt.Sprintf("M%d << %s err: %v", r.from, r.response, r.err)
+	return fmt.Sprintf("M%d << %T{} err: %v", r.from, r.response, r.err)
 }
 
 func (t fsmApply) String() string {

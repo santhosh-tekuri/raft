@@ -37,7 +37,7 @@ func TestMessage(t *testing.T) {
 	snapshot := "helloworld"
 	tests := []message{
 		&entry{index: 3, term: 5, typ: 2, data: []byte("sleep")},
-		&voteReq{req: req{term: 5, src: 2}, lastLogIndex: 3, lastLogTerm: 5},
+		&voteReq{req: req{term: 5, src: 2}, lastLogIndex: 3, lastLogTerm: 5, transfer: true},
 		&voteResp{resp{term: 5, result: success}},
 		&voteResp{resp{term: 5, result: alreadyVoted}},
 		&appendEntriesReq{

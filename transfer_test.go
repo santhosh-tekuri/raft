@@ -155,8 +155,9 @@ func TestTransfer_newTermDetected(t *testing.T) {
 	defer c.shutdown()
 
 	// send requestVote with one of the follower as candidate with new term
+	tdebug("requestVote:", host(flrs[0]), "to", host(ldr))
 	flrs[0].term++
-	_, err := requestVote(flrs[0], ldr)
+	_, err := requestVote(flrs[0], ldr, true)
 	if err != nil {
 		c.Fatalf("requestVote: %v", err)
 	}

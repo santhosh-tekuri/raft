@@ -18,11 +18,12 @@ type candidate struct {
 	*Raft
 	respCh      chan rpcResponse
 	votesNeeded int
+	transfer    bool // to set voteReq.transfer
 }
 
 func (c *candidate) init()      { c.startElection() }
 func (c *candidate) onTimeout() { c.startElection() }
-func (c *candidate) release()   { c.respCh = nil }
+func (c *candidate) release()   { c.respCh, c.transfer = nil, false }
 
 func (c *candidate) startElection() {
 	if !c.configs.Latest.isVoter(c.nid) {
@@ -51,6 +52,7 @@ func (c *candidate) startElection() {
 		req:          req{c.term, c.nid},
 		lastLogIndex: c.lastLogIndex,
 		lastLogTerm:  c.lastLogTerm,
+		transfer:     c.transfer,
 	}
 	for _, n := range c.configs.Latest.Nodes {
 		if n.Voter && n.ID != c.nid {

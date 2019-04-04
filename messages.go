@@ -339,6 +339,7 @@ type voteReq struct {
 	req
 	lastLogIndex uint64 // index of candidate's last log entry
 	lastLogTerm  uint64 // term of candidate's last log entry
+	transfer     bool   // special flag to indicate leadership transfer
 }
 
 func (req *voteReq) rpcType() rpcType { return rpcVote }
@@ -351,7 +352,10 @@ func (req *voteReq) decode(r io.Reader) error {
 	if req.lastLogIndex, err = readUint64(r); err != nil {
 		return err
 	}
-	req.lastLogTerm, err = readUint64(r)
+	if req.lastLogTerm, err = readUint64(r); err != nil {
+		return err
+	}
+	req.transfer, err = readBool(r)
 	return err
 }
 
@@ -362,7 +366,10 @@ func (req *voteReq) encode(w io.Writer) error {
 	if err := writeUint64(w, req.lastLogIndex); err != nil {
 		return err
 	}
-	return writeUint64(w, req.lastLogTerm)
+	if err := writeUint64(w, req.lastLogTerm); err != nil {
+		return err
+	}
+	return writeBool(w, req.transfer)
 }
 
 // ------------------------------------------------------
