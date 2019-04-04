@@ -92,10 +92,6 @@ func assert(b bool, format string, args ...interface{}) {
 	}
 }
 
-func fatal(format string, args ...interface{}) {
-	assert(false, format, args...)
-}
-
 // Stringers ----------------------------------------------------------
 
 func (resp resp) String() string {
