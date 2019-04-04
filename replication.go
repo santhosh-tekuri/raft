@@ -544,6 +544,8 @@ type replicationStatus struct {
 
 	err error
 
+	node Node
+
 	round *Round // nil if no promotion required
 
 	removeLTE uint64

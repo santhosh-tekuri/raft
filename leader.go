@@ -165,7 +165,7 @@ func (l *leader) addReplication(n Node) {
 	repl := &replication{
 		node:           n,
 		rtime:          newRandTime(),
-		status:         replicationStatus{id: n.ID, removeLTE: l.removeLTE},
+		status:         replicationStatus{id: n.ID, node: n, removeLTE: l.removeLTE},
 		ldrStartIndex:  l.startIndex,
 		ldrLastIndex:   l.lastLogIndex,
 		matchIndex:     0,
@@ -210,7 +210,9 @@ func (l *leader) checkReplUpdates(u replUpdate) {
 			case matchIndex:
 				matchUpdated = true
 				status.matchIndex = u.val
-				l.checkConfigAction(nil, l.configs.Latest, status) // todo: call this only if action!=None
+				if l.configs.IsCommitted() && status.node.nextAction() == Remove {
+					l.checkConfigAction(nil, l.configs.Latest, status)
+				}
 			case removeLTE:
 				removeLTEUpdated = true
 				status.removeLTE = u.val

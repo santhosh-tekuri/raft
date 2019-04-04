@@ -50,12 +50,13 @@ func (l *leader) checkConfigActions(t *task, config Config) {
 // - from leader.checkConfigActions
 func (l *leader) checkConfigAction(t *task, config Config, status *replicationStatus) {
 	n := config.Nodes[status.id]
-	if n.Action == None {
+	action := n.nextAction()
+	if action == None {
 		return
 	}
 
 	// start or stop rounds
-	if !n.promote() {
+	if action != Promote {
 		status.round = nil
 	} else if status.round == nil {
 		// start first round
@@ -87,44 +88,36 @@ func (l *leader) checkConfigAction(t *task, config Config, status *replicationSt
 	}
 
 	if !l.canChangeConfig() {
-		debug(l, status.id, "voter:", n.Voter, "action:", n.Action, "cannot do action")
+		debug(l, status.id, "cannot", action, "now")
 		return
 	}
 
 	// perform configAction
-	switch {
-	case n.promote():
-		debug(l, "promoting", n.ID)
+	switch action {
+	case Promote:
 		config = config.clone()
 		n.Voter, n.Action = true, None
 		config.Nodes[n.ID] = n
-		if l.trace.ConfigActionStarted != nil {
-			l.trace.ConfigActionStarted(l.liveInfo(), n.ID, Promote)
-		}
-		l.doChangeConfig(t, config)
-	case n.remove():
+	case Remove:
 		if status.matchIndex >= l.configs.Latest.Index {
-			debug(l, "removing", n.ID)
 			config = config.clone()
 			delete(config.Nodes, n.ID)
-			if l.trace.ConfigActionStarted != nil {
-				l.trace.ConfigActionStarted(l.liveInfo(), n.ID, Remove)
-			}
-			l.doChangeConfig(t, config)
+		} else {
+			return
 		}
-	case n.demote():
-		debug(l, "demoting", n.ID)
+	case Demote:
 		config = config.clone()
 		n.Voter = false
 		if n.Action == Demote {
 			n.Action = None
 		}
 		config.Nodes[n.ID] = n
-		if l.trace.ConfigActionStarted != nil {
-			l.trace.ConfigActionStarted(l.liveInfo(), n.ID, Demote)
-		}
-		l.doChangeConfig(t, config)
 	}
+	debug(l, status.id, "started", action)
+	if l.trace.ConfigActionStarted != nil {
+		l.trace.ConfigActionStarted(l.liveInfo(), n.ID, action)
+	}
+	l.doChangeConfig(t, config)
 }
 
 func (l *leader) canChangeConfig() bool {

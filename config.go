@@ -66,16 +66,17 @@ func (n Node) IsStable() bool {
 	return n.Action == None
 }
 
-func (n Node) promote() bool {
-	return !n.Voter && n.Action == Promote
-}
-
-func (n Node) demote() bool {
-	return n.Voter && (n.Action == Demote || n.Action == Remove)
-}
-
-func (n Node) remove() bool {
-	return !n.Voter && n.Action == Remove
+func (n Node) nextAction() ConfigAction {
+	if n.Voter {
+		if n.Action == Demote || n.Action == Remove {
+			return Demote
+		}
+		return None
+	}
+	if n.Action == Promote || n.Action == Remove {
+		return n.Action
+	}
+	return None
 }
 
 func (n Node) encode(w io.Writer) error {
@@ -466,8 +467,10 @@ func (l *leader) changeConfig(config Config) {
 	// add new repls
 	for id, n := range config.Nodes {
 		if id != l.nid {
-			if _, ok := l.repls[id]; !ok {
+			if repl, ok := l.repls[id]; !ok {
 				l.addReplication(n)
+			} else {
+				repl.status.node = n
 			}
 		}
 	}
