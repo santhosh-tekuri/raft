@@ -82,7 +82,9 @@ func (l *leader) release() {
 		l.transfer.reply(err)
 	}
 
-	debug(l, "stopping followers")
+	if trace {
+		debug(l, "stopping followers")
+	}
 	for id, repl := range l.repls {
 		close(repl.stopCh)
 		delete(l.repls, id)
@@ -129,7 +131,9 @@ func (l *leader) storeEntry(ne *newEntry) {
 				l.neHead, l.neTail = ne, ne
 			}
 			if ne.isLogEntry() {
-				debug(l, "log.append", ne.typ, ne.index)
+				if trace {
+					debug(l, "log.append", ne.typ, ne.index)
+				}
 				l.storage.appendEntry(ne.entry)
 				if ne.typ == entryConfig {
 					config := Config{}
@@ -154,7 +158,9 @@ func (l *leader) storeEntry(ne *newEntry) {
 		l.applyCommitted()
 	}
 	if l.lastLogIndex > lastIndex {
-		debug(l, "got batch of", l.lastLogIndex-lastIndex, "entries")
+		if trace {
+			debug(l, "got batch of", l.lastLogIndex-lastIndex, "entries")
+		}
 		l.beginFinishedRounds()
 		l.notifyFlr(l.configs.Latest.Index > configIndex)
 	}
@@ -194,14 +200,18 @@ func (l *leader) addReplication(n Node) {
 	go func() {
 		defer l.wg.Done()
 		repl.runLoop(req)
-		debug(repl, "repl.End")
+		if trace {
+			debug(repl, "repl.End")
+		}
 	}()
 }
 
 func (l *leader) checkReplUpdates(u replUpdate) {
 	matchUpdated, noContactUpdated, removeLTEUpdated := false, false, false
 	for {
-		debug(l, "<<", u)
+		if trace {
+			debug(l, "<<", u)
+		}
 		status := u.status
 		if !status.removed {
 			switch u := u.update.(type) {
@@ -273,7 +283,9 @@ func (l *leader) checkQuorum(wait time.Duration) {
 
 	if reachable >= voters/2+1 {
 		if l.timer.active {
-			debug(l, "quorumReachable")
+			if trace {
+				debug(l, "quorumReachable")
+			}
 			if l.trace.QuorumUnreachable != nil {
 				l.trace.QuorumUnreachable(l.liveInfo(), time.Time{})
 			}
@@ -288,11 +300,15 @@ func (l *leader) checkQuorum(wait time.Duration) {
 		}
 	}
 	if wait == 0 {
-		debug(l, "quorumUnreachable: stepping down")
+		if trace {
+			debug(l, "quorumUnreachable: stepping down")
+		}
 		l.setState(Follower)
 		l.setLeader(0)
 	} else if !l.timer.active {
-		debug(l, "quorumUnreachable: waiting", wait)
+		if trace {
+			debug(l, "quorumUnreachable: waiting", wait)
+		}
 		l.timer.reset(wait)
 	}
 }
@@ -356,7 +372,9 @@ func (l *leader) applyCommitted() {
 	}
 
 	apply := fsmApply{head, l.log.ViewAt(l.log.PrevIndex(), l.commitIndex)}
-	debug(l, apply)
+	if trace {
+		debug(l, apply)
+	}
 	l.fsm.ch <- apply
 }
 
@@ -374,7 +392,9 @@ func (l *leader) notifyFlr(includeConfig bool) {
 		case <-repl.leaderUpdateCh:
 			repl.leaderUpdateCh <- update
 		}
-		debug(l, update, repl.status.id)
+		if trace {
+			debug(l, update, repl.status.id)
+		}
 	}
 	if l.voter {
 		l.onMajorityCommit()
@@ -387,5 +407,5 @@ func (l *leader) checkLogCompact() {
 			return
 		}
 	}
-	l.compactLog(l.removeLTE)
+	_ = l.compactLog(l.removeLTE)
 }

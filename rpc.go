@@ -305,7 +305,7 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq, reader io.Reader) (rpcR
 		termsMatched := metaTerm == meta.term
 		if termsMatched {
 			// remove <=meta.index, but retain following it
-			if err = r.storage.removeLTE(meta.index); err != nil {
+			if err = r.compactLog(meta.index); err != nil {
 				return unexpectedErr, err
 			}
 			discardLog = false

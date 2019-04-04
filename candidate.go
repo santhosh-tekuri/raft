@@ -40,7 +40,9 @@ func (c *candidate) startElection() {
 		from:     c.nid,
 	}
 
-	debug(c, "startElection")
+	if trace {
+		debug(c, "startElection")
+	}
 	d := c.rtime.duration(c.hbTimeout)
 	c.timer.reset(d)
 	if c.trace.ElectionStarted != nil {
@@ -56,7 +58,9 @@ func (c *candidate) startElection() {
 	}
 	for _, n := range c.configs.Latest.Nodes {
 		if n.Voter && n.ID != c.nid {
-			debug(c, n, ">>", req)
+			if trace {
+				debug(c, n, ">>", req)
+			}
 			pool := c.getConnPool(n.ID)
 			go func(ch chan<- rpcResponse) {
 				resp := &voteResp{}
@@ -68,7 +72,7 @@ func (c *candidate) startElection() {
 }
 
 func (c *candidate) onVoteResult(resp rpcResponse) {
-	if resp.from != c.nid {
+	if trace && resp.from != c.nid {
 		debug(c, resp)
 	}
 	if resp.err != nil {

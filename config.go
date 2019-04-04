@@ -329,7 +329,9 @@ func (r *Raft) bootstrap(t changeConfig) {
 	}
 
 	t.newConf.Index, t.newConf.Term = 1, 1
-	debug(r, "bootstrapping", t.newConf)
+	if trace {
+		debug(r, "bootstrapping", t.newConf)
+	}
 	if err := r.storage.bootstrap(t.newConf); err != nil {
 		t.reply(err)
 		return
@@ -390,7 +392,9 @@ func (l *leader) onChangeConfig(t changeConfig) {
 	}
 	l.checkConfigActions(t.task, t.newConf)
 	if l.configs.IsCommitted() {
-		debug(l, "no configActions changed")
+		if trace {
+			debug(l, "no configActions changed")
+		}
 		// no actions changed, so commit as it is
 		l.doChangeConfig(t.task, t.newConf)
 	}
@@ -414,7 +418,9 @@ func (l *leader) onWaitForStableConfig(t waitForStableConfig) {
 // ---------------------------------------------------------
 
 func (l *leader) setCommitIndex(index uint64) {
-	debug(l, "log.Commit", index)
+	if trace {
+		debug(l, "log.Commit", index)
+	}
 	l.storage.commitLog(index)
 	if l.commitIndex < l.startIndex && index >= l.startIndex {
 		if l.trace.CommitReady != nil {
@@ -424,7 +430,9 @@ func (l *leader) setCommitIndex(index uint64) {
 	configCommitted := l.Raft.setCommitIndex(index)
 	if configCommitted {
 		if l.configs.IsStable() {
-			debug(l, "stableConfig")
+			if trace {
+				debug(l, "stableConfig")
+			}
 			for _, t := range l.waitStable {
 				t.reply(l.configs.Latest)
 			}
@@ -437,14 +445,18 @@ func (l *leader) setCommitIndex(index uint64) {
 
 func (r *Raft) setCommitIndex(index uint64) (configCommitted bool) {
 	r.commitIndex = index
-	debug(r, "commitIndex", r.commitIndex)
+	if trace {
+		debug(r, "commitIndex", r.commitIndex)
+	}
 	if !r.configs.IsCommitted() && r.configs.Latest.Index <= r.commitIndex {
 		r.commitConfig()
 		configCommitted = true
 		if r.state == Leader && !r.configs.Latest.isVoter(r.nid) {
 			// if we are no longer voter after this config is committed,
 			// then what is the point of accepting fsm entries from user ????
-			debug(r, "leader -> follower notVoter")
+			if trace {
+				debug(r, "leader -> follower notVoter")
+			}
 			r.setState(Follower)
 			r.setLeader(0)
 		}
@@ -484,7 +496,9 @@ func (l *leader) changeConfig(config Config) {
 }
 
 func (r *Raft) changeConfig(config Config) {
-	debug(r, "changeConfig", config)
+	if trace {
+		debug(r, "changeConfig", config)
+	}
 	r.configs.Committed = r.configs.Latest
 	r.setLatest(config)
 	if r.trace.ConfigChanged != nil {
@@ -493,7 +507,9 @@ func (r *Raft) changeConfig(config Config) {
 }
 
 func (r *Raft) commitConfig() {
-	debug(r, "commitConfig", r.configs.Latest)
+	if trace {
+		debug(r, "commitConfig", r.configs.Latest)
+	}
 	r.configs.Committed = r.configs.Latest
 	if r.trace.ConfigCommitted != nil {
 		r.trace.ConfigCommitted(r.liveInfo())
@@ -501,7 +517,9 @@ func (r *Raft) commitConfig() {
 }
 
 func (r *Raft) revertConfig() {
-	debug(r, "revertConfig", r.configs.Committed)
+	if trace {
+		debug(r, "revertConfig", r.configs.Committed)
+	}
 	r.setLatest(r.configs.Committed)
 	if r.trace.ConfigReverted != nil {
 		r.trace.ConfigReverted(r.liveInfo())

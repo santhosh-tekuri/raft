@@ -22,7 +22,9 @@ const (
 	trace = false
 )
 
-func debug(args ...interface{}) {}
+func debug(args ...interface{}) {
+	fmt.Println(args...)
+}
 func assert(b bool, format string, args ...interface{}) {
 	if !b {
 		panic(fmt.Errorf(format, args...))

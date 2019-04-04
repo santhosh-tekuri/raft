@@ -46,14 +46,24 @@ type stateMachine struct {
 func (fsm *stateMachine) runLoop() {
 	// todo: panics are not handled by Raft
 	for t := range fsm.ch {
-		debug(fsm, t)
+		if trace {
+			debug(fsm, t)
+		}
 		switch t := t.(type) {
 		case fsmApply:
 			fsm.onApply(t)
 		case fsmSnapReq:
 			fsm.onSnapReq(t)
 		case fsmRestoreReq:
-			fsm.onRestoreReq(t)
+			err := fsm.onRestoreReq()
+			if trace {
+				if err != nil {
+					debug(fsm, "fsmRestore failed", err)
+				} else {
+					debug(fsm, "restored snapshot", fsm.index)
+				}
+			}
+			t.err <- err
 		case lastApplied:
 			t.reply(fsm.index)
 		}
@@ -79,7 +89,9 @@ func (fsm *stateMachine) onApply(t fsmApply) {
 		if e.index != fsm.index+1 {
 			panic(bug(1, "e.index=%d, fsm.index=%d", e.index, fsm.index))
 		}
-		debug(fsm, "apply", e.typ, e.index)
+		if trace {
+			debug(fsm, "apply", e.typ, e.index)
+		}
 		if e.typ == entryUpdate {
 			fsm.Update(e.data)
 		}
@@ -90,6 +102,9 @@ func (fsm *stateMachine) onApply(t fsmApply) {
 	for ne := t.neHead; ne != nil; ne = ne.next {
 		if ne.index != fsm.index+1 {
 			panic(bug(1, "ne.index=%d, fsm.index=%d", ne.index, fsm.index))
+		}
+		if trace {
+			debug(fsm, "apply", ne.typ, ne.index)
 		}
 		var resp interface{}
 		if ne.typ == entryRead {
@@ -119,7 +134,9 @@ func (fsm *stateMachine) onSnapReq(t fsmSnapReq) {
 	}
 	state, err := fsm.Snapshot()
 	if err != nil {
-		debug(fsm, "fsm.Snapshot failed", err)
+		if trace {
+			debug(fsm, "fsm.Snapshot failed", err)
+		}
 		t.reply(opError(err, "fsm.Snapshot"))
 		return
 	}
@@ -130,23 +147,17 @@ func (fsm *stateMachine) onSnapReq(t fsmSnapReq) {
 	})
 }
 
-func (fsm *stateMachine) onRestoreReq(t fsmRestoreReq) {
+func (fsm *stateMachine) onRestoreReq() error {
 	snap, err := fsm.snaps.open()
 	if err != nil {
-		debug(fsm, "snapshots.open failed", err)
-		t.err <- opError(err, "snapshots.open")
-		return
+		return opError(err, "snapshots.open")
 	}
 	defer snap.release()
 	if err = fsm.RestoreFrom(bufio.NewReader(snap.file)); err != nil {
-		debug(fsm, "fsm.restore failed", err)
-		// todo: detect where err occurred in restoreFrom/sr.read
-		t.err <- opError(err, "FSM.RestoreFrom")
-	} else {
-		fsm.index, fsm.term = snap.meta.index, snap.meta.term
-		debug(fsm, "restored snapshot", snap.meta.index)
-		t.err <- nil
+		return opError(err, "FSM.RestoreFrom")
 	}
+	fsm.index, fsm.term = snap.meta.index, snap.meta.term
+	return nil
 }
 
 type fsmApply struct {
@@ -181,6 +192,9 @@ func (r *Raft) onTakeSnapshot(t takeSnapshot) {
 	r.snapTakenCh = make(chan snapTaken, 1)
 	go func(index uint64, config Config) { // tracked by r.snapTakenCh
 		meta, err := doTakeSnapshot(r.fsm, index, config)
+		if trace {
+			debug(r, "doTakeSnapshot err:", err)
+		}
 		r.snapTakenCh <- snapTaken{
 			req:  t,
 			meta: meta,
@@ -189,25 +203,21 @@ func (r *Raft) onTakeSnapshot(t takeSnapshot) {
 	}(r.snaps.index+t.threshold, r.configs.Committed)
 }
 
-func doTakeSnapshot(fsm *stateMachine, index uint64, config Config) (meta snapshotMeta, err error) {
+func doTakeSnapshot(fsm *stateMachine, index uint64, config Config) (snapshotMeta, error) {
 	// get fsm state
 	req := fsmSnapReq{task: newTask(), index: index}
 	fsm.ch <- req
 	<-req.Done()
 	if req.Err() != nil {
-		err = req.Err()
-		return
+		return snapshotMeta{}, req.Err()
 	}
 	resp := req.Result().(fsmSnapResp)
 	defer resp.state.Release()
 
 	// write snapshot to storage
-	debug(fsm, "takingSnap:", resp.index)
 	sink, err := fsm.snaps.new(resp.index, resp.term, config)
 	if err != nil {
-		debug(fsm, "snapshots.new failed", err)
-		err = opError(err, "snapshots.new")
-		return
+		return snapshotMeta{}, opError(err, "snapshots.new")
 	}
 	bufw := bufio.NewWriter(sink.file)
 	err = resp.state.WriteTo(bufw)
@@ -216,15 +226,12 @@ func doTakeSnapshot(fsm *stateMachine, index uint64, config Config) (meta snapsh
 	}
 	meta, doneErr := sink.done(err)
 	if err != nil {
-		debug(fsm, "FSMState.WriteTo failed", resp.index, err)
-		err = opError(err, "FSMState.WriteTo")
-		return
+		return meta, opError(err, "FSMState.WriteTo")
 	}
 	if doneErr != nil {
-		debug(fsm, "snapshotSink.done failed", resp.index, err)
-		err = opError(err, "snapshotSink.done")
+		return meta, opError(err, "snapshotSink.done")
 	}
-	return
+	return meta, nil
 }
 
 func (r *Raft) onSnapshotTaken(t snapTaken) {
@@ -253,11 +260,15 @@ func (r *Raft) onSnapshotTaken(t snapTaken) {
 				}
 			}
 		}
-		debug(r, "nowCompact:", nowCompact, "canCompact:", canCompact)
+		if trace {
+			debug(r, "nowCompact:", nowCompact, "canCompact:", canCompact)
+		}
 		nowCompact, canCompact = r.log.CanLTE(nowCompact), r.log.CanLTE(canCompact)
-		debug(r, "nowCompact:", nowCompact, "canCompact:", canCompact)
+		if trace {
+			debug(r, "nowCompact:", nowCompact, "canCompact:", canCompact)
+		}
 		if nowCompact > r.log.PrevIndex() {
-			r.compactLog(nowCompact)
+			_ = r.compactLog(nowCompact)
 		}
 		if canCompact > nowCompact {
 			// notify repls with new logView

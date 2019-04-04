@@ -34,11 +34,15 @@ func (f *follower) resetTimer() {
 }
 
 func (f *follower) onTimeout() {
-	debug(f, "heartbeatTimeout leader:", f.leader)
+	if trace {
+		debug(f, "heartbeatTimeout leader:", f.leader)
+	}
 	f.setLeader(0)
 	if can, reason := f.canStartElection(); !can {
-		debug(f, "electionAborted", reason)
 		f.electionAborted = true
+		if trace {
+			debug(f, "electionAborted", reason)
+		}
 		if f.trace.ElectionAborted != nil {
 			f.trace.ElectionAborted(f.liveInfo(), reason)
 		}

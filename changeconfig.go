@@ -25,7 +25,9 @@ func (l *leader) beginFinishedRounds() {
 		r := repl.status.round
 		if r != nil && r.finished() {
 			r.begin(l.lastLogIndex)
-			debug(l, id, "started:", r)
+			if trace {
+				debug(l, id, "started:", r)
+			}
 		}
 	}
 }
@@ -62,7 +64,9 @@ func (l *leader) checkConfigAction(t *task, config Config, status *replicationSt
 		// start first round
 		status.round = new(Round)
 		status.round.begin(l.lastLogIndex)
-		debug(l, status.id, "started:", status.round)
+		if trace {
+			debug(l, status.id, "started:", status.round)
+		}
 	}
 
 	// finish round if completed, start new round if necessary
@@ -70,7 +74,9 @@ func (l *leader) checkConfigAction(t *task, config Config, status *replicationSt
 		r := status.round
 		if !r.finished() && status.matchIndex >= r.LastIndex {
 			r.finish()
-			debug(l, status.id, "completed:", r)
+			if trace {
+				debug(l, status.id, "finished:", r)
+			}
 			if l.trace.RoundCompleted != nil {
 				l.trace.RoundCompleted(l.liveInfo(), status.id, *r)
 			}
@@ -80,15 +86,18 @@ func (l *leader) checkConfigAction(t *task, config Config, status *replicationSt
 		}
 		hasNewEntries := l.lastLogIndex > status.matchIndex
 		if hasNewEntries && r.Duration() > l.promoteThreshold {
-			debug(l, "best of luck for next round")
 			r.begin(l.lastLogIndex)
-			debug(l, status.id, "started:", r)
+			if trace {
+				debug(l, status.id, "started:", r)
+			}
 			return
 		}
 	}
 
 	if !l.canChangeConfig() {
-		debug(l, status.id, "cannot", action, "now")
+		if trace {
+			debug(l, status.id, "cannot", action, "now")
+		}
 		return
 	}
 
@@ -116,7 +125,9 @@ func (l *leader) checkConfigAction(t *task, config Config, status *replicationSt
 		}
 		config.Nodes[n.ID] = n
 	}
-	debug(l, status.id, "started", action)
+	if trace {
+		debug(l, status.id, "started", action)
+	}
 	if l.trace.ConfigActionStarted != nil {
 		l.trace.ConfigActionStarted(l.liveInfo(), n.ID, action)
 	}
@@ -145,7 +156,7 @@ func (r Round) Duration() time.Duration { return r.End.Sub(r.Start) }
 
 func (r Round) String() string {
 	if r.finished() {
-		return fmt.Sprintf("round{#%d %s lastIndex: %d}", r.Ordinal, r.Duration(), r.LastIndex)
+		return fmt.Sprintf("Round{#%d %s lastIndex: %d}", r.Ordinal, r.Duration(), r.LastIndex)
 	}
-	return fmt.Sprintf("round{#%d lastIndex: %d}", r.Ordinal, r.LastIndex)
+	return fmt.Sprintf("Round{#%d lastIndex: %d}", r.Ordinal, r.LastIndex)
 }

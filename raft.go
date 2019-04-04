@@ -124,11 +124,13 @@ func (r *Raft) Serve(l net.Listener) error {
 	if r.isClosed() {
 		return ErrServerClosed
 	}
-	debug(r, "serving at", l.Addr())
+	if trace {
+		debug(r, "serving at", l.Addr())
+		defer debug(r, "<< shutdown()")
+	}
 	if r.trace.Starting != nil {
 		r.trace.Starting(r.liveInfo())
 	}
-	defer debug(r, "<< shutdown()")
 
 	var wg sync.WaitGroup
 	defer wg.Wait()
@@ -137,7 +139,9 @@ func (r *Raft) Serve(l net.Listener) error {
 	go func() {
 		defer wg.Done()
 		r.fsm.runLoop()
-		debug(r, "fsmLoop shutdown")
+		if trace {
+			debug(r, "fsmLoop shutdown")
+		}
 	}()
 	defer close(r.fsm.ch)
 
@@ -155,7 +159,9 @@ func (r *Raft) Serve(l net.Listener) error {
 	go func() {
 		defer wg.Done()
 		s.serve(r.rpcCh)
-		debug(r, "server shutdown")
+		if trace {
+			debug(r, "server shutdown")
+		}
 	}()
 	defer s.shutdown()
 
@@ -195,7 +201,9 @@ func (r *Raft) stateLoop() (err error) {
 			err = toErr(v)
 			r.doClose(err)
 		}
-		debug(r, "stateLoop shutdown")
+		if trace {
+			debug(r, "stateLoop shutdown")
+		}
 	}()
 
 	var state State
@@ -215,7 +223,9 @@ func (r *Raft) stateLoop() (err error) {
 				return ErrServerClosed
 
 			case err := <-r.fsmRestoredCh:
-				debug(r, "fsm restored with err", err)
+				if trace {
+					debug(r, "fsm restored err", err)
+				}
 				if err != nil {
 					panic(err)
 				}
@@ -299,7 +309,9 @@ func (r *Raft) release() {
 
 func (r *Raft) doClose(reason error) {
 	r.closeOnce.Do(func() {
-		debug(r, ">> shutdown()", reason)
+		if trace {
+			debug(r, ">> shutdown()", reason)
+		}
 		if r.trace.ShuttingDown != nil {
 			r.trace.ShuttingDown(r.liveInfo(), reason)
 		}
@@ -328,7 +340,9 @@ func (r *Raft) isClosed() bool {
 
 func (r *Raft) setState(s State) {
 	if s != r.state {
-		debug(r, r.state, "->", s)
+		if trace {
+			debug(r, r.state, "->", s)
+		}
 		r.state = s
 		if r.trace.StateChanged != nil {
 			r.trace.StateChanged(r.liveInfo())
@@ -338,7 +352,9 @@ func (r *Raft) setState(s State) {
 
 func (r *Raft) setLeader(id uint64) {
 	if id != r.leader {
-		debug(r, "leader:", id)
+		if trace {
+			debug(r, "leader:", id)
+		}
 		r.leader = id
 		if r.trace.LeaderChanged != nil {
 			r.trace.LeaderChanged(r.liveInfo())

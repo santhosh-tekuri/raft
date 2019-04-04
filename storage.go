@@ -286,7 +286,6 @@ func (s *storage) commitLog(n uint64) {
 
 // never called with invalid index
 func (s *storage) removeLTE(index uint64) error {
-	debug("removeLTE index:", index, "prevLogIndex:", s.log.PrevIndex(), "lastLogIndex:", s.lastLogIndex)
 	// todo: trace log compaction
 	if err := s.log.RemoveLTE(index); err != nil {
 		return opError(err, "Log.RemoveLTE(%d)", index)
@@ -294,14 +293,20 @@ func (s *storage) removeLTE(index uint64) error {
 	return nil
 }
 
-func (r *Raft) compactLog(lte uint64) {
+func (r *Raft) compactLog(lte uint64) error {
+	if trace {
+		debug(r, "compactLog", lte)
+	}
 	if err := r.storage.removeLTE(lte); err != nil {
 		if r.trace.Error != nil {
 			r.trace.Error(err)
 		}
-	} else if r.trace.LogCompacted != nil {
+		return err
+	}
+	if r.trace.LogCompacted != nil {
 		r.trace.LogCompacted(r.liveInfo())
 	}
+	return nil
 }
 
 // no replication is going on when this called
