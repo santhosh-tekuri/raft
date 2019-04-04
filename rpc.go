@@ -288,13 +288,12 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq, reader io.Reader) (rpcR
 	}
 	n, err := io.CopyN(sink.file, reader, req.size)
 	req.size -= n
+	meta, doneErr := sink.done(err)
 	if err != nil {
-		_, _ = sink.done(err)
 		return readErr, err
 	}
-	meta, err := sink.done(nil)
-	if err != nil {
-		return unexpectedErr, opError(err, "snapshotSink.done")
+	if doneErr != nil {
+		return unexpectedErr, opError(doneErr, "snapshotSink.done")
 	}
 
 	discardLog := true
