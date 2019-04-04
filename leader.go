@@ -210,7 +210,8 @@ func (l *leader) checkReplUpdates(u replUpdate) {
 			case matchIndex:
 				matchUpdated = true
 				status.matchIndex = u.val
-				if l.configs.IsCommitted() && status.node.nextAction() == Remove {
+				if l.configs.IsCommitted() && !status.node.Voter && status.node.Action != None {
+					// matchIndex update required only for remove and promote
 					l.checkConfigAction(nil, l.configs.Latest, status)
 				}
 			case removeLTE:
