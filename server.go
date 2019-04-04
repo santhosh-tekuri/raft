@@ -57,12 +57,7 @@ func (s *server) serve(rpcCh chan<- *rpc) {
 
 		wg.Add(1)
 		go func() {
-			r, w := bufio.NewReader(conn), bufio.NewWriter(conn)
-			for !isClosed(s.stopCh) {
-				if err := s.handleRPC(rpcCh, r, w); err != nil {
-					break
-				}
-			}
+			_ = s.handleConn(rpcCh, conn)
 			mu.Lock()
 			delete(conns, conn)
 			mu.Unlock()
@@ -80,50 +75,55 @@ func (s *server) serve(rpcCh chan<- *rpc) {
 	close(rpcCh)
 }
 
-// if shutdown signal received, returns ErrServerClosed immediately
-func (s *server) handleRPC(ch chan<- *rpc, r *bufio.Reader, w *bufio.Writer) error {
-	b, err := r.ReadByte()
-	if err != nil {
-		return err
-	}
-	if !rpcType(b).isValid() {
-		err = fmt.Errorf("raft: server.handleRpc got rpcType %d", b)
-		if testMode {
-			panic(err)
+func (s *server) handleConn(ch chan<- *rpc, c net.Conn) error {
+	r, w := bufio.NewReader(c), bufio.NewWriter(c)
+	for !isClosed(s.stopCh) {
+		b, err := r.ReadByte()
+		if err != nil {
+			return err
 		}
-		return err
-	}
-	rpc := &rpc{req: rpcType(b).createReq(), reader: r, done: make(chan struct{})}
+		if !rpcType(b).isValid() {
+			err = fmt.Errorf("raft: server.handleRpc got rpcType %d", b)
+			if testMode {
+				panic(err)
+			}
+			return err
+		}
+		rpc := &rpc{req: rpcType(b).createReq(), reader: r, done: make(chan struct{})}
 
-	// decode request
-	// todo: set read deadline
-	if err := rpc.req.decode(r); err != nil {
-		return err
-	}
+		// decode request
+		// todo: set read deadline
+		if err := rpc.req.decode(r); err != nil {
+			return err
+		}
 
-	// send request for processing
-	select {
-	case <-s.stopCh:
-		return ErrServerClosed
-	case ch <- rpc:
-	}
+		// send request for processing
+		select {
+		case <-s.stopCh:
+			return ErrServerClosed
+		case ch <- rpc:
+		}
 
-	// wait for response
-	select {
-	case <-s.stopCh:
-		return ErrServerClosed
-	case <-rpc.done:
-	}
+		// wait for response
+		select {
+		case <-s.stopCh:
+			return ErrServerClosed
+		case <-rpc.done:
+		}
 
-	// send reply
-	if rpc.readErr != nil {
-		return rpc.readErr
+		// send reply
+		if rpc.readErr != nil {
+			return rpc.readErr
+		}
+		// todo: set write deadline
+		if err = rpc.resp.encode(w); err != nil {
+			return err
+		}
+		if err = w.Flush(); err != nil {
+			return err
+		}
 	}
-	// todo: set write deadline
-	if err = rpc.resp.encode(w); err != nil {
-		return err
-	}
-	return w.Flush()
+	return nil
 }
 
 func (s *server) shutdown() {
