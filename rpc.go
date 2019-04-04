@@ -40,7 +40,7 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 	case *disconnected:
 		if r.leader != 0 && r.leader == req.src {
 			debug(r, "leader", r.leader, "disconnected")
-			r.leader = 0
+			r.setLeader(0)
 		}
 		return
 	}
