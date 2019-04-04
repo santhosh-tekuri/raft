@@ -381,7 +381,12 @@ func (l *leader) onChangeConfig(t changeConfig) {
 		t.reply(fmt.Errorf("raft.changeConfig: at least one voter must remain in cluster"))
 		return
 	}
-	l.doChangeConfig(t.task, t.newConf)
+	l.checkConfigActions(t.task, t.newConf)
+	if l.configs.IsCommitted() {
+		debug(l, "no configActions changed")
+		// no actions changed, so commit as it is
+		l.doChangeConfig(t.task, t.newConf)
+	}
 }
 
 func (l *leader) doChangeConfig(t *task, config Config) {
@@ -418,7 +423,7 @@ func (l *leader) setCommitIndex(index uint64) {
 			}
 			l.waitStable = nil
 		} else {
-			l.checkConfigActions()
+			l.checkConfigActions(nil, l.configs.Latest)
 		}
 	}
 }
@@ -466,7 +471,7 @@ func (l *leader) changeConfig(config Config) {
 			}
 		}
 	}
-	l.checkConfigActions()
+	l.checkConfigActions(nil, l.configs.Latest)
 }
 
 func (r *Raft) changeConfig(config Config) {

@@ -37,9 +37,9 @@ func (l *leader) beginFinishedRounds() {
 // - from leader.changeConfig
 // - from leader.setCommitIndex, if config is committed
 // - from leader.onTransferTimeout
-func (l *leader) checkConfigActions() {
+func (l *leader) checkConfigActions(t *task, config Config) {
 	for _, repl := range l.repls {
-		l.checkConfigAction(&repl.status)
+		l.checkConfigAction(t, config, &repl.status)
 	}
 }
 
@@ -48,8 +48,8 @@ func (l *leader) checkConfigActions() {
 //
 // - from leader.checkReplUpdates, if repl.matchIndex is updated
 // - from leader.checkConfigActions
-func (l *leader) checkConfigAction(status *replicationStatus) {
-	n := l.configs.Latest.Nodes[status.id]
+func (l *leader) checkConfigAction(t *task, config Config, status *replicationStatus) {
+	n := config.Nodes[status.id]
 	if n.Action == None {
 		return
 	}
@@ -87,7 +87,7 @@ func (l *leader) checkConfigAction(status *replicationStatus) {
 	}
 
 	if !l.canChangeConfig() {
-		debug(l, status.id, "cannot", n.Action, "now")
+		debug(l, status.id, "voter:", n.Voter, "action:", n.Action, "cannot do action")
 		return
 	}
 
@@ -95,26 +95,26 @@ func (l *leader) checkConfigAction(status *replicationStatus) {
 	switch {
 	case n.promote():
 		debug(l, "promoting", n.ID)
-		config := l.configs.Latest.clone()
+		config = config.clone()
 		n.Voter, n.Action = true, None
 		config.Nodes[n.ID] = n
 		if l.trace.ConfigActionStarted != nil {
 			l.trace.ConfigActionStarted(l.liveInfo(), n.ID, Promote)
 		}
-		l.doChangeConfig(nil, config)
+		l.doChangeConfig(t, config)
 	case n.remove():
 		if status.matchIndex >= l.configs.Latest.Index {
 			debug(l, "removing", n.ID)
-			config := l.configs.Latest.clone()
+			config = config.clone()
 			delete(config.Nodes, n.ID)
 			if l.trace.ConfigActionStarted != nil {
 				l.trace.ConfigActionStarted(l.liveInfo(), n.ID, Remove)
 			}
-			l.doChangeConfig(nil, config)
+			l.doChangeConfig(t, config)
 		}
 	case n.demote():
 		debug(l, "demoting", n.ID)
-		config := l.configs.Latest.clone()
+		config = config.clone()
 		n.Voter = false
 		if n.Action == Demote {
 			n.Action = None
@@ -123,7 +123,7 @@ func (l *leader) checkConfigAction(status *replicationStatus) {
 		if l.trace.ConfigActionStarted != nil {
 			l.trace.ConfigActionStarted(l.liveInfo(), n.ID, Demote)
 		}
-		l.doChangeConfig(nil, config)
+		l.doChangeConfig(t, config)
 	}
 }
 
