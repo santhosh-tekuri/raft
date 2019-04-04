@@ -141,7 +141,10 @@ func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
 	}
 	trace.ConfigCommitted = func(rinfo Info) {
 		if rinfo.State() == Leader {
-			info("raft: config committed")
+			info("raft: committed config", rinfo.Configs().Latest)
+			if rinfo.Configs().IsStable() {
+				info("raft: config is stable")
+			}
 		}
 	}
 	trace.RoundCompleted = func(rinfo Info, id uint64, r Round) {
