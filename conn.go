@@ -107,6 +107,7 @@ func (r *resolver) lookupID(id uint64) (string, error) {
 // --------------------------------------------------------------------
 
 type connPool struct {
+	src      uint64
 	cid      uint64
 	nid      uint64
 	resolver *resolver
@@ -142,7 +143,7 @@ func (pool *connPool) getConn() (*conn, error) {
 
 	// check identity ---------
 	resp := &identityResp{}
-	err = c.doRPC(&identityReq{cid: pool.cid, nid: pool.nid}, resp)
+	err = c.doRPC(&identityReq{req: req{src: pool.src}, cid: pool.cid, nid: pool.nid}, resp)
 	if err != nil || resp.result != success {
 		_ = c.rwc.Close()
 		return nil, IdentityError{pool.cid, pool.nid, addr}
@@ -195,6 +196,7 @@ func (r *Raft) getConnPool(nid uint64) *connPool {
 	pool, ok := r.connPools[nid]
 	if !ok {
 		pool = &connPool{
+			src:      r.nid,
 			cid:      r.cid,
 			nid:      nid,
 			resolver: r.resolver,

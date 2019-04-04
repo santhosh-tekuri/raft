@@ -77,6 +77,15 @@ func (s *server) serve(rpcCh chan<- *rpc) {
 
 func (s *server) handleConn(ch chan<- *rpc, c net.Conn) error {
 	r, w := bufio.NewReader(c), bufio.NewWriter(c)
+	var nid uint64
+	defer func() {
+		if nid != 0 {
+			select {
+			case <-s.stopCh:
+			case ch <- &rpc{req: &disconnected{req: req{src: nid}}}:
+			}
+		}
+	}()
 	for !isClosed(s.stopCh) {
 		b, err := r.ReadByte()
 		if err != nil {
@@ -114,6 +123,9 @@ func (s *server) handleConn(ch chan<- *rpc, c net.Conn) error {
 		// send reply
 		if rpc.readErr != nil {
 			return rpc.readErr
+		}
+		if rpc.req.rpcType() == rpcIdentity && rpc.resp.getResult() == success {
+			nid = rpc.req.from()
 		}
 		// todo: set write deadline
 		if err = rpc.resp.encode(w); err != nil {

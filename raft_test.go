@@ -612,7 +612,7 @@ func (c *cluster) waitForLeader(rr ...*Raft) *Raft {
 	}
 	stateChanged := c.registerFor(stateChanged)
 	defer c.unregister(stateChanged)
-	if !stateChanged.waitFor(condition, c.longTimeout+3*time.Second) {
+	if !stateChanged.waitFor(condition, c.longTimeout) {
 		c.Fatalf("waitForLeader: timeout")
 	}
 	return ldr

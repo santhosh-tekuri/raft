@@ -97,6 +97,7 @@ type rpcType int
 
 const (
 	rpcIdentity rpcType = iota
+	rpcDisconnected
 	rpcVote
 	rpcAppendEntries
 	rpcInstallSnap
@@ -228,6 +229,18 @@ func (req *req) encode(w io.Writer) error {
 	return writeUint64(w, req.src)
 }
 
+// disconnected is not actually rpc request
+// it is used to signal that connection lost.
+// when connection list, if it is leader conn
+// r.leader immediately cleared. this allows
+// voteReq to skip disruptive server check and
+// makes leader election faster.
+type disconnected struct {
+	req
+}
+
+func (req *disconnected) rpcType() rpcType { return rpcDisconnected }
+
 // ------------------------------------------------------
 
 type response interface {
@@ -313,6 +326,9 @@ func (req *identityReq) rpcType() rpcType { return rpcIdentity }
 
 func (req *identityReq) decode(r io.Reader) error {
 	var err error
+	if err = req.req.decode(r); err != nil {
+		return err
+	}
 	if req.cid, err = readUint64(r); err != nil {
 		return err
 	}
@@ -321,6 +337,9 @@ func (req *identityReq) decode(r io.Reader) error {
 }
 
 func (req *identityReq) encode(w io.Writer) error {
+	if err := req.req.encode(w); err != nil {
+		return err
+	}
 	if err := writeUint64(w, req.cid); err != nil {
 		return nil
 	}
