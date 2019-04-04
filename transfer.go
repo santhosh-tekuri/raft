@@ -135,7 +135,7 @@ func (l *leader) tryTransfer() {
 
 func (l *leader) onTransferTimeout() {
 	l.transfer.reply(TimeoutError("transferLeadership"))
-	l.checkActions()
+	l.checkConfigActions()
 }
 
 func (l *leader) onTimeoutNowResult(rpc rpcResponse) {

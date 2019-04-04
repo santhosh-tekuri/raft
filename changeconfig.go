@@ -19,47 +19,52 @@ import (
 	"time"
 )
 
-// called on leader.init and configChange
-func (l *leader) onActionChange() {
-	for id, repl := range l.repls {
-		n := l.configs.Latest.Nodes[id]
-		if !n.promote() {
-			repl.status.round = nil
-		} else if repl.status.round == nil {
-			// start first round
-			repl.status.round = new(Round)
-			repl.status.round.begin(repl.ldrLastIndex)
-			debug(l, id, "started:", repl.status.round)
-		}
-	}
-	l.checkActions()
-}
-
-// called on lastLogIndex update
+// called from leader.storeEntry, if lastLogIndex is updated
 func (l *leader) beginFinishedRounds() {
 	for id, repl := range l.repls {
 		r := repl.status.round
 		if r != nil && r.finished() {
-			r.begin(repl.ldrLastIndex)
+			r.begin(l.lastLogIndex)
 			debug(l, id, "started:", r)
 		}
 	}
 }
 
-// checkActions finishes any postponed promotions
+// checkConfigActions finishes any postponed promotions
 //
-// called on configCommit and transferLdr.timout
-func (l *leader) checkActions() {
+// this is called:
+// - from leader.init
+// - from leader.changeConfig
+// - from leader.setCommitIndex, if config is committed
+// - from leader.onTransferTimeout
+func (l *leader) checkConfigActions() {
 	for _, repl := range l.repls {
-		l.checkActionStatus(&repl.status)
+		l.checkConfigAction(&repl.status)
 	}
 }
 
 // checks whether round is completed, if so
 // promotes if threshold is satisfied.
 //
-// called when f.matchIndex is updated or by checkActions
-func (l *leader) checkActionStatus(status *replicationStatus) {
+// - from leader.checkReplUpdates, if repl.matchIndex is updated
+// - from leader.checkConfigActions
+func (l *leader) checkConfigAction(status *replicationStatus) {
+	n := l.configs.Latest.Nodes[status.id]
+	if n.Action == None {
+		return
+	}
+
+	// start or stop rounds
+	if !n.promote() {
+		status.round = nil
+	} else if status.round == nil {
+		// start first round
+		status.round = new(Round)
+		status.round.begin(l.lastLogIndex)
+		debug(l, status.id, "started:", status.round)
+	}
+
+	// finish round if completed, start new round if necessary
 	if status.round != nil {
 		r := status.round
 		if !r.finished() && status.matchIndex >= r.LastIndex {
@@ -82,15 +87,13 @@ func (l *leader) checkActionStatus(status *replicationStatus) {
 	}
 
 	if !l.canChangeConfig() {
-		n := l.configs.Latest.Nodes[status.id]
-		if n.Action != None {
-			debug(l, status.id, "cannot", n.Action, "now")
-		}
+		debug(l, status.id, "cannot", n.Action, "now")
 		return
 	}
 
-	n := l.configs.Latest.Nodes[status.id]
-	if n.promote() {
+	// perform configAction
+	switch {
+	case n.promote():
 		debug(l, "promoting", n.ID)
 		config := l.configs.Latest.clone()
 		n.Voter, n.Action = true, None
@@ -99,7 +102,7 @@ func (l *leader) checkActionStatus(status *replicationStatus) {
 			l.trace.ConfigActionStarted(l.liveInfo(), n.ID, Promote)
 		}
 		l.doChangeConfig(nil, config)
-	} else if n.remove() {
+	case n.remove():
 		if status.matchIndex >= l.configs.Latest.Index {
 			debug(l, "removing", n.ID)
 			config := l.configs.Latest.clone()
@@ -109,7 +112,7 @@ func (l *leader) checkActionStatus(status *replicationStatus) {
 			}
 			l.doChangeConfig(nil, config)
 		}
-	} else if n.demote() {
+	case n.demote():
 		debug(l, "demoting", n.ID)
 		config := l.configs.Latest.clone()
 		n.Voter = false

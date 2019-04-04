@@ -411,12 +411,14 @@ func (l *leader) setCommitIndex(index uint64) {
 	}
 	configCommitted := l.Raft.setCommitIndex(index)
 	if configCommitted {
-		l.checkActions()
 		if l.configs.IsStable() {
+			debug(l, "stableConfig")
 			for _, t := range l.waitStable {
 				t.reply(l.configs.Latest)
 			}
 			l.waitStable = nil
+		} else {
+			l.checkConfigActions()
 		}
 	}
 }
@@ -464,7 +466,7 @@ func (l *leader) changeConfig(config Config) {
 			}
 		}
 	}
-	l.onActionChange()
+	l.checkConfigActions()
 }
 
 func (r *Raft) changeConfig(config Config) {

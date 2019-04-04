@@ -61,7 +61,7 @@ func (l *leader) init() {
 			l.addReplication(n)
 		}
 	}
-	l.onActionChange()
+	l.checkConfigActions()
 
 	// add a blank no-op entry into log at the start of its term
 	l.storeEntry(&newEntry{entry: &entry{typ: entryNop}})
@@ -210,7 +210,7 @@ func (l *leader) checkReplUpdates(u replUpdate) {
 			case matchIndex:
 				matchUpdated = true
 				status.matchIndex = u.val
-				l.checkActionStatus(status)
+				l.checkConfigAction(status)
 			case removeLTE:
 				removeLTEUpdated = true
 				status.removeLTE = u.val
