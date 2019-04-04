@@ -286,14 +286,14 @@ func (r *Raft) stateLoop() (err error) {
 // closing -----------------------------------------
 
 func (r *Raft) release() {
-	// wait for snapshot to complete
-	if r.snapTakenCh != nil {
-		r.onSnapshotTaken(<-r.snapTakenCh)
-	}
-
 	// close any open connections
 	for _, pool := range r.connPools {
 		pool.closeAll()
+	}
+
+	// wait for snapshot to complete
+	if r.snapTakenCh != nil {
+		r.onSnapshotTaken(<-r.snapTakenCh)
 	}
 }
 
