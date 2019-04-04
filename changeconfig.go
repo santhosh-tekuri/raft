@@ -105,6 +105,9 @@ func (l *leader) checkConfigAction(t *task, config Config, status *replicationSt
 		} else {
 			return
 		}
+	case ForceRemove:
+		config = config.clone()
+		delete(config.Nodes, n.ID)
 	case Demote:
 		config = config.clone()
 		n.Voter = false

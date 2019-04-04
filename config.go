@@ -30,6 +30,7 @@ const (
 	Promote
 	Demote
 	Remove
+	ForceRemove
 )
 
 func (a ConfigAction) String() string {
@@ -42,6 +43,8 @@ func (a ConfigAction) String() string {
 		return "Demote"
 	case Remove:
 		return "Remove"
+	case ForceRemove:
+		return "ForceRemove"
 	}
 	return fmt.Sprintf("Action(%d)", a)
 }
@@ -67,6 +70,9 @@ func (n Node) IsStable() bool {
 }
 
 func (n Node) nextAction() ConfigAction {
+	if n.Action == ForceRemove {
+		return ForceRemove
+	}
 	if n.Voter {
 		if n.Action == Demote || n.Action == Remove {
 			return Demote
