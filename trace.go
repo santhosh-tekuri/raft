@@ -137,16 +137,16 @@ func (n Node) String() string {
 
 //go:norace
 func (r *Raft) String() string {
-	return fmt.Sprintf("M%d %d %s |", r.nid, r.term, string(r.state))
+	return fmt.Sprintf("M%d %d %d %d %s |", r.nid, r.term, r.commitIndex, r.lastLogIndex, string(r.state))
 }
 
 //go:norace
 func (r *replication) String() string {
-	return fmt.Sprintf("%s %d %d %d |", r.str, r.matchIndex, r.nextIndex, r.ldrLastIndex)
+	return fmt.Sprintf("M%d %d %d %d R |", r.node.ID, r.matchIndex, r.nextIndex, r.ldrLastIndex)
 }
 
 func (fsm *stateMachine) String() string {
-	return fmt.Sprintf("M%d FSM", fsm.id)
+	return fmt.Sprintf("M%d %d %d FSM |", fsm.id, fsm.index, fsm.term)
 }
 
 func (u leaderUpdate) String() string {
