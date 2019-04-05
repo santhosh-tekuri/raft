@@ -268,12 +268,12 @@ func (r *Raft) stateLoop() (err error) {
 
 			// candidate --------------
 			case v := <-c.respCh:
-				assert(r.state == Candidate, "M%d BUG: %v", r.nid, r.state)
+				assert(r.state == Candidate)
 				c.onVoteResult(v)
 
 			// leader --------------
 			case u := <-l.replUpdateCh:
-				assert(r.state == Leader, "M%d BUG: %v", r.nid, r.state)
+				assert(r.state == Leader)
 				l.checkReplUpdates(u)
 
 			case <-l.transfer.timer.C:

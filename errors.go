@@ -169,3 +169,17 @@ func (e temporaryError) Error() string {
 }
 
 func (e temporaryError) Temporary() {}
+
+// -----------------------------------------------------------
+
+func assert(b bool) {
+	if !b {
+		println("barrier") // wait for tracer to finish
+		panic("assertion failed")
+	}
+}
+
+func unreachable() {
+	println("barrier") // wait for tracer to finish
+	panic("unreachable")
+}

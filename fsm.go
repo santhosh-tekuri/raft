@@ -86,9 +86,7 @@ func (fsm *stateMachine) onApply(t fsmApply) {
 		if err := e.decode(bytes.NewReader(b)); err != nil {
 			panic(opError(err, "Log.Get(%d).decode", fsm.index+1))
 		}
-		if e.index != fsm.index+1 {
-			panic(bug(1, "e.index=%d, fsm.index=%d", e.index, fsm.index))
-		}
+		assert(e.index == fsm.index+1)
 		if trace {
 			println(fsm, "apply", e.typ, e.index)
 		}
@@ -100,9 +98,7 @@ func (fsm *stateMachine) onApply(t fsmApply) {
 
 	// process all entries from t.neHead if any
 	for ne := t.neHead; ne != nil; ne = ne.next {
-		if ne.index != fsm.index+1 {
-			panic(bug(1, "ne.index=%d, fsm.index=%d", ne.index, fsm.index))
-		}
+		assert(ne.index == fsm.index+1)
 		if trace {
 			println(fsm, "apply", ne.typ, ne.index)
 		}
@@ -117,10 +113,7 @@ func (fsm *stateMachine) onApply(t fsmApply) {
 		}
 		ne.reply(resp)
 	}
-
-	if fsm.index != commitIndex {
-		panic(bug(1, "fsm.index=%d, commitIndex=%d", fsm.index, commitIndex))
-	}
+	assert(fsm.index == commitIndex)
 }
 
 func (fsm *stateMachine) onSnapReq(t fsmSnapReq) {

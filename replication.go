@@ -53,7 +53,7 @@ type replication struct {
 
 func (r *replication) runLoop(req *appendReq) {
 	if trace {
-		println(r, "r.start")
+		println(r, "repl.start")
 	}
 	var c *conn
 	defer func() {
@@ -100,7 +100,7 @@ func (r *replication) runLoop(req *appendReq) {
 			}
 		}
 
-		assert(r.matchIndex < r.nextIndex, "%v assert %d<%d", r, r.matchIndex, r.nextIndex)
+		assert(r.matchIndex < r.nextIndex)
 		err = r.replicate(c, req)
 		if err == errStop {
 			return

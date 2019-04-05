@@ -130,7 +130,7 @@ func (l *leader) checkConfigActions(t *task, config Config) {
 			config = config.clone()
 			delete(config.Nodes, l.nid)
 		default:
-			panic(bug(1, "unexpected leader configAction: %v", n.Action))
+			unreachable()
 		}
 		l.doChangeConfig(t, config)
 	}

@@ -48,8 +48,7 @@ type leader struct {
 }
 
 func (l *leader) init() {
-	assert(l.leader == l.nid, "%v ldr.leader: got %d, want %d", l, l.leader, l.nid)
-
+	assert(l.leader == l.nid)
 	l.node = l.configs.Latest.Nodes[l.nid]
 	l.numVoters = l.configs.Latest.numVoters()
 	l.startIndex = l.lastLogIndex + 1
@@ -177,7 +176,7 @@ func (l *leader) storeEntry(ne *newEntry) {
 }
 
 func (l *leader) addReplication(n Node) {
-	assert(n.ID != l.nid, "adding replication for leader")
+	assert(n.ID != l.nid) // no replication for leader
 	repl := &replication{
 		node:           n,
 		rtime:          newRandTime(),

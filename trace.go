@@ -69,14 +69,6 @@ func println(args ...interface{}) {
 	}
 }
 
-func assert(b bool, format string, args ...interface{}) {
-	if !b {
-		// wait until all pending debug traceCh are printed to stdout
-		println("barrier")
-		panic(fmt.Errorf(format, args...))
-	}
-}
-
 // Stringers ----------------------------------------------------------
 
 func (resp resp) String() string {

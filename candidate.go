@@ -26,9 +26,7 @@ func (c *candidate) onTimeout() { c.startElection() }
 func (c *candidate) release()   { c.respCh, c.transfer = nil, false }
 
 func (c *candidate) startElection() {
-	if !c.configs.Latest.isVoter(c.nid) {
-		panic(bug(1, "nonvoter %d became candidate", c.nid))
-	}
+	assert(c.configs.Latest.isVoter(c.nid))
 
 	c.votesNeeded = c.configs.Latest.quorum()
 	c.respCh = make(chan rpcResponse, len(c.configs.Latest.Nodes))

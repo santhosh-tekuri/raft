@@ -16,16 +16,8 @@
 
 package raft
 
-import "fmt"
-
 const (
 	trace = false
 )
 
 func println(args ...interface{}) {}
-
-func assert(b bool, format string, args ...interface{}) {
-	if !b {
-		panic(fmt.Errorf(format, args...))
-	}
-}

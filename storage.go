@@ -262,9 +262,7 @@ func (s *storage) appendEntry(e *entry) {
 	if s.lastLogIndex != s.log.LastIndex() {
 		panic("BUG")
 	}
-	if e.index != s.lastLogIndex+1 {
-		panic(bug(2, "storage.appendEntry.index: got %d, want %d", e.index, s.lastLogIndex+1))
-	}
+	assert(e.index == s.lastLogIndex+1)
 	w := new(bytes.Buffer)
 	if err := e.encode(w); err != nil {
 		panic(bug(2, "entry.encode(%d): %v", e.index, err))
