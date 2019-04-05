@@ -83,7 +83,7 @@ func (l *leader) release() {
 	}
 
 	if trace {
-		debug(l, "stopping followers")
+		println(l, "stopping followers")
 	}
 	for id, repl := range l.repls {
 		close(repl.stopCh)
@@ -132,7 +132,7 @@ func (l *leader) storeEntry(ne *newEntry) {
 			}
 			if ne.isLogEntry() {
 				if trace {
-					debug(l, "log.append", ne.typ, ne.index)
+					println(l, "log.append", ne.typ, ne.index)
 				}
 				l.storage.appendEntry(ne.entry)
 				if ne.typ == entryConfig {
@@ -159,7 +159,7 @@ func (l *leader) storeEntry(ne *newEntry) {
 	}
 	if l.lastLogIndex > lastIndex {
 		if trace {
-			debug(l, "got batch of", l.lastLogIndex-lastIndex, "entries")
+			println(l, "got batch of", l.lastLogIndex-lastIndex, "entries")
 		}
 		l.beginFinishedRounds()
 		l.notifyFlr(l.configs.Latest.Index > configIndex)
@@ -201,7 +201,7 @@ func (l *leader) addReplication(n Node) {
 		defer l.wg.Done()
 		repl.runLoop(req)
 		if trace {
-			debug(repl, "repl.End")
+			println(repl, "repl.End")
 		}
 	}()
 }
@@ -210,7 +210,7 @@ func (l *leader) checkReplUpdates(u replUpdate) {
 	matchUpdated, noContactUpdated, removeLTEUpdated := false, false, false
 	for {
 		if trace {
-			debug(l, "<<", u)
+			println(l, "<<", u)
 		}
 		status := u.status
 		if !status.removed {
@@ -284,7 +284,7 @@ func (l *leader) checkQuorum(wait time.Duration) {
 	if reachable >= voters/2+1 {
 		if l.timer.active {
 			if trace {
-				debug(l, "quorumReachable")
+				println(l, "quorumReachable")
 			}
 			if l.trace.QuorumUnreachable != nil {
 				l.trace.QuorumUnreachable(l.liveInfo(), time.Time{})
@@ -301,13 +301,13 @@ func (l *leader) checkQuorum(wait time.Duration) {
 	}
 	if wait == 0 {
 		if trace {
-			debug(l, "quorumUnreachable: stepping down")
+			println(l, "quorumUnreachable: stepping down")
 		}
 		l.setState(Follower)
 		l.setLeader(0)
 	} else if !l.timer.active {
 		if trace {
-			debug(l, "quorumUnreachable: waiting", wait)
+			println(l, "quorumUnreachable: waiting", wait)
 		}
 		l.timer.reset(wait)
 	}
@@ -373,7 +373,7 @@ func (l *leader) applyCommitted() {
 
 	apply := fsmApply{head, l.log.ViewAt(l.log.PrevIndex(), l.commitIndex)}
 	if trace {
-		debug(l, apply)
+		println(l, apply)
 	}
 	l.fsm.ch <- apply
 }
@@ -393,7 +393,7 @@ func (l *leader) notifyFlr(includeConfig bool) {
 			repl.leaderUpdateCh <- update
 		}
 		if trace {
-			debug(l, update, repl.status.id)
+			println(l, update, repl.status.id)
 		}
 	}
 	if l.voter {

@@ -155,7 +155,7 @@ func TestTransfer_newTermDetected(t *testing.T) {
 	defer c.shutdown()
 
 	// send requestVote with one of the follower as candidate with new term
-	tdebug("requestVote:", host(flrs[0]), "to", host(ldr))
+	testln("requestVote:", host(flrs[0]), "to", host(ldr))
 	flrs[0].term++
 	_, err := requestVote(flrs[0], ldr, true)
 	if err != nil {
@@ -170,7 +170,7 @@ func TestTransfer_onShutdownReplyServerClosed(t *testing.T) {
 	c, ldr, _, transfer := setupTransferTimeout(t, time.Second, 5*time.Second)
 	defer c.shutdown()
 
-	tdebug("shutting down leader")
+	testln("shutting down leader")
 	ldr.Shutdown()
 
 	// transfer reply must be ErrServerClosed

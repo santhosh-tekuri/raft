@@ -295,7 +295,7 @@ func (s *storage) removeLTE(index uint64) error {
 
 func (r *Raft) compactLog(lte uint64) error {
 	if trace {
-		debug(r, "compactLog", lte)
+		println(r, "compactLog", lte)
 	}
 	if err := r.storage.removeLTE(lte); err != nil {
 		if r.trace.Error != nil {

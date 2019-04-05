@@ -71,7 +71,7 @@ func isBarrier(msg string) bool {
 	return strings.HasSuffix(msg, "barrier\n")
 }
 
-func debug(args ...interface{}) {
+func println(args ...interface{}) {
 	// uncomment this to print only debug lines with first argument "xxx"
 	// this is useful for to print only specific debug lines
 
@@ -91,7 +91,7 @@ func debug(args ...interface{}) {
 func assert(b bool, format string, args ...interface{}) {
 	if !b {
 		// wait until all pending debug messages are printed to stdout
-		debug("barrier")
+		println("barrier")
 		panic(fmt.Errorf(format, args...))
 	}
 }

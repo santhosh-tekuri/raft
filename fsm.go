@@ -47,7 +47,7 @@ func (fsm *stateMachine) runLoop() {
 	// todo: panics are not handled by Raft
 	for t := range fsm.ch {
 		if trace {
-			debug(fsm, t)
+			println(fsm, t)
 		}
 		switch t := t.(type) {
 		case fsmApply:
@@ -58,9 +58,9 @@ func (fsm *stateMachine) runLoop() {
 			err := fsm.onRestoreReq()
 			if trace {
 				if err != nil {
-					debug(fsm, "fsmRestore failed", err)
+					println(fsm, "fsmRestore failed", err)
 				} else {
-					debug(fsm, "restored snapshot", fsm.index)
+					println(fsm, "restored snapshot", fsm.index)
 				}
 			}
 			t.err <- err
@@ -90,7 +90,7 @@ func (fsm *stateMachine) onApply(t fsmApply) {
 			panic(bug(1, "e.index=%d, fsm.index=%d", e.index, fsm.index))
 		}
 		if trace {
-			debug(fsm, "apply", e.typ, e.index)
+			println(fsm, "apply", e.typ, e.index)
 		}
 		if e.typ == entryUpdate {
 			fsm.Update(e.data)
@@ -104,7 +104,7 @@ func (fsm *stateMachine) onApply(t fsmApply) {
 			panic(bug(1, "ne.index=%d, fsm.index=%d", ne.index, fsm.index))
 		}
 		if trace {
-			debug(fsm, "apply", ne.typ, ne.index)
+			println(fsm, "apply", ne.typ, ne.index)
 		}
 		var resp interface{}
 		if ne.typ == entryRead {
@@ -135,7 +135,7 @@ func (fsm *stateMachine) onSnapReq(t fsmSnapReq) {
 	state, err := fsm.Snapshot()
 	if err != nil {
 		if trace {
-			debug(fsm, "fsm.Snapshot failed", err)
+			println(fsm, "fsm.Snapshot failed", err)
 		}
 		t.reply(opError(err, "fsm.Snapshot"))
 		return
@@ -193,7 +193,7 @@ func (r *Raft) onTakeSnapshot(t takeSnapshot) {
 	go func(index uint64, config Config) { // tracked by r.snapTakenCh
 		meta, err := doTakeSnapshot(r.fsm, index, config)
 		if trace {
-			debug(r, "doTakeSnapshot err:", err)
+			println(r, "doTakeSnapshot err:", err)
 		}
 		r.snapTakenCh <- snapTaken{
 			req:  t,
@@ -261,11 +261,11 @@ func (r *Raft) onSnapshotTaken(t snapTaken) {
 			}
 		}
 		if trace {
-			debug(r, "nowCompact:", nowCompact, "canCompact:", canCompact)
+			println(r, "nowCompact:", nowCompact, "canCompact:", canCompact)
 		}
 		nowCompact, canCompact = r.log.CanLTE(nowCompact), r.log.CanLTE(canCompact)
 		if trace {
-			debug(r, "nowCompact:", nowCompact, "canCompact:", canCompact)
+			println(r, "nowCompact:", nowCompact, "canCompact:", canCompact)
 		}
 		if nowCompact > r.log.PrevIndex() {
 			_ = r.compactLog(nowCompact)

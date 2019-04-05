@@ -55,7 +55,7 @@ type replication struct {
 
 func (r *replication) runLoop(req *appendEntriesReq) {
 	if trace {
-		debug(r, "r.start")
+		println(r, "r.start")
 	}
 	var c *conn
 	defer func() {
@@ -159,7 +159,7 @@ func (r *replication) replicate(c *conn, req *appendEntriesReq) error {
 		//       is better than sending lots of entries
 
 		if trace {
-			debug(r, "pipelining.............................")
+			println(r, "pipelining.............................")
 		}
 		// pipelining ---------------------------------------------------------
 		type result struct {
@@ -206,7 +206,7 @@ func (r *replication) replicate(c *conn, req *appendEntriesReq) error {
 					// so no need to flood him with heartbeat
 					// take a nap and check again
 					if trace {
-						debug(r, "no heartbeat, pending resps:", len(resultCh))
+						println(r, "no heartbeat, pending resps:", len(resultCh))
 					}
 				}
 			}
@@ -228,7 +228,7 @@ func (r *replication) replicate(c *conn, req *appendEntriesReq) error {
 			select {
 			case err := <-drained:
 				if trace {
-					debug(r, "drain completed with error:", err)
+					println(r, "drain completed with error:", err)
 				}
 				if err != nil {
 					_ = c.rwc.Close()
@@ -236,12 +236,12 @@ func (r *replication) replicate(c *conn, req *appendEntriesReq) error {
 				}
 			case <-time.After(timeout):
 				if trace {
-					debug(r, "drain timeout, closing conn")
+					println(r, "drain timeout, closing conn")
 				}
 				_ = c.rwc.Close()
 				<-drained
 				if trace {
-					debug(r, "drain completed")
+					println(r, "drain completed")
 				}
 				c.rwc = nil // to signal runLoop that we closed the conn
 			}
@@ -253,7 +253,7 @@ func (r *replication) replicate(c *conn, req *appendEntriesReq) error {
 			select {
 			case <-r.stopCh:
 				if trace {
-					debug(r, "ending pipeline, got stop signal from ldr")
+					println(r, "ending pipeline, got stop signal from ldr")
 				}
 				close(stopCh)
 				drainRespsTimeout(r.hbTimeout / 2)
@@ -262,7 +262,7 @@ func (r *replication) replicate(c *conn, req *appendEntriesReq) error {
 			}
 			if result.err != nil {
 				if trace {
-					debug(r, "pipeline ended with", result.err)
+					println(r, "pipeline ended with", result.err)
 				}
 				if result.err == log.ErrNotFound {
 					break
@@ -272,7 +272,7 @@ func (r *replication) replicate(c *conn, req *appendEntriesReq) error {
 			err = c.readResp(resp)
 			if err != nil {
 				if trace {
-					debug(r, "ending pipeline, error in reading resp:", err)
+					println(r, "ending pipeline, error in reading resp:", err)
 				}
 				close(stopCh)
 				_ = c.rwc.Close()
@@ -285,7 +285,7 @@ func (r *replication) replicate(c *conn, req *appendEntriesReq) error {
 				_ = r.onAppendEntriesResp(resp, result.lastIndex)
 			} else {
 				if trace {
-					debug(r, "ending pipeline, got resp.result", resp.result)
+					println(r, "ending pipeline, got resp.result", resp.result)
 				}
 				close(stopCh)
 				if resp.result == staleTerm {
@@ -332,9 +332,9 @@ func (r *replication) writeAppendEntriesReq(c *conn, req *appendEntriesReq, send
 
 	if trace {
 		if sendEntries && req.numEntries == 0 {
-			debug(r, ">> heartbeat")
+			println(r, ">> heartbeat")
 		} else {
-			debug(r, ">>", req)
+			println(r, ">>", req)
 		}
 	}
 	if err := c.writeReq(req); err != nil {
@@ -346,7 +346,7 @@ func (r *replication) writeAppendEntriesReq(c *conn, req *appendEntriesReq, send
 		}
 		r.nextIndex += req.numEntries
 		if trace {
-			debug(r, "nextIndex:", r.nextIndex)
+			println(r, "nextIndex:", r.nextIndex)
 		}
 	}
 	return nil
@@ -354,7 +354,7 @@ func (r *replication) writeAppendEntriesReq(c *conn, req *appendEntriesReq, send
 
 func (r *replication) onAppendEntriesResp(resp *appendEntriesResp, reqLastIndex uint64) error {
 	if trace {
-		debug(r, "<<", resp)
+		println(r, "<<", resp)
 	}
 	switch resp.result {
 	case staleTerm:
@@ -364,7 +364,7 @@ func (r *replication) onAppendEntriesResp(resp *appendEntriesResp, reqLastIndex 
 		if reqLastIndex > r.matchIndex {
 			r.matchIndex = reqLastIndex
 			if trace {
-				debug(r, "matchIndex:", r.matchIndex)
+				println(r, "matchIndex:", r.matchIndex)
 			}
 			r.notifyLdr(matchIndex{r.matchIndex})
 		}
@@ -376,7 +376,7 @@ func (r *replication) onAppendEntriesResp(resp *appendEntriesResp, reqLastIndex 
 		}
 		r.nextIndex = min(r.nextIndex-1, resp.lastLogIndex+1)
 		if trace {
-			debug(r, "nextIndex:", r.nextIndex)
+			println(r, "nextIndex:", r.nextIndex)
 		}
 		return nil
 	case unexpectedErr:
@@ -401,7 +401,7 @@ func (r *replication) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) erro
 		size:       snap.meta.size,
 	}
 	if trace {
-		debug(r, ">>", req)
+		println(r, ">>", req)
 	}
 	if err = c.writeReq(req); err != nil {
 		return err
@@ -429,7 +429,7 @@ func (r *replication) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) erro
 		r.matchIndex = req.lastIndex
 		r.nextIndex = r.matchIndex + 1
 		if trace {
-			debug(r, "matchIndex:", r.matchIndex, "nextIndex:", r.nextIndex)
+			println(r, "matchIndex:", r.matchIndex, "nextIndex:", r.nextIndex)
 		}
 		r.notifyLdr(matchIndex{r.matchIndex})
 		return nil
@@ -476,7 +476,7 @@ func (r *replication) checkLeaderUpdate(stopCh <-chan struct{}, req *appendEntri
 
 func (r *replication) onLeaderUpdate(u leaderUpdate, req *appendEntriesReq) {
 	if trace {
-		debug(r, u)
+		println(r, u)
 	}
 	if u.log.PrevIndex() > r.log.PrevIndex() {
 		r.notifyLdr(removeLTE{u.log.PrevIndex()})
@@ -499,13 +499,13 @@ func (r *replication) notifyNoContact(err error) {
 	if err != nil {
 		r.noContact = time.Now()
 		if trace {
-			debug(r, "noContact", err)
+			println(r, "noContact", err)
 		}
 		r.notifyLdr(noContact{r.noContact, err})
 	} else {
 		r.noContact = time.Time{} // zeroing
 		if trace {
-			debug(r, "yesContact")
+			println(r, "yesContact")
 		}
 		r.notifyLdr(noContact{r.noContact, nil})
 	}

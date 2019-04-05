@@ -45,7 +45,7 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 	}
 
 	if trace {
-		debug(r, "<<", rpc.req)
+		println(r, "<<", rpc.req)
 	}
 	result, err := r.onRequest(rpc.req, rpc.reader)
 	rpc.resp = rpc.req.rpcType().createResp(r, result, err)
@@ -53,7 +53,7 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 		rpc.readErr = err
 	}
 	if trace {
-		debug(r, ">>", rpc.resp)
+		println(r, ">>", rpc.resp)
 	}
 	close(rpc.done)
 
@@ -190,7 +190,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq, reader io.Reader) (
 		defer func() {
 			if syncLog {
 				if trace {
-					debug(r, "log.Commit", r.lastLogIndex)
+					println(r, "log.Commit", r.lastLogIndex)
 				}
 				r.storage.commitLog(r.lastLogIndex)
 				if r.canCommit(req, index, term) {
@@ -221,7 +221,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq, reader io.Reader) (
 			// new entry conflicts with our entry
 			// delete it and all that follow it
 			if trace {
-				debug(r, "log.removeGTE", ne.index)
+				println(r, "log.removeGTE", ne.index)
 			}
 			r.storage.removeGTE(ne.index, prevTerm)
 			if ne.index <= r.configs.Latest.Index {
@@ -230,7 +230,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq, reader io.Reader) (
 		}
 		// new entry not in the log, append it
 		if trace {
-			debug(r, "log.append", ne.typ, ne.index)
+			println(r, "log.append", ne.typ, ne.index)
 		}
 		r.storage.appendEntry(ne)
 		syncLog = true
@@ -256,7 +256,7 @@ func (r *Raft) canCommit(req *appendEntriesReq, index, term uint64) bool {
 func (r *Raft) applyCommitted(ne *entry) {
 	apply := fsmApply{log: r.log.ViewAt(r.log.PrevIndex(), r.commitIndex)}
 	if trace {
-		debug(r, apply)
+		println(r, apply)
 	}
 	r.fsm.ch <- apply
 }

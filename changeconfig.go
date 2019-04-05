@@ -26,7 +26,7 @@ func (l *leader) beginFinishedRounds() {
 		if r != nil && r.finished() {
 			r.begin(l.lastLogIndex)
 			if trace {
-				debug(l, id, "started:", r)
+				println(l, id, "started:", r)
 			}
 		}
 	}
@@ -65,7 +65,7 @@ func (l *leader) checkConfigAction(t *task, config Config, status *replicationSt
 		status.round = new(Round)
 		status.round.begin(l.lastLogIndex)
 		if trace {
-			debug(l, status.id, "started:", status.round)
+			println(l, status.id, "started:", status.round)
 		}
 	}
 
@@ -75,7 +75,7 @@ func (l *leader) checkConfigAction(t *task, config Config, status *replicationSt
 		if !r.finished() && status.matchIndex >= r.LastIndex {
 			r.finish()
 			if trace {
-				debug(l, status.id, "finished:", r)
+				println(l, status.id, "finished:", r)
 			}
 			if l.trace.RoundCompleted != nil {
 				l.trace.RoundCompleted(l.liveInfo(), status.id, *r)
@@ -88,7 +88,7 @@ func (l *leader) checkConfigAction(t *task, config Config, status *replicationSt
 		if hasNewEntries && r.Duration() > l.promoteThreshold {
 			r.begin(l.lastLogIndex)
 			if trace {
-				debug(l, status.id, "started:", r)
+				println(l, status.id, "started:", r)
 			}
 			return
 		}
@@ -96,7 +96,7 @@ func (l *leader) checkConfigAction(t *task, config Config, status *replicationSt
 
 	if !l.canChangeConfig() {
 		if trace {
-			debug(l, status.id, "cannot", action, "now")
+			println(l, status.id, "cannot", action, "now")
 		}
 		return
 	}
@@ -126,7 +126,7 @@ func (l *leader) checkConfigAction(t *task, config Config, status *replicationSt
 		config.Nodes[n.ID] = n
 	}
 	if trace {
-		debug(l, status.id, "started", action)
+		println(l, status.id, "started", action)
 	}
 	if l.trace.ConfigActionStarted != nil {
 		l.trace.ConfigActionStarted(l.liveInfo(), n.ID, action)

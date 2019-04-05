@@ -250,7 +250,7 @@ func TestChangeConfig_promote_newNode_uptodateButConfigChangeInProgress(t *testi
 	m3 := c.launch(1, false)[3]
 
 	// wait until m3 ready for promotion
-	tdebug("waitRoundCompleted")
+	testln("waitRoundCompleted")
 	e, err := roundCompleted.waitForEvent(0)
 	if err != nil {
 		t.Fatalf("waitForRoundComplete: %v", err)

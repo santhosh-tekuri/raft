@@ -57,7 +57,7 @@ func TestRaft_bootstrap(t *testing.T) {
 	defer c.shutdown()
 
 	// all nodes should must abort election and only once
-	tdebug("waitForElectionAborted")
+	testln("waitForElectionAborted")
 	timeout := time.After(c.longTimeout)
 	aborted := make(map[uint64]bool)
 	for i := 0; i < 3; i++ {
@@ -73,7 +73,7 @@ func TestRaft_bootstrap(t *testing.T) {
 	}
 
 	// bootstrap one of the nodes
-	tdebug("prepareBootStrapConfig")
+	testln("prepareBootStrapConfig")
 	ldr := c.rr[1]
 	config := ldr.Info().Configs().Latest
 	for _, r := range c.rr {
@@ -186,7 +186,7 @@ func TestMain(m *testing.M) {
 	}
 	tempDir = temp
 	code := m.Run()
-	debug("barrier") // wait until all pending debug messages are printed to stdout
+	println("barrier") // wait until all pending debug messages are printed to stdout
 	_ = os.RemoveAll(tempDir)
 	os.Exit(code)
 }
@@ -224,10 +224,10 @@ func newCluster(t *testing.T) *cluster {
 	var testTimeout *time.Timer
 	clusters[t.Name()]++
 	if clusters[t.Name()] == 1 { // first cluster in test, initialize network and checks
-		debug()
-		debug("-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8--")
-		debug()
-		tdebug(t.Name(), "--------------------------")
+		println()
+		println("-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8--")
+		println()
+		testln(t.Name(), "--------------------------")
 		network = fnet.New()
 		checkLeak = leaktest.Check(t)
 		testTimeout = time.AfterFunc(time.Minute, func() {
@@ -332,7 +332,7 @@ loop:
 
 func (c *cluster) launch(n int, bootstrap bool) map[uint64]*Raft {
 	c.Helper()
-	tdebug("launch:", n, "bootstrap:", bootstrap)
+	testln("launch:", n, "bootstrap:", bootstrap)
 	nodes := make(map[uint64]Node, n)
 	for i := 1; i <= n; i++ {
 		id := uint64(i + len(c.rr))
@@ -409,12 +409,12 @@ func (c *cluster) shutdownErr(ok bool, rr ...*Raft) {
 	c.Helper()
 	checkLeak := false
 	if len(rr) == 0 {
-		tdebug("shutting down cluster")
+		testln("shutting down cluster")
 		checkLeak = true
 		rr = c.exclude()
 	}
 	for _, r := range rr {
-		tdebug("shutting down", host(r))
+		testln("shutting down", host(r))
 		r.Shutdown()
 	}
 	for _, r := range rr {
@@ -459,14 +459,14 @@ func (c *cluster) restart(r *Raft) *Raft {
 	c.serverErrMu.Lock()
 	c.serveErr[r.NID()] = make(chan error, 1)
 	c.serverErrMu.Unlock()
-	tdebug("restarting", host(r))
+	testln("restarting", host(r))
 	c.serve(newr)
 	return newr
 }
 
 func (c *cluster) waitForStability(rr ...*Raft) {
 	c.Helper()
-	tdebug("waitForStability:", hosts(rr))
+	testln("waitForStability:", hosts(rr))
 	stateChanged := c.registerFor(stateChanged, rr...)
 	defer c.unregister(stateChanged)
 	electionStarted := c.registerFor(electionStarted, rr...)
@@ -540,7 +540,7 @@ func (c *cluster) ensureLeader(leader uint64) {
 // wait until all followers follow the leader
 func (c *cluster) waitForFollowers() *Raft {
 	c.Helper()
-	tdebug("waitForFollowers")
+	testln("waitForFollowers")
 
 	var ldr uint64
 	condition := func(e *event) bool {
@@ -575,7 +575,7 @@ func (c *cluster) waitForFollowers() *Raft {
 // wait until state is one of given states
 func (c *cluster) waitForState(r *Raft, timeout time.Duration, states ...State) {
 	c.Helper()
-	tdebug("waitForState:", host(r), timeout, states)
+	testln("waitForState:", host(r), timeout, states)
 	condition := func(e *event) bool {
 		got := r.Info().State()
 		for _, want := range states {
@@ -594,7 +594,7 @@ func (c *cluster) waitForState(r *Raft, timeout time.Duration, states ...State) 
 
 func (c *cluster) waitForLeader(rr ...*Raft) *Raft {
 	c.Helper()
-	tdebug("waitForLeader:", hosts(rr))
+	testln("waitForLeader:", hosts(rr))
 	if len(rr) == 0 {
 		rr = c.exclude()
 	}
@@ -620,7 +620,7 @@ func (c *cluster) waitForLeader(rr ...*Raft) *Raft {
 
 func (c *cluster) waitCommitReady(ldr *Raft) {
 	c.Helper()
-	tdebug("waitCommitReady:", host(ldr))
+	testln("waitCommitReady:", host(ldr))
 	condition := func(e *event) bool {
 		c.eventMu.RLock()
 		defer c.eventMu.RUnlock()
@@ -635,7 +635,7 @@ func (c *cluster) waitCommitReady(ldr *Raft) {
 
 func (c *cluster) waitFSMLen(fsmLen uint64, rr ...*Raft) {
 	c.Helper()
-	tdebug("waitFSMLen:", fsmLen, hosts(rr))
+	testln("waitFSMLen:", fsmLen, hosts(rr))
 	if len(rr) == 0 {
 		rr = c.exclude()
 	}
@@ -660,7 +660,7 @@ func (c *cluster) waitFSMLen(fsmLen uint64, rr ...*Raft) {
 
 func (c *cluster) ensureFSMLen(fsmLen uint64, rr ...*Raft) {
 	c.Helper()
-	tdebug("ensureFSMLen:", fsmLen, hosts(rr))
+	testln("ensureFSMLen:", fsmLen, hosts(rr))
 	if len(rr) == 0 {
 		rr = c.exclude()
 	}
@@ -693,7 +693,7 @@ func (c *cluster) ensureFSMSame(want []string, rr ...*Raft) {
 
 func (c *cluster) waitForCommitted(index uint64, rr ...*Raft) {
 	c.Helper()
-	tdebug("waitForCommitted: index:", index, hosts(rr))
+	testln("waitForCommitted: index:", index, hosts(rr))
 	if len(rr) == 0 {
 		rr = c.exclude()
 	}
@@ -719,7 +719,7 @@ func (c *cluster) waitForCommitted(index uint64, rr ...*Raft) {
 
 func (c *cluster) waitCatchup(rr ...*Raft) {
 	c.Helper()
-	tdebug("waitCatchup:", hosts(rr))
+	testln("waitCatchup:", hosts(rr))
 	leaders := c.getInState(Leader)
 	if len(leaders) != 1 {
 		c.Fatalf("leaders: got %d, want 1", len(leaders))
@@ -752,7 +752,7 @@ func (c *cluster) waitCatchup(rr ...*Raft) {
 
 func (c *cluster) waitUnreachableDetected(ldr, failed *Raft) (since time.Time, err error) {
 	c.Helper()
-	tdebug("waitUnreachableDetected: ldr:", host(ldr), "failed:", host(failed))
+	testln("waitUnreachableDetected: ldr:", host(ldr), "failed:", host(failed))
 	condition := func(e *event) bool {
 		flr := ldr.Info().Followers()[failed.NID()]
 		since, err = flr.Unreachable, flr.Err
@@ -768,7 +768,7 @@ func (c *cluster) waitUnreachableDetected(ldr, failed *Raft) (since time.Time, e
 
 func (c *cluster) waitReachableDetected(ldr, failed *Raft) {
 	c.Helper()
-	tdebug("waitReachableDetected: ldr:", host(ldr), "failed:", host(failed))
+	testln("waitReachableDetected: ldr:", host(ldr), "failed:", host(failed))
 	condition := func(e *event) bool {
 		return ldr.Info().Followers()[failed.NID()].Unreachable.IsZero()
 	}
@@ -797,7 +797,7 @@ func (c *cluster) waitTaskDone(t Task, timeout time.Duration, want error) interf
 }
 
 func (c *cluster) sendUpdates(r *Raft, from, to int) Task {
-	tdebug("sendUpdates:", host(r), from, "to", to)
+	testln("sendUpdates:", host(r), from, "to", to)
 	var t FSMTask
 	for i := from; i <= to; i++ {
 		t = UpdateFSM([]byte(fmt.Sprintf("update:%d", i)))
@@ -815,7 +815,7 @@ func (c *cluster) waitBarrier(r *Raft, timeout time.Duration) {
 
 func (c *cluster) takeSnapshot(r *Raft, threshold uint64, want error) {
 	c.Helper()
-	tdebug("takeSnapshot:", host(r), "threshold:", threshold, "want:", want)
+	testln("takeSnapshot:", host(r), "threshold:", threshold, "want:", want)
 	takeSnap := TakeSnapshot(threshold)
 	r.Tasks() <- takeSnap
 	<-takeSnap.Done()
@@ -825,7 +825,7 @@ func (c *cluster) takeSnapshot(r *Raft, threshold uint64, want error) {
 }
 
 func (c *cluster) disconnect(rr ...*Raft) {
-	tdebug("disconnect:", hosts(rr))
+	testln("disconnect:", hosts(rr))
 	if len(rr) == 0 {
 		network.SetFirewall(fnet.AllowSelf)
 		return
@@ -838,7 +838,7 @@ func (c *cluster) disconnect(rr ...*Raft) {
 }
 
 func (c *cluster) connect() {
-	tdebug("reconnecting")
+	testln("reconnecting")
 	network.SetFirewall(fnet.AllowAll)
 }
 
@@ -858,7 +858,7 @@ func fsm(r *Raft) *fsmMock {
 }
 
 func waitTask(r *Raft, t Task, timeout time.Duration) (interface{}, error) {
-	tdebug("waitTask:", host(r), t, timeout)
+	testln("waitTask:", host(r), t, timeout)
 	var timer <-chan time.Time
 	if timeout > 0 {
 		timer = time.After(timeout)
@@ -878,13 +878,13 @@ func waitTask(r *Raft, t Task, timeout time.Duration) (interface{}, error) {
 }
 
 func waitBootstrap(r *Raft, c Config, timeout time.Duration) error {
-	tdebug("waitBootstrap:", host(r), c, timeout)
+	testln("waitBootstrap:", host(r), c, timeout)
 	_, err := waitTask(r, ChangeConfig(c), timeout)
 	return err
 }
 
 func addNonvoter(ldr *Raft, id uint64, addr string, promote bool) Task {
-	tdebug("addNonvoter:", host(ldr), id2Host(id), addr, promote)
+	testln("addNonvoter:", host(ldr), id2Host(id), addr, promote)
 	newConf := ldr.Info().Configs().Latest
 	action := None
 	if promote {
@@ -897,7 +897,7 @@ func addNonvoter(ldr *Raft, id uint64, addr string, promote bool) Task {
 }
 
 func waitAddNonvoter(ldr *Raft, id uint64, addr string, promote bool) error {
-	tdebug("waitAddNonvoter:", host(ldr), id2Host(id), addr, promote)
+	testln("waitAddNonvoter:", host(ldr), id2Host(id), addr, promote)
 	newConf := ldr.Info().Configs().Latest
 	action := None
 	if promote {
@@ -913,7 +913,7 @@ func waitAddNonvoter(ldr *Raft, id uint64, addr string, promote bool) error {
 
 // use zero timeout, to wait till reply received
 func waitFSMTask(r *Raft, t FSMTask, timeout time.Duration) (fsmReply, error) {
-	tdebug("waitNewEntry:", host(r), t, timeout)
+	testln("waitNewEntry:", host(r), t, timeout)
 	var timer <-chan time.Time
 	if timeout > 0 {
 		timer = time.After(timeout)
@@ -1350,9 +1350,9 @@ func (fsm *fsmMock) RestoreFrom(r io.Reader) error {
 
 // ------------------------------------------------------------------
 
-func tdebug(args ...interface{}) {
+func testln(args ...interface{}) {
 	prefix := "[testing]-----------------------"
-	debug(append([]interface{}{prefix}, args...)...)
+	println(append([]interface{}{prefix}, args...)...)
 }
 
 func hosts(rr []*Raft) string {

@@ -125,8 +125,8 @@ func (r *Raft) Serve(l net.Listener) error {
 		return ErrServerClosed
 	}
 	if trace {
-		debug(r, "serving at", l.Addr())
-		defer debug(r, "<< shutdown()")
+		println(r, "serving at", l.Addr())
+		defer println(r, "<< shutdown()")
 	}
 	if r.trace.Starting != nil {
 		r.trace.Starting(r.liveInfo())
@@ -140,7 +140,7 @@ func (r *Raft) Serve(l net.Listener) error {
 		defer wg.Done()
 		r.fsm.runLoop()
 		if trace {
-			debug(r, "fsmLoop shutdown")
+			println(r, "fsmLoop shutdown")
 		}
 	}()
 	defer close(r.fsm.ch)
@@ -160,7 +160,7 @@ func (r *Raft) Serve(l net.Listener) error {
 		defer wg.Done()
 		s.serve(r.rpcCh)
 		if trace {
-			debug(r, "server shutdown")
+			println(r, "server shutdown")
 		}
 	}()
 	defer s.shutdown()
@@ -202,7 +202,7 @@ func (r *Raft) stateLoop() (err error) {
 			r.doClose(err)
 		}
 		if trace {
-			debug(r, "stateLoop shutdown")
+			println(r, "stateLoop shutdown")
 		}
 	}()
 
@@ -224,7 +224,7 @@ func (r *Raft) stateLoop() (err error) {
 
 			case err := <-r.fsmRestoredCh:
 				if trace {
-					debug(r, "fsm restored err", err)
+					println(r, "fsm restored err", err)
 				}
 				if err != nil {
 					panic(err)
@@ -310,7 +310,7 @@ func (r *Raft) release() {
 func (r *Raft) doClose(reason error) {
 	r.closeOnce.Do(func() {
 		if trace {
-			debug(r, ">> shutdown()", reason)
+			println(r, ">> shutdown()", reason)
 		}
 		if r.trace.ShuttingDown != nil {
 			r.trace.ShuttingDown(r.liveInfo(), reason)
@@ -341,7 +341,7 @@ func (r *Raft) isClosed() bool {
 func (r *Raft) setState(s State) {
 	if s != r.state {
 		if trace {
-			debug(r, r.state, "->", s)
+			println(r, r.state, "->", s)
 		}
 		r.state = s
 		if r.trace.StateChanged != nil {
@@ -353,7 +353,7 @@ func (r *Raft) setState(s State) {
 func (r *Raft) setLeader(id uint64) {
 	if id != r.leader {
 		if trace {
-			debug(r, "leader:", id)
+			println(r, "leader:", id)
 		}
 		r.leader = id
 		if r.trace.LeaderChanged != nil {

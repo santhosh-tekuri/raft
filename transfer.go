@@ -54,7 +54,7 @@ func (t transfer) targetChosen() bool {
 func (t *transfer) reply(err error) {
 	if t.timer.active {
 		if trace {
-			debug("transferLdr.reply err:", err)
+			println("transferLdr.reply err:", err)
 		}
 		t.task.reply(err)
 	}
@@ -67,11 +67,11 @@ func (t *transfer) reply(err error) {
 
 func (l *leader) onTransfer(t transferLdr) {
 	if trace {
-		debug(l, "got", t)
+		println(l, "got", t)
 	}
 	if err := l.validateTransfer(t); err != nil {
 		if trace {
-			debug(l, "transferLdr invalid:", err)
+			println(l, "transferLdr invalid:", err)
 		}
 		t.reply(err)
 		return
@@ -128,7 +128,7 @@ func (l *leader) tryTransfer() {
 		l.transfer.respCh = make(chan rpcResponse, 1)
 		req := &timeoutNowReq{req{l.term, l.nid}}
 		if trace {
-			debug(l, target, ">>", req)
+			println(l, target, ">>", req)
 		}
 		pool := l.getConnPool(target)
 		go func(ch chan<- rpcResponse) {
@@ -146,7 +146,7 @@ func (l *leader) onTransferTimeout() {
 
 func (l *leader) onTimeoutNowResult(rpc rpcResponse) {
 	if trace {
-		debug(l, rpc)
+		println(l, rpc)
 	}
 	l.transfer.respCh = nil
 	if rpc.err != nil {

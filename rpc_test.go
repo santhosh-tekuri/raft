@@ -44,7 +44,7 @@ func TestRPC_voteReq_opError(t *testing.T) {
 	close(failNow)
 
 	// shutdown leader, so that other two start election to chose new leader
-	tdebug("shutting down leader", ldr.nid)
+	testln("shutting down leader", ldr.nid)
 	c.shutdown(ldr)
 
 	// ensure that who ever votes for other, shuts down
