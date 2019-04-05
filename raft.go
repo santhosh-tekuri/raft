@@ -129,7 +129,7 @@ func (r *Raft) Serve(l net.Listener) error {
 		defer println(r, "<< shutdown()")
 	}
 	if r.trace.Starting != nil {
-		r.trace.Starting(r.liveInfo())
+		r.trace.Starting(r.liveInfo(), l.Addr())
 	}
 
 	var wg sync.WaitGroup
