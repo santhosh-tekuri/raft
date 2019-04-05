@@ -186,7 +186,7 @@ func TestMain(m *testing.M) {
 	}
 	tempDir = temp
 	code := m.Run()
-	println("barrier") // wait until all pending debug messages are printed to stdout
+	println("barrier") // wait until all pending debug traceCh are printed to stdout
 	_ = os.RemoveAll(tempDir)
 	os.Exit(code)
 }

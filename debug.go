@@ -20,50 +20,26 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"github.com/fatih/color"
 )
 
 const (
 	trace = true
 )
 
-var colorT = color.New(color.BgBlue, color.FgHiYellow)
-var colorL = color.New(color.FgWhite)
-var colorC = color.New(color.FgRed)
-var colorF = color.New(color.FgCyan)
-var colorR = color.New(color.FgYellow)
-var colorU = color.New(color.FgHiWhite)
+var traceDone = make(chan struct{})
+var traceCh = make(chan string, 10000)
 
-var barrierCh = make(chan struct{}, 1)
-var messages = func() chan string {
-	ch := make(chan string, 10000)
+func init() {
 	go func() {
-		for msg := range ch {
+		for msg := range traceCh {
 			if isBarrier(msg) {
-				// signal that barrier reached
-				barrierCh <- struct{}{}
+				close(traceDone)
 				continue
 			}
-			switch {
-			case strings.Index(msg, "[testing]") != -1:
-				colorT.Print(strings.TrimSpace(msg))
-				fmt.Println()
-			case strings.Index(msg, " L | M") != -1:
-				colorR.Print(msg)
-			case strings.Index(msg, " L | ") != -1:
-				colorL.Print(msg)
-			case strings.Index(msg, " C | ") != -1:
-				colorC.Print(msg)
-			case strings.Index(msg, " F | ") != -1:
-				colorF.Print(msg)
-			default:
-				colorU.Print(msg)
-			}
+			fmt.Print(msg)
 		}
 	}()
-	return ch
-}()
+}
 
 var boot = time.Now()
 
@@ -81,16 +57,16 @@ func println(args ...interface{}) {
 
 	ms := time.Now().Sub(boot).Nanoseconds() / 1e6
 	msg := fmt.Sprintln(append([]interface{}{ms}, args...)...)
-	messages <- msg
+	traceCh <- msg
 	if isBarrier(msg) {
-		// wait all pending messages are printed
-		<-barrierCh
+		// wait all pending traceCh are printed
+		<-traceDone
 	}
 }
 
 func assert(b bool, format string, args ...interface{}) {
 	if !b {
-		// wait until all pending debug messages are printed to stdout
+		// wait until all pending debug traceCh are printed to stdout
 		println("barrier")
 		panic(fmt.Errorf(format, args...))
 	}
