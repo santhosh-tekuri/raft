@@ -500,6 +500,10 @@ func (r *Raft) changeConfig(config Config) {
 	if trace {
 		println(r, "changeConfig", config)
 	}
+	if r.leader != 0 && !config.isVoter(r.leader) { // leader removed
+		r.setLeader(0) // for faster election
+
+	}
 	r.configs.Committed = r.configs.Latest
 	r.setLatest(config)
 	if r.trace.ConfigChanged != nil {
@@ -510,6 +514,9 @@ func (r *Raft) changeConfig(config Config) {
 func (r *Raft) commitConfig() {
 	if trace {
 		println(r, "commitConfig", r.configs.Latest)
+	}
+	if r.leader != 0 && !r.configs.Latest.isVoter(r.leader) { // leader removed
+		r.setLeader(0) // for faster election
 	}
 	r.configs.Committed = r.configs.Latest
 	if r.trace.ConfigCommitted != nil {
