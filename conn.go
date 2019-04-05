@@ -87,9 +87,9 @@ func (r *resolver) update(config Config) {
 	}
 }
 
-func (r *resolver) lookupID(id uint64) (string, error) {
+func (r *resolver) lookupID(id uint64, timeout time.Duration) (string, error) {
 	if r.delegate != nil {
-		addr, err := r.delegate.LookupID(id)
+		addr, err := r.delegate.LookupID(id, timeout)
 		if err == nil {
 			return addr, nil
 		}
@@ -132,7 +132,7 @@ func (pool *connPool) getConn() (*conn, error) {
 	}
 
 	// dial ---------
-	addr, err := pool.resolver.lookupID(pool.nid)
+	addr, err := pool.resolver.lookupID(pool.nid, pool.timeout)
 	if err != nil {
 		return nil, err
 	}

@@ -83,8 +83,8 @@ func TestLeader_quorumWait_unreachable(t *testing.T) {
 	ldr, followers := c.ensureLaunch(2)
 	defer c.shutdown()
 
-	unreachable := c.registerFor(unreachable, ldr)
-	defer c.unregister(unreachable)
+	reachability := c.registerFor(reachability, ldr)
+	defer c.unregister(reachability)
 	quorumUnreachable := c.registerFor(quorumUnreachable, ldr)
 	defer c.unregister(quorumUnreachable)
 
@@ -92,7 +92,7 @@ func TestLeader_quorumWait_unreachable(t *testing.T) {
 	c.disconnect(followers[0])
 
 	// wait for leader to detect
-	c.ensure(unreachable.waitForEvent(c.heartbeatTimeout))
+	c.ensure(reachability.waitForEvent(c.heartbeatTimeout))
 	start := time.Now()
 
 	// check that we got quorumUnreachable trace
@@ -132,8 +132,8 @@ func TestLeader_quorumWait_reachable(t *testing.T) {
 	ldr, followers := c.ensureLaunch(2)
 	defer c.shutdown()
 
-	unreachable := c.registerFor(unreachable, ldr)
-	defer c.unregister(unreachable)
+	reachability := c.registerFor(reachability, ldr)
+	defer c.unregister(reachability)
 	quorumUnreachable := c.registerFor(quorumUnreachable, ldr)
 	defer c.unregister(quorumUnreachable)
 
@@ -141,7 +141,7 @@ func TestLeader_quorumWait_reachable(t *testing.T) {
 	c.disconnect(followers[0])
 
 	// wait for leader to detect
-	c.ensure(unreachable.waitForEvent(c.heartbeatTimeout))
+	c.ensure(reachability.waitForEvent(c.heartbeatTimeout))
 	start := time.Now()
 
 	// check that we got quorumUnreachable trace

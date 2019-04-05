@@ -181,5 +181,5 @@ func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
 // ----------------------------------------------
 
 type Resolver interface {
-	LookupID(id uint64) (addr string, err error)
+	LookupID(id uint64, timeout time.Duration) (addr string, err error)
 }

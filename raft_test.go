@@ -298,7 +298,7 @@ type cluster struct {
 	*events
 }
 
-func (c *cluster) LookupID(id uint64) (addr string, err error) {
+func (c *cluster) LookupID(id uint64, timeout time.Duration) (addr string, err error) {
 	c.resolverMu.RLock()
 	defer c.resolverMu.RUnlock()
 	return c.id2Addr(id), nil
