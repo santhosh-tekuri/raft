@@ -225,7 +225,6 @@ func newCluster(t *testing.T) *cluster {
 	clusters[t.Name()]++
 	if clusters[t.Name()] == 1 { // first cluster in test, initialize network and checks
 		println()
-		println("-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8-->8--")
 		println()
 		testln(t.Name(), "--------------------------")
 		network = fnet.New()

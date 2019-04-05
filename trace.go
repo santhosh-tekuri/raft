@@ -55,8 +55,13 @@ func println(args ...interface{}) {
 	//	return
 	//}
 
-	ms := time.Now().Sub(boot).Nanoseconds() / 1e6
-	msg := fmt.Sprintln(append([]interface{}{ms}, args...)...)
+	var msg string
+	if len(args) == 0 {
+		msg = "\n"
+	} else {
+		ms := time.Now().Sub(boot).Nanoseconds() / 1e6
+		msg = fmt.Sprintln(append([]interface{}{ms}, args...)...)
+	}
 	traceCh <- msg
 	if isBarrier(msg) {
 		// wait all pending traceCh are printed
