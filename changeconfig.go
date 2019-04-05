@@ -42,7 +42,7 @@ func (l *leader) beginFinishedRounds() {
 func (l *leader) checkConfigActions(t *task, config Config) {
 	// do actions on self if any
 	n := config.Nodes[l.nid]
-	if l.canChangeConfig() && n.Action == Demote || n.Action == Remove {
+	if l.canChangeConfig() && n.Action != None {
 		if trace {
 			println(l, n.ID, "started", n.Action)
 		}
@@ -57,9 +57,11 @@ func (l *leader) checkConfigActions(t *task, config Config) {
 				n.Action = None
 			}
 			config.Nodes[n.ID] = n
-		case Remove:
+		case Remove, ForceRemove:
 			config = config.clone()
 			delete(config.Nodes, l.nid)
+		default:
+			panic(bug(1, "unexpected leader configAction: %v", n.Action))
 		}
 		l.doChangeConfig(t, config)
 	}
