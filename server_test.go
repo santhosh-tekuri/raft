@@ -42,7 +42,7 @@ func TestServer(t *testing.T) {
 				req: req{term: 5, src: 3}, prevLogIndex: 3, prevLogTerm: 5,
 				numEntries: 7, ldrCommitIndex: 7,
 			},
-			resp: &appendEntriesResp{resp: resp{term: 5, result: success}, lastLogIndex: 10},
+			resp: &appendResp{resp: resp{term: 5, result: success}, lastLogIndex: 10},
 		},
 	}
 

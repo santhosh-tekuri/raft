@@ -109,8 +109,8 @@ func (req *appendReq) String() string {
 	return fmt.Sprintf(format, req.term, req.src, req.prevLogIndex, req.prevLogTerm, req.numEntries, req.ldrCommitIndex)
 }
 
-func (resp *appendEntriesResp) String() string {
-	format := "appendEntriesResp{%v last:%d}"
+func (resp *appendResp) String() string {
+	format := "appendResp{%v last:%d}"
 	return fmt.Sprintf(format, resp.resp, resp.lastLogIndex)
 }
 

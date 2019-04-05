@@ -119,7 +119,7 @@ func (r *replication) runLoop(req *appendReq) {
 
 // always returns non-nil error
 func (r *replication) replicate(c *conn, req *appendReq) error {
-	resp := &appendEntriesResp{}
+	resp := &appendResp{}
 	for {
 		// find matchIndex ---------------------------------------------------
 		for {
@@ -350,7 +350,7 @@ func (r *replication) writeAppendEntriesReq(c *conn, req *appendReq, sendEntries
 	return nil
 }
 
-func (r *replication) onAppendEntriesResp(resp *appendEntriesResp, reqLastIndex uint64) error {
+func (r *replication) onAppendEntriesResp(resp *appendResp, reqLastIndex uint64) error {
 	if trace {
 		println(r, "<<", resp)
 	}

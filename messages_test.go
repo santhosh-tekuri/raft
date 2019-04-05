@@ -43,7 +43,7 @@ func TestMessage(t *testing.T) {
 		&appendReq{
 			req: req{term: 5, src: 2}, prevLogIndex: 3, prevLogTerm: 5, numEntries: 10, ldrCommitIndex: 56,
 		},
-		&appendEntriesResp{resp: resp{term: 5, result: success}, lastLogIndex: 9},
+		&appendResp{resp: resp{term: 5, result: success}, lastLogIndex: 9},
 		&installSnapReq{
 			req: req{term: 5, src: 1}, lastIndex: 3, lastTerm: 5,
 			lastConfig: Config{

@@ -144,7 +144,7 @@ func (t rpcType) createResp(r *Raft, result rpcResult, err error) response {
 	case rpcVote:
 		return &voteResp{resp}
 	case rpcAppendEntries:
-		return &appendEntriesResp{resp, r.lastLogIndex}
+		return &appendResp{resp, r.lastLogIndex}
 	case rpcInstallSnap:
 		return &installSnapResp{resp}
 	case rpcTimeoutNow:
@@ -445,12 +445,12 @@ func (req *appendReq) encode(w io.Writer) error {
 
 // ------------------------------------------------------
 
-type appendEntriesResp struct {
+type appendResp struct {
 	resp
 	lastLogIndex uint64
 }
 
-func (resp *appendEntriesResp) decode(r io.Reader) error {
+func (resp *appendResp) decode(r io.Reader) error {
 	var err error
 	if err = resp.resp.decode(r); err != nil {
 		return err
@@ -459,7 +459,7 @@ func (resp *appendEntriesResp) decode(r io.Reader) error {
 	return err
 }
 
-func (resp *appendEntriesResp) encode(w io.Writer) error {
+func (resp *appendResp) encode(w io.Writer) error {
 	if err := resp.resp.encode(w); err != nil {
 		return err
 	}
