@@ -470,7 +470,8 @@ func (r *Raft) setCommitIndex(index uint64) (configCommitted bool) {
 }
 
 func (l *leader) changeConfig(config Config) {
-	l.voter = config.isVoter(l.nid)
+	l.node = config.Nodes[l.nid]
+	l.numVoters = l.configs.Latest.numVoters()
 	l.Raft.changeConfig(config)
 
 	// remove repls

@@ -24,7 +24,8 @@ import (
 type leader struct {
 	*Raft
 
-	voter bool
+	node      Node
+	numVoters int
 
 	// leader term starts from this index.
 	// this index refers to noop entry
@@ -50,7 +51,8 @@ type leader struct {
 func (l *leader) init() {
 	assert(l.leader == l.nid, "%v ldr.leader: got %d, want %d", l, l.leader, l.nid)
 
-	l.voter = true
+	l.node = l.configs.Latest.Nodes[l.nid]
+	l.numVoters = l.configs.Latest.numVoters()
 	l.startIndex = l.lastLogIndex + 1
 	l.replUpdateCh = make(chan replUpdate, 1024)
 	l.removeLTE = l.log.PrevIndex()
@@ -163,6 +165,9 @@ func (l *leader) storeEntry(ne *newEntry) {
 		}
 		l.beginFinishedRounds()
 		l.notifyFlr(l.configs.Latest.Index > configIndex)
+		if l.numVoters == 1 && l.node.Voter {
+			l.onMajorityCommit()
+		}
 	}
 }
 
@@ -315,6 +320,9 @@ func (l *leader) checkQuorum(wait time.Duration) {
 
 // computes N such that, a majority of matchIndex[i] ≥ N
 func (l *leader) majorityMatchIndex() uint64 {
+	if l.numVoters == 1 && l.node.Voter {
+		return l.lastLogIndex
+	}
 	matched := make(decrUint64Slice, len(l.configs.Latest.Nodes))
 	i := 0
 	for _, n := range l.configs.Latest.Nodes {
@@ -395,9 +403,6 @@ func (l *leader) notifyFlr(includeConfig bool) {
 		if trace {
 			println(l, update, repl.status.id)
 		}
-	}
-	if l.voter {
-		l.onMajorityCommit()
 	}
 }
 
