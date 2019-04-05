@@ -40,7 +40,7 @@ func TestMessage(t *testing.T) {
 		&voteReq{req: req{term: 5, src: 2}, lastLogIndex: 3, lastLogTerm: 5, transfer: true},
 		&voteResp{resp{term: 5, result: success}},
 		&voteResp{resp{term: 5, result: alreadyVoted}},
-		&appendEntriesReq{
+		&appendReq{
 			req: req{term: 5, src: 2}, prevLogIndex: 3, prevLogTerm: 5, numEntries: 10, ldrCommitIndex: 56,
 		},
 		&appendEntriesResp{resp: resp{term: 5, result: success}, lastLogIndex: 9},

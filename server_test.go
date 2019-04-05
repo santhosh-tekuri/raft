@@ -38,7 +38,7 @@ func TestServer(t *testing.T) {
 		},
 		{
 			name: "appendEntries",
-			req: &appendEntriesReq{
+			req: &appendReq{
 				req: req{term: 5, src: 3}, prevLogIndex: 3, prevLogTerm: 5,
 				numEntries: 7, ldrCommitIndex: 7,
 			},

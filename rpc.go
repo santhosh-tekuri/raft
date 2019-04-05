@@ -76,7 +76,7 @@ func (r *Raft) onRequest(req request, reader io.Reader) (result rpcResult, err e
 	switch req := req.(type) {
 	case *voteReq:
 		return r.onVoteRequest(req)
-	case *appendEntriesReq:
+	case *appendReq:
 		return r.onAppendEntriesRequest(req, reader)
 	case *installSnapReq:
 		return r.onInstallSnapRequest(req, reader)
@@ -137,7 +137,7 @@ func (r *Raft) onVoteRequest(req *voteReq) (rpcResult, error) {
 
 // onAppendEntriesRequest -------------------------------------------------
 
-func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq, reader io.Reader) (rpcResult, error) {
+func (r *Raft) onAppendEntriesRequest(req *appendReq, reader io.Reader) (rpcResult, error) {
 	drain := func(result rpcResult, err error) (rpcResult, error) {
 		for req.numEntries > 0 {
 			req.numEntries--
@@ -245,7 +245,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendEntriesReq, reader io.Reader) (
 	return success, nil
 }
 
-func (r *Raft) canCommit(req *appendEntriesReq, index, term uint64) bool {
+func (r *Raft) canCommit(req *appendReq, index, term uint64) bool {
 	return req.ldrCommitIndex >= index && // did leader committed it ?
 		term == req.term && // don't commit any entry, until leader has committed an entry with his term
 		index > r.commitIndex // haven't we committed yet

@@ -51,7 +51,7 @@ type replication struct {
 	stopCh         chan struct{}
 }
 
-func (r *replication) runLoop(req *appendEntriesReq) {
+func (r *replication) runLoop(req *appendReq) {
 	if trace {
 		println(r, "r.start")
 	}
@@ -118,7 +118,7 @@ func (r *replication) runLoop(req *appendEntriesReq) {
 }
 
 // always returns non-nil error
-func (r *replication) replicate(c *conn, req *appendEntriesReq) error {
+func (r *replication) replicate(c *conn, req *appendReq) error {
 	resp := &appendEntriesResp{}
 	for {
 		// find matchIndex ---------------------------------------------------
@@ -303,7 +303,7 @@ func (r *replication) replicate(c *conn, req *appendEntriesReq) error {
 const maxAppendEntries = 64
 
 // note: never access f.matchIndex in this method, because this is used by pipeline writer also
-func (r *replication) writeAppendEntriesReq(c *conn, req *appendEntriesReq, sendEntries bool) error {
+func (r *replication) writeAppendEntriesReq(c *conn, req *appendReq, sendEntries bool) error {
 	snapIndex, snapTerm := r.snaps.latest()
 
 	// fill req.prevLogXXX
@@ -384,7 +384,7 @@ func (r *replication) onAppendEntriesResp(resp *appendEntriesResp, reqLastIndex 
 	}
 }
 
-func (r *replication) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) error {
+func (r *replication) sendInstallSnapReq(c *conn, appReq *appendReq) error {
 	snap, err := r.snaps.open()
 	if err != nil {
 		return opError(err, "snapshots.open")
@@ -438,7 +438,7 @@ func (r *replication) sendInstallSnapReq(c *conn, appReq *appendEntriesReq) erro
 	}
 }
 
-func (r *replication) checkLeaderUpdate(stopCh <-chan struct{}, req *appendEntriesReq, sendEntries bool) (ldrUpdate bool, err error) {
+func (r *replication) checkLeaderUpdate(stopCh <-chan struct{}, req *appendReq, sendEntries bool) (ldrUpdate bool, err error) {
 	if sendEntries && r.nextIndex > r.ldrLastIndex {
 		// for nonvoter, dont send heartbeats
 		var timerCh <-chan time.Time
@@ -472,7 +472,7 @@ func (r *replication) checkLeaderUpdate(stopCh <-chan struct{}, req *appendEntri
 	return false, nil
 }
 
-func (r *replication) onLeaderUpdate(u leaderUpdate, req *appendEntriesReq) {
+func (r *replication) onLeaderUpdate(u leaderUpdate, req *appendReq) {
 	if trace {
 		println(r, u)
 	}

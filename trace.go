@@ -104,8 +104,8 @@ func (resp *voteResp) String() string {
 	return fmt.Sprintf("voteResp{%s}", resp.resp)
 }
 
-func (req *appendEntriesReq) String() string {
-	format := "appendEntriesReq{T%d M%d prev:(%d,%d), #entries: %d, commit:%d}"
+func (req *appendReq) String() string {
+	format := "appendReq{T%d M%d prev:(%d,%d), #entries: %d, commit:%d}"
 	return fmt.Sprintf(format, req.term, req.src, req.prevLogIndex, req.prevLogTerm, req.numEntries, req.ldrCommitIndex)
 }
 

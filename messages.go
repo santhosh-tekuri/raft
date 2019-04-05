@@ -127,7 +127,7 @@ func (t rpcType) createReq() request {
 	case rpcVote:
 		return &voteReq{}
 	case rpcAppendEntries:
-		return &appendEntriesReq{}
+		return &appendReq{}
 	case rpcInstallSnap:
 		return &installSnapReq{}
 	case rpcTimeoutNow:
@@ -399,7 +399,7 @@ type voteResp struct {
 
 // ------------------------------------------------------
 
-type appendEntriesReq struct {
+type appendReq struct {
 	req
 	prevLogIndex   uint64
 	prevLogTerm    uint64
@@ -407,9 +407,9 @@ type appendEntriesReq struct {
 	numEntries     uint64
 }
 
-func (req *appendEntriesReq) rpcType() rpcType { return rpcAppendEntries }
+func (req *appendReq) rpcType() rpcType { return rpcAppendEntries }
 
-func (req *appendEntriesReq) decode(r io.Reader) error {
+func (req *appendReq) decode(r io.Reader) error {
 	var err error
 	if err = req.req.decode(r); err != nil {
 		return err
@@ -427,7 +427,7 @@ func (req *appendEntriesReq) decode(r io.Reader) error {
 	return err
 }
 
-func (req *appendEntriesReq) encode(w io.Writer) error {
+func (req *appendReq) encode(w io.Writer) error {
 	if err := req.req.encode(w); err != nil {
 		return err
 	}
