@@ -17,6 +17,7 @@ package raft
 import (
 	"errors"
 	"fmt"
+	"net"
 	"strconv"
 	"sync"
 	"time"
@@ -91,7 +92,7 @@ func DefaultOptions() Options {
 
 type Trace struct {
 	Error               func(err error)
-	Starting            func(info Info)
+	Starting            func(info Info, addr net.Addr)
 	StateChanged        func(info Info)
 	LeaderChanged       func(info Info)
 	ElectionStarted     func(info Info)
@@ -112,9 +113,10 @@ func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
 	trace.Error = func(err error) {
 		warn(err)
 	}
-	trace.Starting = func(rinfo Info) {
-		info("raft: starting with cid:", rinfo.CID(), "nid:", rinfo.NID())
+	trace.Starting = func(rinfo Info, addr net.Addr) {
+		info("raft: cid:", rinfo.CID(), "nid:", rinfo.NID())
 		info("raft: config", rinfo.Configs().Latest)
+		info("raft: listening at", addr)
 	}
 	trace.StateChanged = func(rinfo Info) {
 		info("raft: state changed to", rinfo.State())
