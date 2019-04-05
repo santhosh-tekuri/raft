@@ -487,7 +487,6 @@ func (c *cluster) waitForStability(rr ...*Raft) {
 	}
 }
 
-// todo: use this method instead of r.Info().State() in tests
 func (c *cluster) getState(r *Raft) State {
 	c.eventMu.RLock()
 	defer c.eventMu.RUnlock()
@@ -583,7 +582,7 @@ func (c *cluster) waitForState(r *Raft, timeout time.Duration, states ...State) 
 	c.Helper()
 	testln("waitForState:", host(r), timeout, states)
 	condition := func(e *event) bool {
-		got := r.Info().State()
+		got := c.getState(r)
 		for _, want := range states {
 			if got == want {
 				return true
