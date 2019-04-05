@@ -125,6 +125,12 @@ func (l *leader) storeEntry(ne *newEntry) {
 		i++
 		if l.transfer.inProgress() {
 			ne.reply(InProgressError("transferLeadership"))
+		} else if !l.node.Voter {
+			if _, ok := l.configs.Latest.Nodes[l.nid]; ok {
+				ne.reply(InProgressError("demoteLeader"))
+			} else {
+				ne.reply(InProgressError("removeLeader"))
+			}
 		} else {
 			ne.entry.index, ne.entry.term = l.lastLogIndex+1, l.term
 			if l.neTail != nil {
