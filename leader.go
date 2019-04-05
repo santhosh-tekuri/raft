@@ -15,7 +15,6 @@
 package raft
 
 import (
-	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -195,7 +194,6 @@ func (l *leader) addReplication(n Node) {
 		stopCh:         make(chan struct{}),
 		replUpdateCh:   l.replUpdateCh,
 		leaderUpdateCh: make(chan leaderUpdate, 1),
-		str:            fmt.Sprintf("%v M%d", l, n.ID),
 	}
 	l.repls[n.ID] = repl
 

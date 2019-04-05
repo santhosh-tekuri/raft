@@ -49,8 +49,6 @@ type replication struct {
 	leaderUpdateCh chan leaderUpdate
 	replUpdateCh   chan<- replUpdate
 	stopCh         chan struct{}
-
-	str string // used for debug() calls
 }
 
 func (r *replication) runLoop(req *appendEntriesReq) {
