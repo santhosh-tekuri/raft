@@ -199,6 +199,10 @@ func (t changeConfig) String() string {
 	return fmt.Sprintf("changeConfig{%s}", t.newConf)
 }
 
+func (t waitForStableConfig) String() string {
+	return "WaitForStableConfig{}"
+}
+
 func (t takeSnapshot) String() string {
 	return fmt.Sprintf("takeSnapshot{%d}", t.threshold)
 }
