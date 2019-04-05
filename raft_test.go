@@ -1014,6 +1014,7 @@ type event struct {
 	action     ConfigAction
 	numRounds  uint64
 	firstIndex uint64
+	reason     string
 }
 
 func (e event) matches(typ eventType, rr ...*Raft) bool {
@@ -1161,8 +1162,9 @@ func (ee *events) trace() (trace Trace) {
 	}
 	trace.ElectionAborted = func(info Info, reason string) {
 		ee.sendEvent(event{
-			src: info.NID(),
-			typ: electionAborted,
+			src:    info.NID(),
+			typ:    electionAborted,
+			reason: reason,
 		})
 	}
 	trace.CommitReady = func(info Info) {

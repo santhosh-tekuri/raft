@@ -311,6 +311,11 @@ func TestChangeConfig_removeVoters(t *testing.T) {
 	// wait for commit ready
 	c.waitCommitReady(ldr)
 
+	electionAborted0 := c.registerFor(electionAborted, flrs[0])
+	defer c.unregister(electionAborted0)
+	electionAborted1 := c.registerFor(electionAborted, flrs[1])
+	defer c.unregister(electionAborted1)
+
 	// submit ChangeConfig with two voters removed, and wait for completion
 	config := ldr.Info().Configs().Latest
 	if err := config.SetAction(flrs[0].nid, Remove); err != nil {
@@ -323,6 +328,22 @@ func TestChangeConfig_removeVoters(t *testing.T) {
 
 	// wait for stable config
 	c.ensure(waitTask(ldr, WaitForStableConfig(), c.longTimeout))
+
+	// ensure that removed nodes aborted election
+	e, err := electionAborted0.waitForEvent(c.longTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.reason != "not voter" {
+		c.Fatalf("reason=%q, want %q", e.reason, "not part of cluster")
+	}
+	_, err = electionAborted1.waitForEvent(c.longTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.reason != "not voter" {
+		c.Fatalf("reason=%q, want %q", e.reason, "not part of cluster")
+	}
 
 	// shutdown the removed nodes
 	c.shutdown(flrs[0], flrs[1])
