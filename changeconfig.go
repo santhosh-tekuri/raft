@@ -40,6 +40,30 @@ func (l *leader) beginFinishedRounds() {
 // - from leader.setCommitIndex, if config is committed
 // - from leader.onTransferTimeout
 func (l *leader) checkConfigActions(t *task, config Config) {
+	// do actions on self if any
+	n := config.Nodes[l.nid]
+	if l.canChangeConfig() && n.Action == Demote || n.Action == Remove {
+		if trace {
+			println(l, n.ID, "started", n.Action)
+		}
+		if l.trace.ConfigActionStarted != nil {
+			l.trace.ConfigActionStarted(l.liveInfo(), n.ID, n.Action)
+		}
+		switch n.Action {
+		case Demote:
+			config = config.clone()
+			n.Voter = false
+			if n.Action == Demote {
+				n.Action = None
+			}
+			config.Nodes[n.ID] = n
+		case Remove:
+			config = config.clone()
+			delete(config.Nodes, l.nid)
+		}
+		l.doChangeConfig(t, config)
+	}
+
 	for _, repl := range l.repls {
 		l.checkConfigAction(t, config, &repl.status)
 	}

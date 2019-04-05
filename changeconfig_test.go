@@ -316,7 +316,7 @@ func TestChangeConfig_removeVoters(t *testing.T) {
 	electionAborted1 := c.registerFor(electionAborted, flrs[1])
 	defer c.unregister(electionAborted1)
 
-	// submit ChangeConfig with two voters removed, and wait for completion
+	// submit ChangeConfig with two voters removed
 	config := ldr.Info().Configs().Latest
 	if err := config.SetAction(flrs[0].nid, Remove); err != nil {
 		t.Fatal(err)
@@ -353,6 +353,35 @@ func TestChangeConfig_removeVoters(t *testing.T) {
 
 	// wait for leader among the remaining two nodes
 	c.waitForLeader(flrs[2], flrs[3])
+}
+
+func TestChangeConfig_removeLeader(t *testing.T) {
+	// launch 3 node cluster
+	c, ldr, _ := launchCluster(t, 3)
+	defer c.shutdown()
+
+	// wait for commit ready
+	c.waitCommitReady(ldr)
+
+	// submit ChangeConfig with two voters removed
+	config := ldr.Info().Configs().Latest
+	if err := config.SetAction(ldr.nid, Remove); err != nil {
+		t.Fatal(err)
+	}
+	c.ensure(waitTask(ldr, ChangeConfig(config), c.longTimeout))
+
+	// the leader must have become follower
+	if s := c.getState(ldr); s != Follower {
+		t.Fatalf("state=%v, want %v", s, Follower)
+	}
+
+	// wait for new leader
+	newLdr := c.waitForLeader()
+
+	// ensure that leader is not same
+	if ldr.nid == newLdr.nid {
+		t.Fatal()
+	}
 }
 
 // ---------------------------------------------------------

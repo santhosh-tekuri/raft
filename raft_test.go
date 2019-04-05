@@ -487,6 +487,13 @@ func (c *cluster) waitForStability(rr ...*Raft) {
 	}
 }
 
+// todo: use this method instead of r.Info().State() in tests
+func (c *cluster) getState(r *Raft) State {
+	c.eventMu.RLock()
+	defer c.eventMu.RUnlock()
+	return c.states[r.nid]
+}
+
 func (c *cluster) getInState(state State, rr ...*Raft) []*Raft {
 	if len(rr) == 0 {
 		rr = c.exclude()

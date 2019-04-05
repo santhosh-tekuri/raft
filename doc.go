@@ -30,3 +30,8 @@ package raft
 //  in such case:
 //     info.followers.matchIndex will not be reflected for them
 //     promotion might require to fetch matchIndex first
+
+// todo: if follower got a config saying leader is demoted/removed,
+//  reset r.leader
+
+// todo: if current leader is nonvoter, dont accept any updates
