@@ -763,7 +763,7 @@ func (c *cluster) waitUnreachableDetected(ldr, failed *Raft) (since time.Time, e
 		since, err = flr.Unreachable, flr.Err
 		return !flr.Unreachable.IsZero()
 	}
-	unreachable := c.registerFor(unreachable, ldr)
+	unreachable := c.registerFor(reachability, ldr)
 	defer c.unregister(unreachable)
 	if !unreachable.waitFor(condition, c.longTimeout) {
 		c.Fatalf("waitUnreachableDetected: ldr M%d failed to detect M%d is unreachable", ldr.NID(), failed.NID())
@@ -777,7 +777,7 @@ func (c *cluster) waitReachableDetected(ldr, failed *Raft) {
 	condition := func(e *event) bool {
 		return ldr.Info().Followers()[failed.NID()].Unreachable.IsZero()
 	}
-	unreachable := c.registerFor(unreachable, ldr)
+	unreachable := c.registerFor(reachability, ldr)
 	defer c.unregister(unreachable)
 	if !unreachable.waitFor(condition, c.longTimeout) {
 		c.Fatalf("waitReachableDetected: ldr M%d failed to detect M%d is reachable", ldr.NID(), failed.NID())
@@ -994,7 +994,7 @@ const (
 	configChanged
 	configCommitted
 	configReverted
-	unreachable
+	reachability
 	quorumUnreachable
 	roundFinished
 	logCompacted
@@ -1209,7 +1209,7 @@ func (ee *events) trace() (trace Trace) {
 	trace.Unreachable = func(info Info, id uint64, since time.Time, err error) {
 		ee.sendEvent(event{
 			src:    info.NID(),
-			typ:    unreachable,
+			typ:    reachability,
 			target: id,
 			since:  since,
 			err:    err,
