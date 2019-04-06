@@ -85,7 +85,7 @@ func TestReplication_nonvoter_reconnects_catchesUp(t *testing.T) {
 	select {
 	case e := <-m4StateChanged.ch:
 		t.Fatalf("m4 changed state to %s", e.state)
-	case <-time.After(5 * c.heartbeatTimeout):
+	case <-time.After(5 * c.heartbeatTimeout): // todo: can we reduce time ??
 	}
 
 	// wait until leader is commit ready

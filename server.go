@@ -31,18 +31,21 @@ type rpc struct {
 }
 
 type server struct {
-	lr     net.Listener
-	stopCh chan struct{}
+	lr           net.Listener
+	stopCh       chan struct{}
+	rpcCh        chan *rpc
+	disconnected chan uint64 // nid
 }
 
 func newServer(lr net.Listener) *server {
 	return &server{
 		lr:     lr,
 		stopCh: make(chan struct{}),
+		rpcCh:  make(chan *rpc),
 	}
 }
 
-func (s *server) serve(rpcCh chan<- *rpc) {
+func (s *server) serve() {
 	var wg sync.WaitGroup
 	var mu sync.RWMutex
 	conns := make(map[net.Conn]struct{})
@@ -57,7 +60,7 @@ func (s *server) serve(rpcCh chan<- *rpc) {
 
 		wg.Add(1)
 		go func() {
-			_ = s.handleConn(rpcCh, conn)
+			_ = s.handleConn(conn)
 			mu.Lock()
 			delete(conns, conn)
 			mu.Unlock()
@@ -72,10 +75,10 @@ func (s *server) serve(rpcCh chan<- *rpc) {
 	}
 	mu.RUnlock()
 	wg.Wait()
-	close(rpcCh)
+	close(s.rpcCh)
 }
 
-func (s *server) handleConn(ch chan<- *rpc, rwc net.Conn) error {
+func (s *server) handleConn(rwc net.Conn) error {
 	c := &conn{
 		rwc:  rwc,
 		bufr: bufio.NewReader(rwc),
@@ -87,7 +90,7 @@ func (s *server) handleConn(ch chan<- *rpc, rwc net.Conn) error {
 		if nid != 0 {
 			select {
 			case <-s.stopCh:
-			case ch <- &rpc{req: &disconnected{req: req{src: nid}}}:
+			case s.disconnected <- nid:
 			}
 		}
 	}()
@@ -119,7 +122,7 @@ func (s *server) handleConn(ch chan<- *rpc, rwc net.Conn) error {
 		select {
 		case <-s.stopCh:
 			return ErrServerClosed
-		case ch <- rpc:
+		case s.rpcCh <- rpc:
 		}
 
 		// wait for response

@@ -111,7 +111,6 @@ type rpcType int
 
 const (
 	rpcIdentity rpcType = iota
-	rpcDisconnected
 	rpcVote
 	rpcAppendEntries
 	rpcInstallSnap
@@ -242,18 +241,6 @@ func (req *req) encode(w io.Writer) error {
 	}
 	return writeUint64(w, req.src)
 }
-
-// disconnected is not actually rpc request
-// it is used to signal that connection lost.
-// when connection list, if it is leader conn
-// r.leader immediately cleared. this allows
-// voteReq to skip disruptive server check and
-// makes leader election faster.
-type disconnected struct {
-	req
-}
-
-func (req *disconnected) rpcType() rpcType { return rpcDisconnected }
 
 // ------------------------------------------------------
 

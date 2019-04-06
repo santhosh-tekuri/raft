@@ -28,19 +28,13 @@ import (
 //   convert to candidate.
 func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 	// handle identity req
-	switch req := rpc.req.(type) {
-	case *identityReq:
+	if req, ok := rpc.req.(*identityReq); ok {
 		if r.cid != req.cid || r.nid != req.nid {
 			rpc.resp = rpcIdentity.createResp(r, identityMismatch, nil)
 		} else {
 			rpc.resp = rpcIdentity.createResp(r, success, nil)
 		}
 		close(rpc.done)
-		return
-	case *disconnected:
-		if r.leader != 0 && r.leader == req.src {
-			r.setLeader(0)
-		}
 		return
 	}
 

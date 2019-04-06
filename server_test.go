@@ -57,17 +57,16 @@ func TestServer(t *testing.T) {
 			}
 			s := newServer(lr)
 
-			rpcCh := make(chan *rpc)
 			var wg sync.WaitGroup
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				s.serve(rpcCh)
+				s.serve()
 			}()
 			defer s.shutdown()
 
 			go func() {
-				for rpc := range rpcCh {
+				for rpc := range s.rpcCh {
 					if !reflect.DeepEqual(rpc.req, test.req) {
 						t.Errorf("request mismatch: got %#v, want %#v", rpc.req, test.req)
 					}
