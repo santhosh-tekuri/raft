@@ -17,7 +17,6 @@ package raft
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"net"
 	"sync"
 )
@@ -25,7 +24,7 @@ import (
 type rpc struct {
 	req     request
 	resp    response
-	reader  io.Reader
+	conn    *conn
 	readErr error // error while reading partial req payload
 	done    chan struct{}
 }
@@ -75,8 +74,13 @@ func (s *server) serve(rpcCh chan<- *rpc) {
 	close(rpcCh)
 }
 
-func (s *server) handleConn(ch chan<- *rpc, c net.Conn) error {
-	r, w := bufio.NewReader(c), bufio.NewWriter(c)
+func (s *server) handleConn(ch chan<- *rpc, rwc net.Conn) error {
+	c := &conn{
+		rwc:  rwc,
+		bufr: bufio.NewReader(rwc),
+		bufw: bufio.NewWriter(rwc),
+	}
+
 	var nid uint64
 	defer func() {
 		if nid != 0 {
@@ -87,7 +91,7 @@ func (s *server) handleConn(ch chan<- *rpc, c net.Conn) error {
 		}
 	}()
 	for !isClosed(s.stopCh) {
-		b, err := r.ReadByte()
+		b, err := c.bufr.ReadByte()
 		if err != nil {
 			return err
 		}
@@ -98,11 +102,11 @@ func (s *server) handleConn(ch chan<- *rpc, c net.Conn) error {
 			}
 			return err
 		}
-		rpc := &rpc{req: rpcType(b).createReq(), reader: r, done: make(chan struct{})}
+		rpc := &rpc{req: rpcType(b).createReq(), conn: c, done: make(chan struct{})}
 
 		// decode request
 		// todo: set read deadline
-		if err := rpc.req.decode(r); err != nil {
+		if err := rpc.req.decode(c.bufr); err != nil {
 			return err
 		}
 
@@ -128,10 +132,10 @@ func (s *server) handleConn(ch chan<- *rpc, c net.Conn) error {
 			nid = rpc.req.from()
 		}
 		// todo: set write deadline
-		if err = rpc.resp.encode(w); err != nil {
+		if err = rpc.resp.encode(c.bufw); err != nil {
 			return err
 		}
-		if err = w.Flush(); err != nil {
+		if err = c.bufw.Flush(); err != nil {
 			return err
 		}
 	}

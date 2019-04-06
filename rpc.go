@@ -47,7 +47,7 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 	if trace {
 		println(r, "<<", rpc.req)
 	}
-	result, err := r.onRequest(rpc.req, rpc.reader)
+	result, err := r.onRequest(rpc.req, rpc.conn)
 	rpc.resp = rpc.req.rpcType().createResp(r, result, err)
 	if result == readErr {
 		rpc.readErr = err
@@ -66,7 +66,7 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 	return rpc.req.rpcType() != rpcVote || result == success
 }
 
-func (r *Raft) onRequest(req request, reader io.Reader) (result rpcResult, err error) {
+func (r *Raft) onRequest(req request, c *conn) (result rpcResult, err error) {
 	defer func() {
 		if v := recover(); v != nil {
 			result, err = unexpectedErr, toErr(v)
@@ -77,9 +77,9 @@ func (r *Raft) onRequest(req request, reader io.Reader) (result rpcResult, err e
 	case *voteReq:
 		return r.onVoteRequest(req)
 	case *appendReq:
-		return r.onAppendEntriesRequest(req, reader)
+		return r.onAppendEntriesRequest(req, c)
 	case *installSnapReq:
-		return r.onInstallSnapRequest(req, reader)
+		return r.onInstallSnapRequest(req, c)
 	case *timeoutNowReq:
 		return r.onTimeoutNowRequest()
 	default:
@@ -137,12 +137,12 @@ func (r *Raft) onVoteRequest(req *voteReq) (rpcResult, error) {
 
 // onAppendEntriesRequest -------------------------------------------------
 
-func (r *Raft) onAppendEntriesRequest(req *appendReq, reader io.Reader) (rpcResult, error) {
+func (r *Raft) onAppendEntriesRequest(req *appendReq, c *conn) (rpcResult, error) {
 	drain := func(result rpcResult, err error) (rpcResult, error) {
 		for req.numEntries > 0 {
 			req.numEntries--
 			ne := &entry{}
-			if err := ne.decode(reader); err != nil {
+			if err := ne.decode(c.bufr); err != nil {
 				return readErr, err
 			}
 		}
@@ -203,7 +203,7 @@ func (r *Raft) onAppendEntriesRequest(req *appendReq, reader io.Reader) (rpcResu
 	for req.numEntries > 0 {
 		req.numEntries--
 		ne := &entry{}
-		if err := ne.decode(reader); err != nil {
+		if err := ne.decode(c.bufr); err != nil {
 			return readErr, err
 		}
 		prevTerm := term
@@ -263,10 +263,10 @@ func (r *Raft) applyCommitted(ne *entry) {
 
 // onInstallSnapRequest -------------------------------------------------
 
-func (r *Raft) onInstallSnapRequest(req *installSnapReq, reader io.Reader) (rpcResult, error) {
+func (r *Raft) onInstallSnapRequest(req *installSnapReq, c *conn) (rpcResult, error) {
 	drain := func(result rpcResult, err error) (rpcResult, error) {
 		if req.size > 0 {
-			if _, errr := io.CopyN(ioutil.Discard, reader, req.size); errr != nil {
+			if _, errr := io.CopyN(ioutil.Discard, c.bufr, req.size); errr != nil {
 				return readErr, errr
 			}
 		}
@@ -286,7 +286,7 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq, reader io.Reader) (rpcR
 	if err != nil {
 		return unexpectedErr, opError(err, "snapshots.new")
 	}
-	n, err := io.CopyN(sink.file, reader, req.size)
+	n, err := io.CopyN(sink.file, c.bufr, req.size)
 	req.size -= n
 	meta, doneErr := sink.done(err)
 	if err != nil {
