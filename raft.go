@@ -238,7 +238,7 @@ func (r *Raft) stateLoop() (err error) {
 				resetTimer := r.replyRPC(rpc)
 				// on receiving AppendEntries from current leader or
 				// granting vote to candidate reset timer
-				if r.state == Follower && resetTimer {
+				if r.state == Follower && r.leader != 0 && resetTimer {
 					f.resetTimer()
 				}
 

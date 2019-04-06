@@ -35,7 +35,7 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 			rpc.resp = rpcIdentity.createResp(r, success, nil)
 		}
 		close(rpc.done)
-		return
+		return req.src == r.leader
 	}
 
 	if trace {
