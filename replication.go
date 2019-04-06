@@ -34,6 +34,7 @@ type replication struct {
 	snaps     *snapshots
 	hbTimeout time.Duration
 	timer     *safeTimer
+	bandwidth int64
 
 	ldrStartIndex uint64
 	ldrLastIndex  uint64 // todo: directly use log.lastIndex
@@ -87,7 +88,7 @@ func (r *replication) runLoop(req *appendReq) {
 		}
 
 		if c == nil {
-			if c, err = r.connPool.getConn(); err != nil {
+			if c, err = r.connPool.getConn(r.deadline()); err != nil {
 				failures++
 				continue
 			}
@@ -133,7 +134,7 @@ func (r *replication) replicate(c *conn, req *appendReq) error {
 				return err
 			}
 
-			if err = c.readResp(resp); err != nil {
+			if err = c.readResp(resp, r.deadline()); err != nil {
 				return err
 			}
 			if err = r.onAppendEntriesResp(resp, r.nextIndex-1); err != nil {
@@ -212,7 +213,7 @@ func (r *replication) replicate(c *conn, req *appendReq) error {
 
 		drainResps := func() error {
 			for range resultCh {
-				if err := c.readResp(resp); err != nil {
+				if err := c.readResp(resp, r.deadline()); err != nil {
 					return err
 				}
 			}
@@ -267,7 +268,7 @@ func (r *replication) replicate(c *conn, req *appendReq) error {
 				}
 				return result.err
 			}
-			err = c.readResp(resp)
+			err = c.readResp(resp, r.deadline())
 			if err != nil {
 				if trace {
 					println(r, "ending pipeline, error in reading resp:", err)
@@ -335,7 +336,7 @@ func (r *replication) writeAppendEntriesReq(c *conn, req *appendReq, sendEntries
 			println(r, ">>", req)
 		}
 	}
-	if err := c.writeReq(req); err != nil {
+	if err := c.writeReq(req, r.deadline()); err != nil {
 		return err
 	}
 	if req.numEntries > 0 {
@@ -401,7 +402,10 @@ func (r *replication) sendInstallSnapReq(c *conn, appReq *appendReq) error {
 	if trace {
 		println(r, ">>", req)
 	}
-	if err = c.writeReq(req); err != nil {
+	if err = c.writeReq(req, r.deadline()); err != nil {
+		return err
+	}
+	if err := c.rwc.SetWriteDeadline(r.deadlineSize(req.size)); err != nil {
 		return err
 	}
 	if _, err = io.Copy(c.rwc, snap.file); err != nil { // will use sendFile
@@ -409,7 +413,7 @@ func (r *replication) sendInstallSnapReq(c *conn, appReq *appendReq) error {
 	}
 
 	resp := &installSnapResp{}
-	if err = c.readResp(resp); err != nil {
+	if err = c.readResp(resp, time.Now().Add(4*r.hbTimeout)); err != nil { // todo: is 2*hbTimeout enough for saving snap
 		return err
 	}
 	switch resp.result {
@@ -529,9 +533,23 @@ func (r *replication) writeEntriesTo(c *conn, from uint64, n uint64) error {
 		panic(opError(err, "Log.GetN(%d, %d)", from, n))
 	}
 	nbuffs := net.Buffers(buffs)
-	// todo: set write deadline based on size
+	if err := c.rwc.SetWriteDeadline(r.deadlineSize(size(nbuffs))); err != nil {
+		return err
+	}
 	_, err = nbuffs.WriteTo(c.rwc)
 	return err
+}
+
+func (r *replication) deadline() time.Time {
+	return time.Now().Add(2 * r.hbTimeout)
+}
+
+func (r *replication) deadlineSize(size int64) time.Time {
+	timeout := time.Second * time.Duration(size/r.bandwidth)
+	if timeout < 2*r.hbTimeout {
+		timeout = 2 * r.hbTimeout
+	}
+	return time.Now().Add(timeout)
 }
 
 // ------------------------------------------------

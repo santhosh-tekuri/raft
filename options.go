@@ -53,15 +53,23 @@ type Options struct {
 	// when it is removed from the cluster.
 	ShutdownOnRemove bool
 
+	// Bandwidth is the network bandwidth in number of bytes per second.
+	// This is used to compute I/O deadlines for AppendEntriesRequest
+	// and InstallSnapshotRequest RPCs
+	Bandwidth int64
+
 	Trace    Trace
 	Resolver Resolver
 }
 
 func (o Options) validate() error {
-	if o.HeartbeatTimeout == 0 {
-		return errors.New("raft.options: HeartbeatTimeout is zero")
+	if o.HeartbeatTimeout <= 0 {
+		return errors.New("raft.options: invalid HeartbeatTimeout")
 	}
-	if o.PromoteThreshold == 0 {
+	if o.PromoteThreshold <= 0 {
+		return errors.New("raft.options: PromoteThreshold")
+	}
+	if o.Bandwidth <= 0 {
 		return errors.New("raft.options: PromoteThreshold is zero")
 	}
 	return nil
@@ -84,6 +92,7 @@ func DefaultOptions() Options {
 		PromoteThreshold: hbTimeout,
 		SnapshotInterval: 2 * time.Hour,
 		ShutdownOnRemove: true,
+		Bandwidth:        256 * 1024,
 		Trace:            DefaultTrace(logger("[INFO]"), logger("[WARN]")),
 	}
 }

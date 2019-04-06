@@ -39,3 +39,11 @@ package raft
 //  - pipeline writer should notify pipeline reader about req.lastIndex
 //    before writing entries, so that reader can read. otherwise writer
 //    might take long time to finish writing
+
+// todo: if replication is in large deadline in installSnapReq write,
+//       it may not hear stopCh signal. so do conn.SetDeadline to past
+//       for this replication should expose use conn using mutex
+
+// todo: rename opt.PromoteThreshold to RoundThreshold
+
+// todo: deadlines in server and rpc

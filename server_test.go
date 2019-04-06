@@ -82,7 +82,7 @@ func TestServer(t *testing.T) {
 			}
 			defer c.rwc.Close()
 			resp := reflect.New(reflect.TypeOf(test.resp).Elem()).Interface().(response)
-			if err := c.doRPC(test.req, resp); err != nil {
+			if err := c.doRPC(test.req, resp, time.Now().Add(time.Second)); err != nil {
 				t.Fatalf("c.doRPC() failed: %v", err)
 			}
 			if !reflect.DeepEqual(resp, test.resp) {

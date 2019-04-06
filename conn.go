@@ -22,10 +22,9 @@ import (
 )
 
 type conn struct {
-	rwc     net.Conn
-	bufr    *bufio.Reader
-	bufw    *bufio.Writer
-	timeout time.Duration
+	rwc  net.Conn
+	bufr *bufio.Reader
+	bufw *bufio.Writer
 }
 
 type dialFn func(network, address string, timeout time.Duration) (net.Conn, error)
@@ -36,15 +35,14 @@ func dial(dialFn dialFn, address string, timeout time.Duration) (*conn, error) {
 		return nil, err
 	}
 	return &conn{
-		rwc:     rwc,
-		bufr:    bufio.NewReader(rwc),
-		bufw:    bufio.NewWriter(rwc),
-		timeout: timeout,
+		rwc:  rwc,
+		bufr: bufio.NewReader(rwc),
+		bufw: bufio.NewWriter(rwc),
 	}, nil
 }
 
-func (c *conn) writeReq(req request) error {
-	if err := c.rwc.SetWriteDeadline(time.Now().Add(c.timeout)); err != nil {
+func (c *conn) writeReq(req request, deadline time.Time) error {
+	if err := c.rwc.SetWriteDeadline(deadline); err != nil {
 		return err
 	}
 	if err := writeUint8(c.bufw, uint8(req.rpcType())); err != nil {
@@ -56,18 +54,18 @@ func (c *conn) writeReq(req request) error {
 	return c.bufw.Flush()
 }
 
-func (c *conn) readResp(resp response) error {
-	if err := c.rwc.SetReadDeadline(time.Now().Add(c.timeout)); err != nil {
+func (c *conn) readResp(resp response, deadline time.Time) error {
+	if err := c.rwc.SetReadDeadline(deadline); err != nil {
 		return err
 	}
 	return resp.decode(c.bufr)
 }
 
-func (c *conn) doRPC(req request, resp response) error {
-	if err := c.writeReq(req); err != nil {
+func (c *conn) doRPC(req request, resp response, deadline time.Time) error {
+	if err := c.writeReq(req, deadline); err != nil {
 		return err
 	}
-	return c.readResp(resp)
+	return c.readResp(resp, deadline)
 }
 
 // --------------------------------------------------------------------
@@ -119,7 +117,8 @@ type connPool struct {
 	conns []*conn
 }
 
-func (pool *connPool) getConn() (*conn, error) {
+func (pool *connPool) getConn(deadline time.Time) (*conn, error) {
+	assert(!deadline.IsZero())
 	var c *conn
 	pool.mu.Lock()
 	if num := len(pool.conns); num > 0 {
@@ -132,18 +131,18 @@ func (pool *connPool) getConn() (*conn, error) {
 	}
 
 	// dial ---------
-	addr, err := pool.resolver.lookupID(pool.nid, pool.timeout)
+	addr, err := pool.resolver.lookupID(pool.nid, deadline.Sub(time.Now()))
 	if err != nil {
 		return nil, err
 	}
-	c, err = dial(pool.dialFn, addr, pool.timeout)
+	c, err = dial(pool.dialFn, addr, deadline.Sub(time.Now()))
 	if err != nil {
 		return nil, err
 	}
 
 	// check identity ---------
 	resp := &identityResp{}
-	err = c.doRPC(&identityReq{req: req{src: pool.src}, cid: pool.cid, nid: pool.nid}, resp)
+	err = c.doRPC(&identityReq{req: req{src: pool.src}, cid: pool.cid, nid: pool.nid}, resp, deadline)
 	if err != nil || resp.result != success {
 		_ = c.rwc.Close()
 		return nil, IdentityError{pool.cid, pool.nid, addr}
@@ -171,12 +170,12 @@ func (pool *connPool) closeAll() {
 	pool.conns = nil
 }
 
-func (pool *connPool) doRPC(req request, resp response) error {
-	c, err := pool.getConn()
+func (pool *connPool) doRPC(req request, resp response, deadline time.Time) error {
+	c, err := pool.getConn(deadline)
 	if err != nil {
 		return err
 	}
-	if err = c.doRPC(req, resp); err != nil {
+	if err = c.doRPC(req, resp, deadline); err != nil {
 		_ = c.rwc.Close()
 		return err
 	}

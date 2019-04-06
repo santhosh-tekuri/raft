@@ -20,6 +20,7 @@ import (
 	"math"
 	"math/big"
 	"math/rand"
+	"net"
 	"os"
 	"runtime"
 	"strings"
@@ -63,6 +64,14 @@ func syncDir(dir string) error {
 		return err
 	}
 	return e
+}
+
+func size(buffs net.Buffers) int64 {
+	var size int64
+	for _, buff := range buffs {
+		size += int64(len(buff))
+	}
+	return size
 }
 
 // safeTimer ------------------------------------------------------

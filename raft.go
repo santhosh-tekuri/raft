@@ -50,6 +50,7 @@ type Raft struct {
 	promoteThreshold time.Duration
 	shutdownOnRemove bool
 	trace            Trace
+	bandwidth        int64
 
 	// dialing
 	resolver  *resolver
@@ -98,6 +99,7 @@ func New(opt Options, fsm FSM, storage *Storage) (*Raft, error) {
 		promoteThreshold: opt.PromoteThreshold,
 		shutdownOnRemove: opt.ShutdownOnRemove,
 		trace:            opt.Trace,
+		bandwidth:        opt.Bandwidth,
 		dialFn:           net.DialTimeout,
 		connPools:        make(map[uint64]*connPool),
 		taskCh:           make(chan Task),

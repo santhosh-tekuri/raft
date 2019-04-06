@@ -14,6 +14,8 @@
 
 package raft
 
+import "time"
+
 type candidate struct {
 	*Raft
 	respCh      chan rpcResponse
@@ -42,6 +44,7 @@ func (c *candidate) startElection() {
 		println(c, "startElection")
 	}
 	d := c.rtime.duration(c.hbTimeout)
+	deadline := time.Now().Add(d)
 	c.timer.reset(d)
 	if c.trace.ElectionStarted != nil {
 		c.trace.ElectionStarted(c.liveInfo())
@@ -62,7 +65,7 @@ func (c *candidate) startElection() {
 			pool := c.getConnPool(n.ID)
 			go func(ch chan<- rpcResponse) {
 				resp := &voteResp{}
-				err := pool.doRPC(req, resp)
+				err := pool.doRPC(req, resp, deadline)
 				ch <- rpcResponse{resp, pool.nid, err}
 			}(c.respCh)
 		}

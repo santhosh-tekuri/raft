@@ -188,6 +188,7 @@ func (l *leader) addReplication(n Node) {
 		connPool:       l.getConnPool(n.ID),
 		hbTimeout:      l.hbTimeout,
 		timer:          newSafeTimer(),
+		bandwidth:      l.bandwidth,
 		log:            l.storage.log.ViewAt(l.removeLTE, l.lastLogIndex),
 		snaps:          l.storage.snaps,
 		stopCh:         make(chan struct{}),

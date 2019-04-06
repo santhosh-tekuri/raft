@@ -269,6 +269,7 @@ func newCluster(t *testing.T) *cluster {
 		QuorumWait:       heartbeatTimeout,
 		PromoteThreshold: heartbeatTimeout,
 		Trace:            c.events.trace(),
+		Bandwidth:        256 * 1024,
 	}
 	c.storeOpt = DefaultStorageOptions()
 	c.storeOpt.LogSegmentSize = 4 * 1024
@@ -962,7 +963,7 @@ func requestVote(from, to *Raft, transfer bool) (granted bool, err error) {
 		}
 		pool := from.getConnPool(to.nid)
 		resp := &timeoutNowResp{}
-		err = pool.doRPC(req, resp)
+		err = pool.doRPC(req, resp, time.Now().Add(time.Second))
 		granted = resp.getResult() == success
 	}
 	if from.isClosed() {

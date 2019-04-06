@@ -23,7 +23,8 @@ type transfer struct {
 
 	// started when transfer request received, with the transferLdr.timeout
 	// this timer is inactive no transfer task is in progress
-	timer *safeTimer
+	timer    *safeTimer
+	deadline time.Time
 
 	// current term when transfer request received
 	term uint64
@@ -78,7 +79,11 @@ func (l *leader) onTransfer(t transferLdr) {
 	}
 	l.transfer.term = l.term
 	l.transfer.transferLdr = t
+	if t.timeout <= 0 {
+		t.timeout = 2 * l.hbTimeout
+	}
 	l.transfer.timer.reset(t.timeout)
+	l.transfer.deadline = time.Now().Add(t.timeout)
 	l.tryTransfer()
 }
 
@@ -131,11 +136,11 @@ func (l *leader) tryTransfer() {
 			println(l, target, ">>", req)
 		}
 		pool := l.getConnPool(target)
-		go func(ch chan<- rpcResponse) {
+		go func(ch chan<- rpcResponse, deadline time.Time) {
 			resp := &timeoutNowResp{}
-			err := pool.doRPC(req, resp)
+			err := pool.doRPC(req, resp, deadline)
 			ch <- rpcResponse{resp, pool.nid, err}
-		}(l.transfer.respCh)
+		}(l.transfer.respCh, l.transfer.deadline)
 	}
 }
 
