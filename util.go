@@ -171,6 +171,13 @@ func (s decrUint64Slice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
 // -------------------------------------------------------------------------
 
+func durationFor(bandwidth int64, n int64) time.Duration {
+	seconds := float64(n) / float64(bandwidth)
+	return time.Duration(1e9 * seconds)
+}
+
+// -------------------------------------------------------------------------
+
 func bug(calldepth int, format string, v ...interface{}) error {
 	_, file, line, ok := runtime.Caller(calldepth)
 	if !ok {

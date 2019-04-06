@@ -545,7 +545,7 @@ func (r *replication) deadline() time.Time {
 }
 
 func (r *replication) deadlineSize(size int64) time.Time {
-	timeout := time.Second * time.Duration(size/r.bandwidth)
+	timeout := durationFor(r.bandwidth, size)
 	if timeout < 2*r.hbTimeout {
 		timeout = 2 * r.hbTimeout
 	}
