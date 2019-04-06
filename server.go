@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 )
 
 type rpc struct {
@@ -91,6 +92,10 @@ func (s *server) handleConn(ch chan<- *rpc, rwc net.Conn) error {
 		}
 	}()
 	for !isClosed(s.stopCh) {
+		// clear deadline
+		if err := c.rwc.SetReadDeadline(time.Time{}); err != nil {
+			return err
+		}
 		b, err := c.bufr.ReadByte()
 		if err != nil {
 			return err
