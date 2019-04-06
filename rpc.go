@@ -202,6 +202,11 @@ func (r *Raft) onAppendEntriesRequest(req *appendReq, c *conn) (rpcResult, error
 	}
 	for req.numEntries > 0 {
 		req.numEntries--
+		if !isEntryBuffered(c.bufr) {
+			if err := c.rwc.SetReadDeadline(r.rtime.deadline(r.hbTimeout)); err != nil {
+				return readErr, err
+			}
+		}
 		ne := &entry{}
 		if err := ne.decode(c.bufr); err != nil {
 			return readErr, err

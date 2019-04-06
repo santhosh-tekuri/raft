@@ -15,6 +15,7 @@
 package raft
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -76,6 +77,19 @@ func (e *entry) decode(r io.Reader) error {
 	e.typ = entryType(typ)
 	e.data, err = readBytes(r)
 	return err
+}
+
+// tells whether entry is completely in buffer
+func isEntryBuffered(r *bufio.Reader) bool {
+	headerLen := 8 + 8 + 1 + 4 // index+term+typ+len(data)
+	buffered := r.Buffered()
+	if buffered < headerLen {
+		return false
+	}
+	b, err := r.Peek(headerLen)
+	assert(err == nil)
+	dataLen := byteOrder.Uint32(b[headerLen-4:])
+	return buffered >= headerLen+int(dataLen)
 }
 
 func (e *entry) encode(w io.Writer) error {

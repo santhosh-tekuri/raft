@@ -153,6 +153,10 @@ func (rt randTime) duration(min time.Duration) time.Duration {
 	return min + time.Duration(rt.r.Int63())%min
 }
 
+func (rt randTime) deadline(min time.Duration) time.Time {
+	return time.Now().Add(rt.duration(min))
+}
+
 func (rt randTime) after(min time.Duration) <-chan time.Time {
 	return time.After(rt.duration(min))
 }
