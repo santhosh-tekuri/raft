@@ -39,9 +39,10 @@ type server struct {
 
 func newServer(lr net.Listener) *server {
 	return &server{
-		lr:     lr,
-		stopCh: make(chan struct{}),
-		rpcCh:  make(chan *rpc),
+		lr:           lr,
+		stopCh:       make(chan struct{}),
+		rpcCh:        make(chan *rpc),
+		disconnected: make(chan uint64, 20),
 	}
 }
 
