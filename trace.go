@@ -18,6 +18,7 @@ package raft
 
 import (
 	"fmt"
+	"net"
 	"strings"
 	"time"
 )
@@ -236,4 +237,29 @@ func (t fsmRestoreReq) String() string {
 
 func (t lastApplied) String() string {
 	return "lastApplied{}"
+}
+
+func (t rpcType) String() string {
+	switch t {
+	case rpcIdentity:
+		return "identity"
+	case rpcVote:
+		return "vote"
+	case rpcAppendEntries:
+		return "append"
+	case rpcInstallSnap:
+		return "installSnap"
+	case rpcTimeoutNow:
+		return "timeoutNow"
+	}
+	return fmt.Sprintf("rpcType(%d)", int(t))
+}
+
+func (p *connPool) String() string {
+	return fmt.Sprintf("M%d connPool M%d", p.src, p.nid)
+}
+
+func (s *server) String() string {
+	host, _, _ := net.SplitHostPort(s.lr.Addr().String())
+	return fmt.Sprintf("%s Server", host)
 }
