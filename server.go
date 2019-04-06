@@ -104,19 +104,25 @@ func (s *server) handleConn(rwc net.Conn) error {
 		if err != nil {
 			return err
 		}
-		if !rpcType(b).isValid() {
+		typ := rpcType(b)
+		if !typ.isValid() {
 			err = fmt.Errorf("raft: server.handleRpc got rpcType %d", b)
 			if testMode {
 				panic(err)
 			}
 			return err
 		}
-		rpc := &rpc{req: rpcType(b).createReq(), conn: c, done: make(chan struct{})}
+		rpc := &rpc{req: typ.createReq(), conn: c, done: make(chan struct{})}
 
 		// decode request
 		// todo: set read deadline
-		if err := rpc.req.decode(c.bufr); err != nil {
-			return err
+		// we dont read requests from leader, because we want raft to know
+		// that leader has contacted as soon as possible. so raft reads the
+		// actual request with deadline
+		if !typ.fromLeader() {
+			if err := rpc.req.decode(c.bufr); err != nil {
+				return err
+			}
 		}
 
 		// send request for processing

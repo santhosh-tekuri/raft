@@ -27,6 +27,18 @@ import (
 //   RPC from current leader or granting vote to candidate:
 //   convert to candidate.
 func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
+	if rpc.req.rpcType().fromLeader() {
+		err := rpc.conn.rwc.SetReadDeadline(r.rtime.deadline(r.hbTimeout))
+		if err == nil {
+			err = rpc.req.decode(rpc.conn.bufr)
+		}
+		if err != nil {
+			rpc.readErr = err
+			close(rpc.done)
+			return false
+		}
+	}
+
 	// handle identity req
 	if req, ok := rpc.req.(*identityReq); ok {
 		if r.cid != req.cid || r.nid != req.nid {

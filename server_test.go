@@ -67,6 +67,14 @@ func TestServer(t *testing.T) {
 
 			go func() {
 				for rpc := range s.rpcCh {
+					if rpc.req.rpcType().fromLeader() {
+						if err := rpc.req.decode(rpc.conn.bufr); err != nil {
+							rpc.readErr = err
+							close(rpc.done)
+							t.Error(err)
+							return
+						}
+					}
 					if !reflect.DeepEqual(rpc.req, test.req) {
 						t.Errorf("request mismatch: got %#v, want %#v", rpc.req, test.req)
 					}
