@@ -138,6 +138,9 @@ func (s *server) handleConn(ch chan<- *rpc, rwc net.Conn) error {
 		if err = c.bufw.Flush(); err != nil {
 			return err
 		}
+		if rpc.req.rpcType() == rpcIdentity && rpc.resp.getResult() != success {
+			return IdentityError{}
+		}
 	}
 	return nil
 }
