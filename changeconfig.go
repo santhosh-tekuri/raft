@@ -30,7 +30,7 @@ func (l *leader) onChangeConfig(t changeConfig) {
 		return
 	}
 	if t.newConf.Index != l.configs.Latest.Index {
-		t.reply(ErrConfigChanged)
+		t.reply(ErrStaleConfig)
 		return
 	}
 	if err := t.newConf.validate(); err != nil {
