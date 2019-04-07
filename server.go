@@ -188,21 +188,30 @@ func (s *server) handleTask(typ taskType, c *conn) error {
 			return err
 		}
 		t := ChangeConfig(config)
-		select {
-		case <-s.r.Closed():
-			t.reply(ErrServerClosed)
-			return encodeTaskResp(t, c.bufw)
-		case s.r.Tasks() <- t:
-		}
-		select {
-		case <-s.r.Closed():
-			t.reply(ErrServerClosed)
-		case <-t.Done():
-		}
+		s.executeTask(t)
+		return encodeTaskResp(t, c.bufw)
+	case taskWaitForStableConfig:
+		t := WaitForStableConfig()
+		s.executeTask(t)
 		return encodeTaskResp(t, c.bufw)
 	}
 	unreachable()
 	return nil
+}
+
+func (s *server) executeTask(t Task) {
+	select {
+	case <-s.r.Closed():
+		t.reply(ErrServerClosed)
+		return
+	case s.r.Tasks() <- t:
+	}
+	select {
+	case <-s.r.Closed():
+		t.reply(ErrServerClosed)
+		return
+	case <-t.Done():
+	}
 }
 
 func (s *server) shutdown() {

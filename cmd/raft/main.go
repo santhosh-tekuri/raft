@@ -71,6 +71,7 @@ func config(c raft.Client, args []string) {
 		errln("list of commands:")
 		errln("  get    prints current config")
 		errln("  set    changes current config")
+		errln("  wait   waits until config is stable")
 		os.Exit(1)
 	}
 	cmd, args := args[0], args[1:]
@@ -79,6 +80,8 @@ func config(c raft.Client, args []string) {
 		getConfig(c)
 	case "set":
 		setConfig(c, args)
+	case "wait":
+		waitConfig(c)
 	}
 }
 
@@ -126,6 +129,14 @@ func setConfig(c raft.Client, args []string) {
 	}
 
 	if err = c.ChangeConfig(config); err != nil {
+		errln(err.Error())
+		os.Exit(1)
+	}
+}
+
+func waitConfig(c raft.Client) {
+	err := c.WaitForStableConfig()
+	if err != nil {
 		errln(err.Error())
 		os.Exit(1)
 	}

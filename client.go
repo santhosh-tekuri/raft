@@ -84,16 +84,36 @@ func (c Client) ChangeConfig(config Config) error {
 	return err
 }
 
+func (c Client) WaitForStableConfig() error {
+	conn, err := c.getConn()
+	if err != nil {
+		return err
+	}
+	defer conn.rwc.Close()
+
+	if err = conn.bufw.WriteByte(byte(taskWaitForStableConfig)); err != nil {
+		return err
+	}
+	if err = conn.bufw.Flush(); err != nil {
+		return err
+	}
+	_, err = decodeTaskResp(taskWaitForStableConfig, conn.bufr)
+	return err
+}
+
+// ------------------------------------------------------------------------
+
 type taskType byte
 
 const (
 	taskInfo taskType = math.MaxInt8 - iota
 	taskChangeConfig
+	taskWaitForStableConfig
 )
 
 func (t taskType) isValid() bool {
 	switch t {
-	case taskInfo, taskChangeConfig:
+	case taskInfo, taskChangeConfig, taskWaitForStableConfig:
 		return true
 	}
 	return false
@@ -189,7 +209,7 @@ func decodeTaskResp(typ taskType, r io.Reader) (interface{}, error) {
 			json.Followers[status.ID] = status
 		}
 		return cachedInfo{json}, nil
-	case taskChangeConfig:
+	case taskChangeConfig, taskWaitForStableConfig:
 		return nil, nil
 	}
 	return nil, errors.New("invalidTaskType")
