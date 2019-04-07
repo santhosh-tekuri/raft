@@ -88,7 +88,7 @@ func DefaultOptions() Options {
 	hbTimeout := 1000 * time.Millisecond
 	return Options{
 		HeartbeatTimeout: hbTimeout,
-		QuorumWait:       hbTimeout,
+		QuorumWait:       0,
 		PromoteThreshold: hbTimeout,
 		SnapshotInterval: 2 * time.Hour,
 		ShutdownOnRemove: true,
