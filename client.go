@@ -111,6 +111,9 @@ func (c Client) TakeSnapshot(threshold uint64) (snapIndex uint64, err error) {
 	if err = conn.bufw.WriteByte(byte(taskTakeSnapshot)); err != nil {
 		return 0, err
 	}
+	if err = writeUint64(conn.bufw, threshold); err != nil {
+		return 0, err
+	}
 	if err = conn.bufw.Flush(); err != nil {
 		return 0, err
 	}
@@ -119,6 +122,29 @@ func (c Client) TakeSnapshot(threshold uint64) (snapIndex uint64, err error) {
 		return 0, err
 	}
 	return result.(uint64), nil
+}
+
+func (c Client) TransferLeadership(target uint64, timeout time.Duration) error {
+	conn, err := c.getConn()
+	if err != nil {
+		return err
+	}
+	defer conn.rwc.Close()
+
+	if err = conn.bufw.WriteByte(byte(taskTransferLdr)); err != nil {
+		return err
+	}
+	if err = writeUint64(conn.bufw, target); err != nil {
+		return err
+	}
+	if err = writeUint64(conn.bufw, uint64(timeout)); err != nil {
+		return err
+	}
+	if err = conn.bufw.Flush(); err != nil {
+		return err
+	}
+	_, err = decodeTaskResp(taskTransferLdr, conn.bufr)
+	return err
 }
 
 // ------------------------------------------------------------------------
@@ -130,11 +156,12 @@ const (
 	taskChangeConfig
 	taskWaitForStableConfig
 	taskTakeSnapshot
+	taskTransferLdr
 )
 
 func (t taskType) isValid() bool {
 	switch t {
-	case taskInfo, taskChangeConfig, taskWaitForStableConfig, taskTakeSnapshot:
+	case taskInfo, taskChangeConfig, taskWaitForStableConfig, taskTakeSnapshot, taskTransferLdr:
 		return true
 	}
 	return false
@@ -230,7 +257,7 @@ func decodeTaskResp(typ taskType, r io.Reader) (interface{}, error) {
 			json.Followers[status.ID] = status
 		}
 		return cachedInfo{json}, nil
-	case taskChangeConfig, taskWaitForStableConfig:
+	case taskChangeConfig, taskWaitForStableConfig, taskTransferLdr:
 		return nil, nil
 	case taskTakeSnapshot:
 		return readUint64(r)

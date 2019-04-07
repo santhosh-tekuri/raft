@@ -20,6 +20,7 @@ import (
 	"io/ioutil"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/santhosh-tekuri/raft"
 )
@@ -33,6 +34,7 @@ func main() {
 		errln("  info       get information")
 		errln("  config     configuration related tasks")
 		errln("  snapshot   take snapshot")
+		errln("  transfer   transfer leadership")
 		os.Exit(1)
 	}
 	addr, ok := os.LookupEnv("RAFT_ADDR")
@@ -49,6 +51,8 @@ func main() {
 		config(c, args)
 	case "snapshot":
 		snapshot(c, args)
+	case "transfer":
+		transfer(c, args)
 	default:
 		errln("unknown command:", cmd)
 	}
@@ -162,6 +166,28 @@ func snapshot(c raft.Client, args []string) {
 		os.Exit(1)
 	}
 	fmt.Println("snapshot index:", snapIndex)
+}
+
+func transfer(c raft.Client, args []string) {
+	if len(args) == 0 {
+		errln("usage: raft transfer <target> <timeout>")
+		os.Exit(1)
+	}
+	i, err := strconv.ParseInt(args[0], 10, 64)
+	if err != nil {
+		errln(err.Error())
+		os.Exit(1)
+	}
+	d, err := time.ParseDuration(args[1])
+	if err != nil {
+		errln(err.Error())
+		os.Exit(1)
+	}
+	err = c.TransferLeadership(uint64(i), d)
+	if err != nil {
+		errln(err.Error())
+		os.Exit(1)
+	}
 }
 
 func errln(v ...interface{}) {

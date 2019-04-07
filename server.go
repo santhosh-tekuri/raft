@@ -202,6 +202,18 @@ func (s *server) handleTask(typ taskType, c *conn) error {
 		t := TakeSnapshot(threshold)
 		s.executeTask(t)
 		return encodeTaskResp(t, c.bufw)
+	case taskTransferLdr:
+		target, err := readUint64(c.bufr)
+		if err != nil {
+			return err
+		}
+		d, err := readUint64(c.bufr)
+		if err != nil {
+			return err
+		}
+		t := TransferLeadership(target, time.Duration(int64(d)))
+		s.executeTask(t)
+		return encodeTaskResp(t, c.bufw)
 	}
 	unreachable()
 	return nil
