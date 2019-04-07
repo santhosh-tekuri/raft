@@ -94,7 +94,7 @@ func (l *leader) release() {
 	}
 
 	// respond to any pending user entries
-	var err error = NotLeaderError{l.leader, l.leaderAddr(), true}
+	var err error = notLeaderError(l.Raft, true)
 	if l.isClosed() {
 		err = ErrServerClosed
 	}

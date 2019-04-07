@@ -61,6 +61,10 @@ type Node struct {
 	// is used in advancing leader's commitIndex.
 	Voter bool `json:"voter"`
 
+	// Data can be used by application to associate some information
+	// with node. For example application address
+	Data string
+
 	// Action tells the action to be taken by leader, when appropriate.
 	Action ConfigAction `json:"action,omitempty"`
 }
@@ -95,6 +99,9 @@ func (n Node) encode(w io.Writer) error {
 	if err := writeBool(w, n.Voter); err != nil {
 		return err
 	}
+	if err := writeString(w, n.Data); err != nil {
+		return err
+	}
 	return writeUint8(w, uint8(n.Action))
 }
 
@@ -107,6 +114,9 @@ func (n *Node) decode(r io.Reader) error {
 		return err
 	}
 	if n.Voter, err = readBool(r); err != nil {
+		return err
+	}
+	if n.Data, err = readString(r); err != nil {
 		return err
 	}
 	if action, err := readUint8(r); err != nil {
@@ -307,7 +317,7 @@ func (c Configs) IsStable() bool {
 
 func (r *Raft) bootstrap(t changeConfig) {
 	if !r.configs.IsBootstrap() {
-		t.reply(NotLeaderError{r.leader, r.leaderAddr(), false})
+		t.reply(notLeaderError(r, false))
 		return
 	}
 	if err := t.newConf.validate(); err != nil {

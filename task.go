@@ -402,7 +402,7 @@ func (r *Raft) executeTask(t Task) {
 		if r.state == Leader {
 			r.ldr.executeTask(t)
 		} else {
-			t.reply(NotLeaderError{r.leader, r.leaderAddr(), false})
+			t.reply(notLeaderError(r, false))
 		}
 	}
 }

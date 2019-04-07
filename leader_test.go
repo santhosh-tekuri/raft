@@ -57,8 +57,8 @@ func TestLeader_stepDown(t *testing.T) {
 	_, err = waitUpdate(ldr, "reject", c.longTimeout)
 	if err, ok := err.(NotLeaderError); !ok {
 		t.Fatalf("got %v, want NotLeaderError", err)
-	} else if err.LeaderAddr != "" {
-		t.Fatalf("got %s, want ", err.LeaderAddr)
+	} else if err.Leader.Addr != "" {
+		t.Fatalf("got %s, want ", err.Leader.Addr)
 	}
 
 	// apply should work on new leader
@@ -180,8 +180,8 @@ func TestLeader_updateFSM_nonLeader(t *testing.T) {
 			_, err := waitUpdate(r, "reject", c.longTimeout)
 			if err, ok := err.(NotLeaderError); !ok {
 				t.Fatalf("got %v, want NotLeaderError", err)
-			} else if err.LeaderAddr != ldrAddr {
-				t.Fatalf("got %s, want %s", err.LeaderAddr, ldrAddr)
+			} else if err.Leader.Addr != ldrAddr {
+				t.Fatalf("got %s, want %s", err.Leader.Addr, ldrAddr)
 			}
 		}
 	}
