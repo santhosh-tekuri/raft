@@ -336,6 +336,16 @@ func (c *Config) SetAddr(id uint64, addr string) error {
 	return nil
 }
 
+func (c *Config) SetData(id uint64, data string) error {
+	n, ok := c.Nodes[id]
+	if !ok {
+		return fmt.Errorf("raft: node %d not found", id)
+	}
+	n.Data = data
+	c.Nodes[id] = n
+	return nil
+}
+
 type changeConfig struct {
 	*task
 	newConf Config
