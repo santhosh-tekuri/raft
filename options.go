@@ -152,11 +152,11 @@ func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
 		if rinfo.Configs().Latest.Index == 1 {
 			info("raft: bootstrapped with", rinfo.Configs().Latest)
 		} else {
-			info("raft: config changed to", rinfo.Configs().Latest)
+			info("raft: changed to", rinfo.Configs().Latest)
 		}
 	}
 	trace.ConfigCommitted = func(rinfo Info) {
-		info("raft: committed config", rinfo.Configs().Latest)
+		info("raft: committed", rinfo.Configs().Latest)
 		if rinfo.Configs().IsStable() {
 			info("raft: config is stable")
 		}
