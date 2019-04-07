@@ -82,7 +82,7 @@ func DefaultOptions() Options {
 		return func(v ...interface{}) {
 			mu.Lock()
 			defer mu.Unlock()
-			fmt.Println(append(append([]interface{}(nil), prefix), v...))
+			fmt.Println(append(append([]interface{}(nil), prefix), v...)...)
 		}
 	}
 	hbTimeout := 1000 * time.Millisecond
@@ -124,7 +124,7 @@ func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
 	}
 	trace.Starting = func(rinfo Info, addr net.Addr) {
 		info("raft: cid:", rinfo.CID(), "nid:", rinfo.NID())
-		info("raft: config", rinfo.Configs().Latest)
+		info("raft:", rinfo.Configs().Latest)
 		info("raft: listening at", addr)
 	}
 	trace.StateChanged = func(rinfo Info) {
