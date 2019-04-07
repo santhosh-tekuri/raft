@@ -348,6 +348,5 @@ func (s *storage) bootstrap(config Config) (err error) {
 	s.commitLog(1)
 	s.setTerm(1)
 	s.lastLogIndex, s.lastLogTerm = config.Index, config.Term
-	s.configs.Committed, s.configs.Latest = config, config
 	return nil
 }

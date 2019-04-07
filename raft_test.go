@@ -978,7 +978,12 @@ func requestVote(from, to *Raft, transfer bool) (granted bool, err error) {
 }
 
 func bootstrapStorage(store *Storage, nodes map[uint64]Node) error {
-	return store.bootstrap(Config{Nodes: nodes, Index: 1, Term: 1})
+	config := Config{Nodes: nodes, Index: 1, Term: 1}
+	if err := store.bootstrap(config); err != nil {
+		return err
+	}
+	store.configs.Latest = config
+	return nil
 }
 
 // events ---------------------------------------------
