@@ -31,18 +31,16 @@ type rpc struct {
 }
 
 type server struct {
-	lr           net.Listener
-	stopCh       chan struct{}
-	rpcCh        chan *rpc
-	disconnected chan uint64 // nid
+	r      *Raft
+	lr     net.Listener
+	stopCh chan struct{}
 }
 
-func newServer(lr net.Listener) *server {
+func newServer(r *Raft, lr net.Listener) *server {
 	return &server{
-		lr:           lr,
-		stopCh:       make(chan struct{}),
-		rpcCh:        make(chan *rpc),
-		disconnected: make(chan uint64, 20),
+		r:      r,
+		lr:     lr,
+		stopCh: make(chan struct{}),
 	}
 }
 
@@ -76,7 +74,7 @@ func (s *server) serve() {
 	}
 	mu.RUnlock()
 	wg.Wait()
-	close(s.rpcCh)
+	close(s.r.rpcCh)
 }
 
 func (s *server) handleConn(rwc net.Conn) error {
@@ -91,7 +89,7 @@ func (s *server) handleConn(rwc net.Conn) error {
 		if nid != 0 {
 			select {
 			case <-s.stopCh:
-			case s.disconnected <- nid:
+			case s.r.disconnected <- nid:
 			}
 		}
 	}()
@@ -129,7 +127,7 @@ func (s *server) handleConn(rwc net.Conn) error {
 		select {
 		case <-s.stopCh:
 			return ErrServerClosed
-		case s.rpcCh <- rpc:
+		case s.r.rpcCh <- rpc:
 		}
 
 		// wait for response

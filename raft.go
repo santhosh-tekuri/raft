@@ -25,9 +25,11 @@ import (
 var testMode bool
 
 type Raft struct {
-	rtime  randTime
-	timer  *safeTimer
-	server *server
+	rtime randTime
+	timer *safeTimer
+
+	rpcCh        chan *rpc
+	disconnected chan uint64 // nid
 
 	fsm           *stateMachine
 	fsmRestoredCh chan error // fsm reports any errors during restore on this channel
@@ -85,6 +87,8 @@ func New(opt Options, fsm FSM, storage *Storage) (*Raft, error) {
 	r := &Raft{
 		rtime:            newRandTime(),
 		timer:            newSafeTimer(),
+		rpcCh:            make(chan *rpc),
+		disconnected:     make(chan uint64, 20),
 		fsm:              sm,
 		fsmRestoredCh:    make(chan error, 5),
 		snapTimer:        newSafeTimer(),
@@ -154,16 +158,16 @@ func (r *Raft) Serve(l net.Listener) error {
 		r.commitIndex = r.snaps.index
 	}
 
-	r.server = newServer(l)
+	s := newServer(r, l)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		r.server.serve()
+		s.serve()
 		if trace {
 			println(r, "server shutdown")
 		}
 	}()
-	defer r.server.shutdown()
+	defer s.shutdown()
 
 	return r.stateLoop()
 }
@@ -234,7 +238,7 @@ func (r *Raft) stateLoop() (err error) {
 				r.snapTimer.active = false
 				r.onTakeSnapshot(takeSnapshot{threshold: r.snapThreshold})
 
-			case rpc := <-r.server.rpcCh:
+			case rpc := <-r.rpcCh:
 				resetTimer := r.replyRPC(rpc)
 				// on receiving AppendEntries from current leader or
 				// granting vote to candidate reset timer
@@ -242,7 +246,7 @@ func (r *Raft) stateLoop() (err error) {
 					f.resetTimer()
 				}
 
-			case nid := <-r.server.disconnected:
+			case nid := <-r.disconnected:
 				if r.leader != 0 && nid != 0 && r.leader == nid {
 					if trace {
 						println(r, "leader got disconnected")
