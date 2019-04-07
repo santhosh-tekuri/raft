@@ -136,7 +136,7 @@ func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
 		} else if rinfo.Leader() == rinfo.NID() {
 			info("raft: cluster leadership acquired")
 		} else {
-			info("raft: cluster leadership acquired by node", rinfo.Leader())
+			info("raft: following leader node", rinfo.Leader())
 		}
 	}
 	trace.ElectionStarted = func(rinfo Info) {
@@ -151,17 +151,18 @@ func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
 	trace.ConfigChanged = func(rinfo Info) {
 		if rinfo.Configs().Latest.Index == 1 {
 			info("raft: bootstrapped with", rinfo.Configs().Latest)
-		} else if rinfo.State() == Leader {
+		} else {
 			info("raft: config changed to", rinfo.Configs().Latest)
 		}
 	}
 	trace.ConfigCommitted = func(rinfo Info) {
-		if rinfo.State() == Leader {
-			info("raft: committed config", rinfo.Configs().Latest)
-			if rinfo.Configs().IsStable() {
-				info("raft: config is stable")
-			}
+		info("raft: committed config", rinfo.Configs().Latest)
+		if rinfo.Configs().IsStable() {
+			info("raft: config is stable")
 		}
+	}
+	trace.ConfigReverted = func(rinfo Info) {
+		info("raft: reverted to", rinfo.Configs().Latest)
 	}
 	trace.RoundCompleted = func(rinfo Info, id uint64, r Round) {
 		info("raft: nonVoter", id, "completed round", r.Ordinal, "in", r.Duration(), ", its lastIndex:", r.LastIndex)
@@ -183,14 +184,14 @@ func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
 		if since.IsZero() {
 			info("raft: node", id, "is reachable now")
 		} else {
-			warn("raft: node", id, "is unreachable since", since, ":", err)
+			warn("raft: node", id, "is unreachable since", since.Format(time.RFC3339), "reason:", err)
 		}
 	}
 	trace.QuorumUnreachable = func(rinfo Info, since time.Time) {
 		if since.IsZero() {
 			info("raft: quorum is reachable now")
 		} else {
-			warn("raft: quorum is unreachable since", since)
+			warn("raft: quorum is unreachable since", since.Format(time.RFC3339))
 		}
 	}
 	trace.ShuttingDown = func(rinfo Info, reason error) {
