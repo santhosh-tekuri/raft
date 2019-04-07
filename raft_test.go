@@ -97,8 +97,8 @@ func TestRaft_bootstrap(t *testing.T) {
 	c.ensureFSMSame([]string{"hello"})
 
 	// ensure bootstrap fails if already bootstrapped
-	if err := waitBootstrap(ldr, config, c.longTimeout); err != ErrConfigChanged {
-		t.Fatalf("got %v, want %v", err, ErrConfigChanged)
+	if err := waitBootstrap(ldr, config, c.longTimeout); err != ErrStaleConfig {
+		t.Fatalf("got %v, want %v", err, ErrStaleConfig)
 	}
 	err := waitBootstrap(c.rr[2], config, c.longTimeout)
 	if _, ok := err.(NotLeaderError); !ok {
