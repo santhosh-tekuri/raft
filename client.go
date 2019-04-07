@@ -34,36 +34,66 @@ func NewClient(addr string) Client {
 	return Client{addr, net.DialTimeout}
 }
 
-func (c Client) Info() (Info, error) {
-	conn, err := c.dial("tcp", c.addr, 5*time.Second)
+func (c Client) getConn() (*conn, error) {
+	netConn, err := c.dial("tcp", c.addr, 5*time.Second)
 	if err != nil {
 		return nil, err
 	}
-	r, w := bufio.NewReader(conn), bufio.NewWriter(conn)
-	defer conn.Close()
+	return &conn{
+		rwc:  netConn,
+		bufr: bufio.NewReader(netConn),
+		bufw: bufio.NewWriter(netConn),
+	}, nil
+}
 
-	if err = w.WriteByte(byte(taskInfo)); err != nil {
+func (c Client) Info() (Info, error) {
+	conn, err := c.getConn()
+	if err != nil {
 		return nil, err
 	}
-	if err = w.Flush(); err != nil {
+	defer conn.rwc.Close()
+
+	if err = conn.bufw.WriteByte(byte(taskInfo)); err != nil {
 		return nil, err
 	}
-	result, err := decodeTaskResp(taskInfo, r)
+	if err = conn.bufw.Flush(); err != nil {
+		return nil, err
+	}
+	result, err := decodeTaskResp(taskInfo, conn.bufr)
 	if err != nil {
 		return nil, err
 	}
 	return result.(Info), nil
 }
 
+func (c Client) ChangeConfig(config Config) error {
+	conn, err := c.getConn()
+	if err != nil {
+		return err
+	}
+	defer conn.rwc.Close()
+
+	if err = conn.bufw.WriteByte(byte(taskChangeConfig)); err != nil {
+		return err
+	}
+	_ = config.encode().encode(conn.bufw)
+	if err = conn.bufw.Flush(); err != nil {
+		return err
+	}
+	_, err = decodeTaskResp(taskChangeConfig, conn.bufr)
+	return err
+}
+
 type taskType byte
 
 const (
 	taskInfo taskType = math.MaxInt8 - iota
+	taskChangeConfig
 )
 
 func (t taskType) isValid() bool {
 	switch t {
-	case taskInfo:
+	case taskInfo, taskChangeConfig:
 		return true
 	}
 	return false
@@ -159,6 +189,8 @@ func decodeTaskResp(typ taskType, r io.Reader) (interface{}, error) {
 			json.Followers[status.ID] = status
 		}
 		return cachedInfo{json}, nil
+	case taskChangeConfig:
+		return nil, nil
 	}
 	return nil, errors.New("invalidTaskType")
 }
@@ -169,9 +201,8 @@ func encodeTaskResp(t Task, w *bufio.Writer) (err error) {
 			err = w.Flush()
 		}
 	}()
-	err = t.Err()
-	if err != nil {
-		_ = writeString(w, err.Error())
+	if t.Err() != nil {
+		_ = writeString(w, t.Err().Error())
 		return
 	}
 	_ = writeString(w, "")

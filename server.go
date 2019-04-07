@@ -168,15 +168,38 @@ func (s *server) handleConn(rwc net.Conn) error {
 }
 
 func (s *server) handleTask(typ taskType, c *conn) error {
-	if typ == taskInfo {
+	switch typ {
+	case taskInfo:
 		info := s.r.Info()
-		task := &task{}
+		t := &task{}
 		if info == nil {
-			task.result = ErrServerClosed
+			t.result = ErrServerClosed
 		} else {
-			task.result = info
+			t.result = info
 		}
-		return encodeTaskResp(task, c.bufw)
+		return encodeTaskResp(t, c.bufw)
+	case taskChangeConfig:
+		e := &entry{}
+		if err := e.decode(c.bufr); err != nil {
+			return err
+		}
+		config := Config{}
+		if err := config.decode(e); err != nil {
+			return err
+		}
+		t := ChangeConfig(config)
+		select {
+		case <-s.r.Closed():
+			t.reply(ErrServerClosed)
+			return encodeTaskResp(t, c.bufw)
+		case s.r.Tasks() <- t:
+		}
+		select {
+		case <-s.r.Closed():
+			t.reply(ErrServerClosed)
+		case <-t.Done():
+		}
+		return encodeTaskResp(t, c.bufw)
 	}
 	unreachable()
 	return nil
