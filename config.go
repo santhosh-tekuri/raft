@@ -63,7 +63,7 @@ type Node struct {
 
 	// Data can be used by application to associate some information
 	// with node. For example application address
-	Data string
+	Data string `json:"data,omitempty"`
 
 	// Action tells the action to be taken by leader, when appropriate.
 	Action ConfigAction `json:"action,omitempty"`
