@@ -101,6 +101,26 @@ func (c Client) WaitForStableConfig() error {
 	return err
 }
 
+func (c Client) TakeSnapshot(threshold uint64) (snapIndex uint64, err error) {
+	conn, err := c.getConn()
+	if err != nil {
+		return 0, err
+	}
+	defer conn.rwc.Close()
+
+	if err = conn.bufw.WriteByte(byte(taskTakeSnapshot)); err != nil {
+		return 0, err
+	}
+	if err = conn.bufw.Flush(); err != nil {
+		return 0, err
+	}
+	result, err := decodeTaskResp(taskTakeSnapshot, conn.bufr)
+	if err != nil {
+		return 0, err
+	}
+	return result.(uint64), nil
+}
+
 // ------------------------------------------------------------------------
 
 type taskType byte
@@ -109,11 +129,12 @@ const (
 	taskInfo taskType = math.MaxInt8 - iota
 	taskChangeConfig
 	taskWaitForStableConfig
+	taskTakeSnapshot
 )
 
 func (t taskType) isValid() bool {
 	switch t {
-	case taskInfo, taskChangeConfig, taskWaitForStableConfig:
+	case taskInfo, taskChangeConfig, taskWaitForStableConfig, taskTakeSnapshot:
 		return true
 	}
 	return false
@@ -211,6 +232,8 @@ func decodeTaskResp(typ taskType, r io.Reader) (interface{}, error) {
 		return cachedInfo{json}, nil
 	case taskChangeConfig, taskWaitForStableConfig:
 		return nil, nil
+	case taskTakeSnapshot:
+		return readUint64(r)
 	}
 	return nil, errors.New("invalidTaskType")
 }
@@ -229,6 +252,8 @@ func encodeTaskResp(t Task, w *bufio.Writer) (err error) {
 	switch r := t.Result().(type) {
 	case nil:
 		return
+	case uint64:
+		_ = writeUint64(w, r)
 	case Info:
 		_ = writeUint64(w, r.CID())
 		_ = writeUint64(w, r.NID())

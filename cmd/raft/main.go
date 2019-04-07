@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strconv"
 
 	"github.com/santhosh-tekuri/raft"
 )
@@ -29,8 +30,9 @@ func main() {
 		errln("usage: raft <command> <options>")
 		errln()
 		errln("list of commands:")
-		errln("  info     get information")
-		errln("  config   configuration related tasks")
+		errln("  info       get information")
+		errln("  config     configuration related tasks")
+		errln("  snapshot   take snapshot")
 		os.Exit(1)
 	}
 	addr, ok := os.LookupEnv("RAFT_ADDR")
@@ -45,6 +47,8 @@ func main() {
 		info(c)
 	case "config":
 		config(c, args)
+	case "snapshot":
+		snapshot(c, args)
 	default:
 		errln("unknown command:", cmd)
 	}
@@ -140,6 +144,24 @@ func waitConfig(c raft.Client) {
 		errln(err.Error())
 		os.Exit(1)
 	}
+}
+
+func snapshot(c raft.Client, args []string) {
+	if len(args) == 0 {
+		errln("usage: raft snapshot <threshold>")
+		os.Exit(1)
+	}
+	i, err := strconv.ParseInt(args[0], 10, 64)
+	if err != nil {
+		errln(err.Error())
+		os.Exit(1)
+	}
+	snapIndex, err := c.TakeSnapshot(uint64(i))
+	if err != nil {
+		errln(err.Error())
+		os.Exit(1)
+	}
+	fmt.Println("snapshot index:", snapIndex)
 }
 
 func errln(v ...interface{}) {

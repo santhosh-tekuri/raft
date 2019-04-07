@@ -194,6 +194,14 @@ func (s *server) handleTask(typ taskType, c *conn) error {
 		t := WaitForStableConfig()
 		s.executeTask(t)
 		return encodeTaskResp(t, c.bufw)
+	case taskTakeSnapshot:
+		threshold, err := readUint64(c.bufr)
+		if err != nil {
+			return err
+		}
+		t := TakeSnapshot(threshold)
+		s.executeTask(t)
+		return encodeTaskResp(t, c.bufw)
 	}
 	unreachable()
 	return nil
