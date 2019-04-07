@@ -102,22 +102,31 @@ func (s *server) handleConn(rwc net.Conn) error {
 		if err != nil {
 			return err
 		}
-		typ := rpcType(b)
-		if !typ.isValid() {
+
+		ttype := taskType(b)
+		if ttype.isValid() {
+			if err = s.handleTask(ttype, c); err != nil {
+				return err
+			}
+			continue
+		}
+
+		rtype := rpcType(b)
+		if !rtype.isValid() {
 			err = fmt.Errorf("raft: server.handleRpc got rpcType %d", b)
 			if testMode {
 				panic(err)
 			}
 			return err
 		}
-		rpc := &rpc{req: typ.createReq(), conn: c, done: make(chan struct{})}
+		rpc := &rpc{req: rtype.createReq(), conn: c, done: make(chan struct{})}
 
 		// decode request
 		// todo: set read deadline
 		// we dont read requests from leader, because we want raft to know
 		// that leader has contacted as soon as possible. so raft reads the
 		// actual request with deadline
-		if !typ.fromLeader() {
+		if !rtype.fromLeader() {
 			if err := rpc.req.decode(c.bufr); err != nil {
 				return err
 			}
@@ -155,6 +164,21 @@ func (s *server) handleConn(rwc net.Conn) error {
 			return IdentityError{}
 		}
 	}
+	return nil
+}
+
+func (s *server) handleTask(typ taskType, c *conn) error {
+	if typ == taskInfo {
+		info := s.r.Info()
+		task := &task{}
+		if info == nil {
+			task.result = ErrServerClosed
+		} else {
+			task.result = info
+		}
+		return encodeTaskResp(task, c.bufw)
+	}
+	unreachable()
 	return nil
 }
 
