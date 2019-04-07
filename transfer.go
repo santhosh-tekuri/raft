@@ -53,12 +53,10 @@ func (t transfer) targetChosen() bool {
 }
 
 func (t *transfer) reply(err error) {
-	if t.timer.active {
-		if trace {
-			println("transferLdr.reply err:", err)
-		}
-		t.task.reply(err)
+	if trace {
+		println("transferLdr.reply err:", err)
 	}
+	t.task.reply(err)
 	t.timer.stop()
 	t.respCh = nil
 	t.newTermTimer.stop()
