@@ -77,7 +77,7 @@ func (s *Storage) SetIdentity(cid, nid uint64) error {
 	if cid == s.cid && nid == s.nid {
 		return nil
 	}
-	if s.cid != 0 || s.nid != 0 {
+	if s.cid != 0 && s.nid != 0 {
 		return ErrIdentityAlreadySet
 	}
 	if err := s.idVal.set(cid, nid); err != nil {
