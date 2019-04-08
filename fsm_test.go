@@ -50,7 +50,7 @@ func TestFSM_takeSnap_restartSendUpdates(t *testing.T) {
 	c.sendUpdates(ldr, 1, 100)
 	c.waitBarrier(ldr, 0)
 
-	logCompacted := c.registerFor(logCompacted, ldr)
+	logCompacted := c.registerFor(eventLogCompacted, ldr)
 	defer c.unregister(logCompacted)
 
 	// now take proper snapshot

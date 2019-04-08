@@ -83,9 +83,9 @@ func TestLeader_quorumWait_unreachable(t *testing.T) {
 	ldr, followers := c.ensureLaunch(2)
 	defer c.shutdown()
 
-	reachability := c.registerFor(reachability, ldr)
+	reachability := c.registerFor(eventUnreachable, ldr)
 	defer c.unregister(reachability)
-	quorumUnreachable := c.registerFor(quorumUnreachable, ldr)
+	quorumUnreachable := c.registerFor(eventQuorumUnreachable, ldr)
 	defer c.unregister(quorumUnreachable)
 
 	// disconnect the follower now
@@ -132,9 +132,9 @@ func TestLeader_quorumWait_reachable(t *testing.T) {
 	ldr, followers := c.ensureLaunch(2)
 	defer c.shutdown()
 
-	reachability := c.registerFor(reachability, ldr)
+	reachability := c.registerFor(eventUnreachable, ldr)
 	defer c.unregister(reachability)
-	quorumUnreachable := c.registerFor(quorumUnreachable, ldr)
+	quorumUnreachable := c.registerFor(eventQuorumUnreachable, ldr)
 	defer c.unregister(quorumUnreachable)
 
 	// disconnect the follower now
@@ -222,7 +222,7 @@ func TODO_TestLeader_backPressure(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
-	stateChanged := c.registerFor(stateChanged, ldr)
+	stateChanged := c.registerFor(eventStateChanged, ldr)
 	defer c.unregister(stateChanged)
 	var wg sync.WaitGroup
 	for i := 0; i < 5; i++ {

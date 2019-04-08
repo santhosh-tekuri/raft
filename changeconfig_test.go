@@ -73,7 +73,7 @@ func TestChangeConfig_trace(t *testing.T) {
 	// wait for bootstrap config committed by all
 	c.waitForCommitted(ldr.Info().LastLogIndex())
 
-	configRelated := c.registerFor(configRelated)
+	configRelated := c.registerFor(eventConfigRelated)
 	defer c.unregister(configRelated)
 
 	// add M3 as nonvoter, wait for success reply
@@ -85,8 +85,8 @@ func TestChangeConfig_trace(t *testing.T) {
 		if e.src != ldr.NID() {
 			t.Fatalf("got M%d, want M%d", e.src, ldr.NID())
 		}
-		if e.typ != configChanged {
-			t.Fatalf("got %d, want %d", e.typ, configChanged)
+		if e.typ != eventConfigChanged {
+			t.Fatalf("got %d, want %d", e.typ, eventConfigChanged)
 		}
 	default:
 		t.Fatal("expected configChange from ldr")
@@ -98,8 +98,8 @@ func TestChangeConfig_trace(t *testing.T) {
 		if e.src != followers[0].NID() {
 			t.Fatalf("got M%d, want M%d", e.src, followers[0].NID())
 		}
-		if e.typ != configChanged {
-			t.Fatalf("got %d, want %d", e.typ, configChanged)
+		if e.typ != eventConfigChanged {
+			t.Fatalf("got %d, want %d", e.typ, eventConfigChanged)
 		}
 	default:
 		t.Fatal("expected configChange from follower")
@@ -111,8 +111,8 @@ func TestChangeConfig_trace(t *testing.T) {
 		if e.src != ldr.NID() {
 			t.Fatalf("got M%d, want M%d", e.src, ldr.NID())
 		}
-		if e.typ != configCommitted {
-			t.Fatalf("got %d, want %d", e.typ, configCommitted)
+		if e.typ != eventConfigCommitted {
+			t.Fatalf("got %d, want %d", e.typ, eventConfigCommitted)
 		}
 	default:
 		t.Fatal("expected configCommitted from ldr")
@@ -125,8 +125,8 @@ func TestChangeConfig_trace(t *testing.T) {
 		if e.src != followers[0].NID() {
 			t.Fatalf("got M%d, want M%d", e.src, followers[0].NID())
 		}
-		if e.typ != configCommitted {
-			t.Fatalf("got %d, want %d", e.typ, configCommitted)
+		if e.typ != eventConfigCommitted {
+			t.Fatalf("got %d, want %d", e.typ, eventConfigCommitted)
 		}
 	default:
 		t.Fatal("expected configCommit from follower")
@@ -161,7 +161,7 @@ func TestChangeConfig_promote_newNode_singleRound(t *testing.T) {
 	// wait until leader is commit ready
 	c.waitCommitReady(ldr)
 
-	promoting := c.registerFor(configActionStarted, ldr)
+	promoting := c.registerFor(eventConfigActionStarted, ldr)
 	defer c.unregister(promoting)
 
 	// add 2 new nodes with promote=true
@@ -235,9 +235,9 @@ func TestChangeConfig_promote_newNode_uptodateButConfigChangeInProgress(t *testi
 	c.shutdown(followers[0])
 
 	// add m3 as nonvoter with promote=true
-	roundCompleted := c.registerFor(roundFinished, ldr)
+	roundCompleted := c.registerFor(eventRoundFinished, ldr)
 	defer c.unregister(roundCompleted)
-	promoting := c.registerFor(configActionStarted, ldr)
+	promoting := c.registerFor(eventConfigActionStarted, ldr)
 	defer c.unregister(promoting)
 	task := addNonvoter(ldr, 3, c.id2Addr(3), true)
 	select {
@@ -311,9 +311,9 @@ func TestChangeConfig_removeVoters(t *testing.T) {
 	// wait for commit ready
 	c.waitCommitReady(ldr)
 
-	electionAborted0 := c.registerFor(electionAborted, flrs[0])
+	electionAborted0 := c.registerFor(eventElectionAborted, flrs[0])
 	defer c.unregister(electionAborted0)
-	electionAborted1 := c.registerFor(electionAborted, flrs[1])
+	electionAborted1 := c.registerFor(eventElectionAborted, flrs[1])
 	defer c.unregister(electionAborted1)
 
 	// submit ChangeConfig with two voters removed

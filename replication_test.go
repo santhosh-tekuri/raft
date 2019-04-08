@@ -77,7 +77,7 @@ func TestReplication_nonvoter_reconnects_catchesUp(t *testing.T) {
 	m4 := c.launch(1, false)[4]
 
 	// now disconnect nonvoter m4
-	m4StateChanged := c.registerFor(stateChanged, m4)
+	m4StateChanged := c.registerFor(eventStateChanged, m4)
 	defer c.unregister(m4StateChanged)
 	c.disconnect(m4)
 
@@ -174,7 +174,7 @@ func testInstallSnapCase(t *testing.T, updateFSMAfterSnap bool) {
 	c.ensure(waitAddNonvoter(ldr, 4, c.id2Addr(4), false))
 	c.waitCatchup()
 
-	logCompacted := c.registerFor(logCompacted, ldr)
+	logCompacted := c.registerFor(eventLogCompacted, ldr)
 	defer c.unregister(logCompacted)
 
 	// take snapshot

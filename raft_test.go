@@ -49,7 +49,7 @@ func TestRaft_shutdown_twice(t *testing.T) {
 func TestRaft_bootstrap(t *testing.T) {
 	c := newCluster(t)
 
-	electionAborted := c.registerFor(electionAborted)
+	electionAborted := c.registerFor(eventElectionAborted)
 	defer c.unregister(electionAborted)
 
 	// launch cluster without bootstrapping
@@ -467,9 +467,9 @@ func (c *cluster) restart(r *Raft) *Raft {
 func (c *cluster) waitForStability(rr ...*Raft) {
 	c.Helper()
 	testln("waitForStability:", hosts(rr))
-	stateChanged := c.registerFor(stateChanged, rr...)
+	stateChanged := c.registerFor(eventStateChanged, rr...)
 	defer c.unregister(stateChanged)
-	electionStarted := c.registerFor(electionStarted, rr...)
+	electionStarted := c.registerFor(eventElectionStarted, rr...)
 	defer c.unregister(electionStarted)
 
 	limitTimer := time.NewTimer(c.longTimeout)
@@ -565,7 +565,7 @@ func (c *cluster) waitForFollowers() *Raft {
 		}
 		return true
 	}
-	leaderChanged := c.registerFor(leaderChanged)
+	leaderChanged := c.registerFor(eventLeaderChanged)
 	defer c.unregister(leaderChanged)
 	if !leaderChanged.waitFor(condition, c.longTimeout) {
 		c.eventMu.RLock()
@@ -591,7 +591,7 @@ func (c *cluster) waitForState(r *Raft, timeout time.Duration, states ...State) 
 		}
 		return false
 	}
-	stateChanged := c.registerFor(stateChanged)
+	stateChanged := c.registerFor(eventStateChanged)
 	defer c.unregister(stateChanged)
 	if !stateChanged.waitFor(condition, timeout) {
 		c.Fatalf("waitForState(M%d, %v) timeout", r.NID(), states)
@@ -616,7 +616,7 @@ func (c *cluster) waitForLeader(rr ...*Raft) *Raft {
 		}
 		return false
 	}
-	stateChanged := c.registerFor(stateChanged)
+	stateChanged := c.registerFor(eventStateChanged)
 	defer c.unregister(stateChanged)
 	if !stateChanged.waitFor(condition, c.longTimeout) {
 		c.Fatalf("waitForLeader: timeout")
@@ -632,7 +632,7 @@ func (c *cluster) waitCommitReady(ldr *Raft) {
 		defer c.eventMu.RUnlock()
 		return c.commitReady[ldr.nid]
 	}
-	commitReady := c.registerFor(commitReady)
+	commitReady := c.registerFor(eventCommitReady)
 	defer c.unregister(commitReady)
 	if !commitReady.waitFor(condition, c.longTimeout) {
 		c.Fatalf("waitCommitReady: timeout")
@@ -653,7 +653,7 @@ func (c *cluster) waitFSMLen(fsmLen uint64, rr ...*Raft) {
 		}
 		return true
 	}
-	fsmChanged := c.registerFor(fsmChanged, rr...)
+	fsmChanged := c.registerFor(eventFSMChanged, rr...)
 	defer c.unregister(fsmChanged)
 	if !fsmChanged.waitFor(condition, c.longTimeout) {
 		c.Logf("fsmLen: want %d", fsmLen)
@@ -764,7 +764,7 @@ func (c *cluster) waitUnreachableDetected(ldr, failed *Raft) (since time.Time, e
 		since, err = flr.Unreachable, flr.Err
 		return !flr.Unreachable.IsZero()
 	}
-	unreachable := c.registerFor(reachability, ldr)
+	unreachable := c.registerFor(eventUnreachable, ldr)
 	defer c.unregister(unreachable)
 	if !unreachable.waitFor(condition, c.longTimeout) {
 		c.Fatalf("waitUnreachableDetected: ldr M%d failed to detect M%d is unreachable", ldr.NID(), failed.NID())
@@ -778,7 +778,7 @@ func (c *cluster) waitReachableDetected(ldr, failed *Raft) {
 	condition := func(e *event) bool {
 		return ldr.Info().Followers()[failed.NID()].Unreachable.IsZero()
 	}
-	unreachable := c.registerFor(reachability, ldr)
+	unreachable := c.registerFor(eventUnreachable, ldr)
 	defer c.unregister(unreachable)
 	if !unreachable.waitFor(condition, c.longTimeout) {
 		c.Fatalf("waitReachableDetected: ldr M%d failed to detect M%d is reachable", ldr.NID(), failed.NID())
@@ -991,23 +991,23 @@ func bootstrapStorage(store *Storage, nodes map[uint64]Node) error {
 type eventType int
 
 const (
-	fsmChanged eventType = iota
-	stateChanged
-	leaderChanged
-	electionStarted
-	electionAborted
-	commitReady
-	configChanged
-	configCommitted
-	configReverted
-	reachability
-	quorumUnreachable
-	roundFinished
-	logCompacted
-	configActionStarted
-	shuttingDown
+	eventFSMChanged eventType = iota
+	eventStateChanged
+	eventLeaderChanged
+	eventElectionStarted
+	eventElectionAborted
+	eventCommitReady
+	eventConfigChanged
+	eventConfigCommitted
+	eventConfigReverted
+	eventUnreachable
+	eventQuorumUnreachable
+	eventRoundFinished
+	eventLogCompacted
+	eventConfigActionStarted
+	eventShuttingDown
 
-	configRelated
+	eventConfigRelated
 )
 
 type event struct {
@@ -1030,9 +1030,9 @@ type event struct {
 }
 
 func (e event) matches(typ eventType, rr ...*Raft) bool {
-	if typ == configRelated {
+	if typ == eventConfigRelated {
 		switch e.typ {
-		case configChanged, configCommitted, configReverted:
+		case eventConfigChanged, eventConfigCommitted, eventConfigReverted:
 		default:
 			return false
 		}
@@ -1132,7 +1132,7 @@ func (ee *events) sendEvent(e event) {
 func (ee *events) onFMSChanged(id uint64, len uint64) {
 	ee.sendEvent(event{
 		src:    id,
-		typ:    fsmChanged,
+		typ:    eventFSMChanged,
 		fsmLen: len,
 	})
 }
@@ -1141,7 +1141,7 @@ func (ee *events) trace() (trace Trace) {
 	trace.ShuttingDown = func(info Info, reason error) {
 		ee.sendEvent(event{
 			src: info.NID(),
-			typ: shuttingDown,
+			typ: eventShuttingDown,
 			err: reason,
 		})
 	}
@@ -1152,7 +1152,7 @@ func (ee *events) trace() (trace Trace) {
 		ee.eventMu.Unlock()
 		ee.sendEvent(event{
 			src:   info.NID(),
-			typ:   stateChanged,
+			typ:   eventStateChanged,
 			state: info.State(),
 		})
 	}
@@ -1162,20 +1162,20 @@ func (ee *events) trace() (trace Trace) {
 		ee.eventMu.Unlock()
 		ee.sendEvent(event{
 			src:    info.NID(),
-			typ:    leaderChanged,
+			typ:    eventLeaderChanged,
 			leader: info.Leader(),
 		})
 	}
 	trace.ElectionStarted = func(info Info) {
 		ee.sendEvent(event{
 			src: info.NID(),
-			typ: electionStarted,
+			typ: eventElectionStarted,
 		})
 	}
 	trace.ElectionAborted = func(info Info, reason string) {
 		ee.sendEvent(event{
 			src:    info.NID(),
-			typ:    electionAborted,
+			typ:    eventElectionAborted,
 			reason: reason,
 		})
 	}
@@ -1185,13 +1185,13 @@ func (ee *events) trace() (trace Trace) {
 		ee.eventMu.Unlock()
 		ee.sendEvent(event{
 			src: info.NID(),
-			typ: commitReady,
+			typ: eventCommitReady,
 		})
 	}
 	trace.ConfigChanged = func(info Info) {
 		ee.sendEvent(event{
 			src:     info.NID(),
-			typ:     configChanged,
+			typ:     eventConfigChanged,
 			configs: info.Configs(),
 		})
 	}
@@ -1199,7 +1199,7 @@ func (ee *events) trace() (trace Trace) {
 	trace.ConfigCommitted = func(info Info) {
 		ee.sendEvent(event{
 			src:     info.NID(),
-			typ:     configCommitted,
+			typ:     eventConfigCommitted,
 			configs: info.Configs(),
 		})
 	}
@@ -1207,7 +1207,7 @@ func (ee *events) trace() (trace Trace) {
 	trace.ConfigReverted = func(info Info) {
 		ee.sendEvent(event{
 			src:     info.NID(),
-			typ:     configReverted,
+			typ:     eventConfigReverted,
 			configs: info.Configs(),
 		})
 	}
@@ -1215,7 +1215,7 @@ func (ee *events) trace() (trace Trace) {
 	trace.Unreachable = func(info Info, id uint64, since time.Time, err error) {
 		ee.sendEvent(event{
 			src:    info.NID(),
-			typ:    reachability,
+			typ:    eventUnreachable,
 			target: id,
 			since:  since,
 			err:    err,
@@ -1225,7 +1225,7 @@ func (ee *events) trace() (trace Trace) {
 	trace.QuorumUnreachable = func(info Info, since time.Time) {
 		ee.sendEvent(event{
 			src:   info.NID(),
-			typ:   quorumUnreachable,
+			typ:   eventQuorumUnreachable,
 			since: since,
 		})
 	}
@@ -1233,7 +1233,7 @@ func (ee *events) trace() (trace Trace) {
 	trace.RoundCompleted = func(info Info, id uint64, r Round) {
 		ee.sendEvent(event{
 			src:    info.NID(),
-			typ:    roundFinished,
+			typ:    eventRoundFinished,
 			target: id,
 			round:  r,
 		})
@@ -1242,7 +1242,7 @@ func (ee *events) trace() (trace Trace) {
 	trace.LogCompacted = func(info Info) {
 		ee.sendEvent(event{
 			src:        info.NID(),
-			typ:        logCompacted,
+			typ:        eventLogCompacted,
 			firstIndex: info.FirstLogIndex(),
 		})
 	}
@@ -1250,7 +1250,7 @@ func (ee *events) trace() (trace Trace) {
 	trace.ConfigActionStarted = func(info Info, id uint64, action ConfigAction) {
 		ee.sendEvent(event{
 			src:       info.NID(),
-			typ:       configActionStarted,
+			typ:       eventConfigActionStarted,
 			target:    id,
 			action:    action,
 			numRounds: info.Followers()[id].Round,

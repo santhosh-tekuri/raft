@@ -37,7 +37,7 @@ func TestRPC_voteReq_opError(t *testing.T) {
 	c, ldr, flrs := launchCluster(t, 3)
 	defer c.shutdown()
 
-	shuttingDown := c.registerFor(shuttingDown, flrs...)
+	shuttingDown := c.registerFor(eventShuttingDown, flrs...)
 	defer c.unregister(shuttingDown)
 
 	// make storage fail when voting other
