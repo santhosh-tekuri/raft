@@ -188,6 +188,7 @@ func (info liveInfo) Followers() map[uint64]FlrStatus {
 			round = repl.status.round.Ordinal
 		}
 		flrs[id] = FlrStatus{
+			ID:          id,
 			MatchIndex:  repl.status.matchIndex,
 			Unreachable: repl.status.noContact,
 			Err:         repl.status.err,
