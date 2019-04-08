@@ -32,25 +32,25 @@ func main() {
 	if err := os.MkdirAll(storageDir, 0700); err != nil {
 		panic(err)
 	}
-	cid, nid := lookupUint64("CID"), lookupUint64("NID")
+	cid, nid := lookupEnv("CID"), lookupEnv("NID")
 	if err := raft.SetIdentity(storageDir, cid, nid); err != nil {
 		panic(err)
 	}
 
-	s := newKVStore()
+	store := newKVStore()
 	opt := raft.DefaultOptions()
-	r, err := raft.New(opt, s, storageDir)
+	r, err := raft.New(opt, store, storageDir)
 	if err != nil {
 		panic(err)
 	}
 	go http.ListenAndServe(httpAddr, handler{r})
 	err = r.ListenAndServe(raftAddr)
-	if err != raft.ErrServerClosed {
+	if err != raft.ErrServerClosed && err != raft.ErrNodeRemoved {
 		panic(err)
 	}
 }
 
-func lookupUint64(key string) uint64 {
+func lookupEnv(key string) uint64 {
 	s, ok := os.LookupEnv(key)
 	if !ok {
 		errln("environment variable", key, "not set")

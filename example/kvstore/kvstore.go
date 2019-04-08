@@ -24,15 +24,15 @@ import (
 	"github.com/santhosh-tekuri/raft"
 )
 
-type kvstore struct {
+type kvStore struct {
 	data map[string]string
 }
 
-func newKVStore() *kvstore {
-	return &kvstore{make(map[string]string)}
+func newKVStore() *kvStore {
+	return &kvStore{make(map[string]string)}
 }
 
-func (s *kvstore) Update(b []byte) interface{} {
+func (s *kvStore) Update(b []byte) interface{} {
 	cmd, err := decodeCmd(b)
 	if err != nil {
 		return err
@@ -48,7 +48,7 @@ func (s *kvstore) Update(b []byte) interface{} {
 	return errors.New("unknown cmd")
 }
 
-func (s *kvstore) Read(b []byte) interface{} {
+func (s *kvStore) Read(b []byte) interface{} {
 	cmd, err := decodeCmd(b)
 	if err != nil {
 		return err
@@ -60,7 +60,7 @@ func (s *kvstore) Read(b []byte) interface{} {
 	return errors.New("unknown cmd")
 }
 
-func (s *kvstore) Snapshot() (raft.FSMState, error) {
+func (s *kvStore) Snapshot() (raft.FSMState, error) {
 	data := make(map[string]string)
 	for k, v := range s.data {
 		data[k] = v
@@ -68,7 +68,7 @@ func (s *kvstore) Snapshot() (raft.FSMState, error) {
 	return &kvState{data}, nil
 }
 
-func (s *kvstore) RestoreFrom(r io.Reader) error {
+func (s *kvStore) RestoreFrom(r io.Reader) error {
 	var data map[string]string
 	if err := gob.NewDecoder(r).Decode(&data); err != nil {
 		return err
@@ -103,22 +103,23 @@ func decodeCmd(b []byte) (interface{}, error) {
 	if len(b) == 0 {
 		return nil, errors.New("no data")
 	}
+	decoder := gob.NewDecoder(bytes.NewReader(b[1:]))
 	switch cmdType(b[0]) {
 	case cmdSet:
 		cmd := set{}
-		if err := gob.NewDecoder(bytes.NewReader(b[1:])).Decode(&cmd); err != nil {
+		if err := decoder.Decode(&cmd); err != nil {
 			return nil, err
 		}
 		return cmd, nil
 	case cmdGet:
 		cmd := get{}
-		if err := gob.NewDecoder(bytes.NewReader(b[1:])).Decode(&cmd); err != nil {
+		if err := decoder.Decode(&cmd); err != nil {
 			return nil, err
 		}
 		return cmd, nil
 	case cmdDel:
 		cmd := del{}
-		if err := gob.NewDecoder(bytes.NewReader(b[1:])).Decode(&cmd); err != nil {
+		if err := decoder.Decode(&cmd); err != nil {
 			return nil, err
 		}
 		return cmd, nil
