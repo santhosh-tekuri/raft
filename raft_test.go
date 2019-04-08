@@ -252,7 +252,7 @@ func newCluster(t *testing.T) *cluster {
 		testTimeout:      testTimeout,
 		rr:               make(map[uint64]*Raft),
 		ports:            make(map[uint64]int),
-		storage:          make(map[uint64]*Storage),
+		storage:          make(map[uint64]string),
 		serveErr:         make(map[uint64]chan error),
 		heartbeatTimeout: heartbeatTimeout,
 		longTimeout:      5 * time.Second,
@@ -270,9 +270,9 @@ func newCluster(t *testing.T) *cluster {
 		PromoteThreshold: heartbeatTimeout,
 		Trace:            c.events.trace(),
 		Bandwidth:        256 * 1024,
+		LogSegmentSize:   4 * 1024,
+		SnapshotsRetain:  1,
 	}
-	c.storeOpt = DefaultStorageOptions()
-	c.storeOpt.LogSegmentSize = 4 * 1024
 	return c
 }
 
@@ -287,14 +287,13 @@ type cluster struct {
 	testTimeout      *time.Timer
 	rr               map[uint64]*Raft
 	ports            map[uint64]int
-	storage          map[uint64]*Storage
+	storage          map[uint64]string
 	serverErrMu      sync.RWMutex
 	serveErr         map[uint64]chan error
 	heartbeatTimeout time.Duration
 	longTimeout      time.Duration
 	commitTimeout    time.Duration
 	opt              Options
-	storeOpt         StorageOptions
 	resolverMu       sync.RWMutex
 	*events
 }
@@ -341,30 +340,26 @@ func (c *cluster) launch(n int, bootstrap bool) map[uint64]*Raft {
 
 	launched := make(map[uint64]*Raft)
 	for _, node := range nodes {
-		tempDir, err := ioutil.TempDir(tempDir, "storage")
+		storageDir, err := ioutil.TempDir(tempDir, "storage")
 		if err != nil {
 			c.Fatal(err)
 		}
-		storage, err := OpenStorage(tempDir, c.storeOpt)
-		if err != nil {
-			c.Fatalf("openStorage: %v", err)
-		}
-		if err = storage.SetIdentity(c.id, node.ID); err != nil {
+		if err = SetIdentity(storageDir, c.id, node.ID); err != nil {
 			c.Fatal(err)
 		}
 		if bootstrap {
-			if err := bootstrapStorage(storage, nodes); err != nil {
+			if err := bootstrapStorage(storageDir, c.opt, nodes); err != nil {
 				c.Fatalf("Storage.bootstrap failed: %v", err)
 			}
 		}
 		fsm := &fsmMock{id: node.ID, changed: c.events.onFMSChanged}
-		r, err := New(c.opt, fsm, storage)
+		r, err := New(c.opt, fsm, storageDir)
 		if err != nil {
 			c.Fatal(err)
 		}
 		launched[r.NID()] = r
 		c.rr[node.ID] = r
-		c.storage[node.ID] = storage
+		c.storage[node.ID] = storageDir
 		c.serverErrMu.Lock()
 		c.serveErr[r.NID()] = make(chan error, 1)
 		c.serverErrMu.Unlock()
@@ -977,13 +972,16 @@ func requestVote(from, to *Raft, transfer bool) (granted bool, err error) {
 	return
 }
 
-func bootstrapStorage(store *Storage, nodes map[uint64]Node) error {
+func bootstrapStorage(storageDir string, opt Options, nodes map[uint64]Node) error {
+	store, err := openStorage(storageDir, opt)
+	if err != nil {
+		return err
+	}
 	config := Config{Nodes: nodes, Index: 1, Term: 1}
 	if err := store.bootstrap(config); err != nil {
 		return err
 	}
-	store.configs.Latest = config
-	return nil
+	return store.log.Close()
 }
 
 // events ---------------------------------------------

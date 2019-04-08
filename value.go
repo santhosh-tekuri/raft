@@ -29,13 +29,13 @@ type value struct {
 	v2  uint64
 }
 
-func openValue(dir, ext string, mode os.FileMode) (*value, error) {
+func openValue(dir, ext string) (*value, error) {
 	matches, err := filepath.Glob(filepath.Join(dir, "*"+ext))
 	if err != nil {
 		return nil, err
 	}
 	if len(matches) == 0 {
-		f, err := os.OpenFile(valueFile(dir, ext, 0, 0), os.O_RDWR|os.O_CREATE|os.O_TRUNC, mode)
+		f, err := os.OpenFile(valueFile(dir, ext, 0, 0), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
 		if err != nil {
 			return nil, err
 		}

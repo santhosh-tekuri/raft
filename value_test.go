@@ -27,7 +27,7 @@ func TestValue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	v, err := openValue(dir, ".val", 0600)
+	v, err := openValue(dir, ".val")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestValue(t *testing.T) {
 		if err = ensureValue(v, i*2, i*2+1); err != nil {
 			t.Fatal(err)
 		}
-		if v, err = openValue(dir, ".val", 0600); err != nil {
+		if v, err = openValue(dir, ".val"); err != nil {
 			t.Fatal(err)
 		}
 		if err = ensureValue(v, i*2, i*2+1); err != nil {
@@ -55,7 +55,7 @@ func BenchmarkValue_set(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	v, err := openValue(dir, ".val", 0600)
+	v, err := openValue(dir, ".val")
 	if err != nil {
 		b.Fatal(err)
 	}

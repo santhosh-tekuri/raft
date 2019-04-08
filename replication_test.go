@@ -162,7 +162,7 @@ func TestReplication_installSnap(t *testing.T) {
 func testInstallSnapCase(t *testing.T, updateFSMAfterSnap bool) {
 	// launch 3 node cluster
 	c := newCluster(t)
-	c.storeOpt.LogSegmentSize = 1024
+	c.opt.LogSegmentSize = 1024
 	ldr, _ := c.ensureLaunch(3)
 	defer c.shutdown()
 

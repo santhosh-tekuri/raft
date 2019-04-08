@@ -39,11 +39,11 @@ type snapshots struct {
 	used   map[uint64]int // map[index]numUses
 }
 
-func openSnapshots(dir string, opt StorageOptions) (*snapshots, error) {
+func openSnapshots(dir string, opt Options) (*snapshots, error) {
 	if opt.SnapshotsRetain < 1 {
 		return nil, fmt.Errorf("raft: must retain at least one snapshot")
 	}
-	if err := os.MkdirAll(dir, opt.DirMode); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
 	snaps, err := findSnapshots(dir)

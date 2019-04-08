@@ -16,7 +16,6 @@ package main
 
 import (
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -29,30 +28,23 @@ func main() {
 		errln("usage: raft <storage-dir> <raft-addr> <http-addr>")
 		os.Exit(1)
 	}
-	opt := raft.DefaultOptions()
-	storeOpt := raft.DefaultStorageOptions()
-	store, err := raft.OpenStorage(os.Args[1], storeOpt)
-	if err != nil {
+	storageDir, raftAddr, httpAddr := os.Args[1], os.Args[2], os.Args[3]
+	if err := os.MkdirAll(storageDir, 0700); err != nil {
 		panic(err)
 	}
-	if cid, nid := store.GetIdentity(); cid == 0 && nid == 0 {
-		cid, nid = lookupUint64("CID"), lookupUint64("NID")
-		if err := store.SetIdentity(cid, nid); err != nil {
-			panic(err)
-		}
-	}
-	s := newKVStore()
-	r, err := raft.New(opt, s, store)
-	if err != nil {
+	cid, nid := lookupUint64("CID"), lookupUint64("NID")
+	if err := raft.SetIdentity(storageDir, cid, nid); err != nil {
 		panic(err)
 	}
 
-	lr, err := net.Listen("tcp", os.Args[2])
+	s := newKVStore()
+	opt := raft.DefaultOptions()
+	r, err := raft.New(opt, s, storageDir)
 	if err != nil {
 		panic(err)
 	}
-	go http.ListenAndServe(os.Args[3], handler{r})
-	err = r.Serve(lr)
+	go http.ListenAndServe(httpAddr, handler{r})
+	err = r.ListenAndServe(raftAddr)
 	if err != raft.ErrServerClosed {
 		panic(err)
 	}

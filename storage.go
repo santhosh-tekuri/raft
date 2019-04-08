@@ -21,70 +21,38 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 
 	"github.com/santhosh-tekuri/raft/log"
 )
 
-type StorageOptions struct {
-	DirMode         os.FileMode
-	FileMode        os.FileMode
-	LogSegmentSize  int
-	SnapshotsRetain int
-}
-
-func DefaultStorageOptions() StorageOptions {
-	return StorageOptions{
-		DirMode:         0700,
-		FileMode:        0600,
-		LogSegmentSize:  16 * 1024 * 1024,
-		SnapshotsRetain: 1,
-	}
-}
-
-// Storage contains all persistent state.
-type Storage struct {
-	*storage
-}
-
-func OpenStorage(dir string, opt StorageOptions) (*Storage, error) {
-	s, err := openStorage(dir, opt)
-	if err != nil {
-		return nil, err
-	}
-	return &Storage{s}, nil
-}
-
-// GetIdentity returns the server identity.
-//
-// The identity includes clusterID and nodeID. Zero values
-// mean identity is not set yet.
-func (s *Storage) GetIdentity() (cid, nid uint64) {
-	return s.cid, s.nid
-}
-
 // SetIdentity sets the server identity.
-//
-// If identity is already set and you are trying
-// to override it with different identity, it returns error.
-func (s *Storage) SetIdentity(cid, nid uint64) error {
+// If identity is already set, it ensures that they match
+// with the given values.
+func SetIdentity(dir string, cid, nid uint64) error {
 	if cid == 0 {
 		return errors.New("raft: cid is zero")
 	}
 	if nid == 0 {
 		return errors.New("raft: nid is zero")
 	}
-	if cid == s.cid && nid == s.nid {
-		return nil
-	}
-	if s.cid != 0 && s.nid != 0 {
-		return ErrIdentityAlreadySet
-	}
-	if err := s.idVal.set(cid, nid); err != nil {
+	d, err := os.Stat(dir)
+	if err != nil {
 		return err
 	}
-	s.cid, s.nid = s.idVal.get()
-	return nil
+	if !d.IsDir() {
+		return fmt.Errorf("raft: %q is not a diretory", dir)
+	}
+	val, err := openValue(dir, ".id")
+	if err != nil {
+		return err
+	}
+	if cid == val.v1 && nid == val.v2 {
+		return nil
+	}
+	if val.v1 != 0 && val.v2 != 0 {
+		return ErrIdentityAlreadySet
+	}
+	return val.set(cid, nid)
 }
 
 type storage struct {
@@ -104,13 +72,7 @@ type storage struct {
 	configs Configs
 }
 
-func openStorage(dir string, opt StorageOptions) (*storage, error) {
-	if !strings.HasPrefix(opt.DirMode.String()[1:], "rwx") {
-		return nil, fmt.Errorf("raft: DirMode %q has no rwx permission", opt.DirMode)
-	}
-	if err := os.MkdirAll(dir, opt.DirMode); err != nil {
-		return nil, err
-	}
+func openStorage(dir string, opt Options) (*storage, error) {
 	dir, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, err
@@ -125,13 +87,13 @@ func openStorage(dir string, opt StorageOptions) (*storage, error) {
 	}()
 
 	// open identity value ----------------
-	if s.idVal, err = openValue(dir, ".id", opt.FileMode); err != nil {
+	if s.idVal, err = openValue(dir, ".id"); err != nil {
 		return nil, err
 	}
 	s.cid, s.nid = s.idVal.get()
 
 	// open term value ----------------
-	if s.termVal, err = openValue(dir, ".term", opt.FileMode); err != nil {
+	if s.termVal, err = openValue(dir, ".term"); err != nil {
 		return nil, err
 	}
 	s.term, s.votedFor = s.termVal.get()
@@ -148,10 +110,10 @@ func openStorage(dir string, opt StorageOptions) (*storage, error) {
 
 	// open log ----------------
 	logOpt := log.Options{
-		FileMode:    opt.FileMode,
+		FileMode:    0600,
 		SegmentSize: opt.LogSegmentSize,
 	}
-	if s.log, err = log.Open(filepath.Join(dir, "log"), opt.DirMode, logOpt); err != nil {
+	if s.log, err = log.Open(filepath.Join(dir, "log"), 0700, logOpt); err != nil {
 		return nil, err
 	}
 	if s.log.Count() > 0 {

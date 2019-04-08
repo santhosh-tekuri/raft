@@ -72,14 +72,17 @@ type Raft struct {
 	closed    chan struct{}
 }
 
-func New(opt Options, fsm FSM, storage *Storage) (*Raft, error) {
+func New(opt Options, fsm FSM, storageDir string) (*Raft, error) {
 	if err := opt.validate(); err != nil {
 		return nil, err
 	}
 	if opt.Logger == nil {
 		opt.Logger = nopLogger{}
 	}
-	store := storage.storage
+	store, err := openStorage(storageDir, opt)
+	if err != nil {
+		return nil, err
+	}
 	if store.cid == 0 || store.nid == 0 {
 		return nil, ErrIdentityNotSet
 	}
@@ -127,6 +130,14 @@ func New(opt Options, fsm FSM, storage *Storage) (*Raft, error) {
 }
 
 // todo: note that we dont support multiple listeners
+
+func (r *Raft) ListenAndServe(addr string) error {
+	lr, err := net.Listen("tcp", addr)
+	if err != nil {
+		panic(err)
+	}
+	return r.Serve(lr)
+}
 
 func (r *Raft) Serve(l net.Listener) error {
 	defer close(r.closed)

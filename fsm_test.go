@@ -41,7 +41,7 @@ func TestFSM_takeSnap_thresholdNotReached(t *testing.T) {
 
 func TestFSM_takeSnap_restartSendUpdates(t *testing.T) {
 	c := newCluster(t)
-	c.storeOpt.LogSegmentSize = 1024
+	c.opt.LogSegmentSize = 1024
 	ldr, _ := c.ensureLaunch(1)
 	defer c.shutdown()
 

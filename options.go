@@ -57,6 +57,9 @@ type Options struct {
 	// and InstallSnapshotRequest RPCs
 	Bandwidth int64
 
+	LogSegmentSize  int
+	SnapshotsRetain int
+
 	Logger   Logger
 	Trace    Trace
 	Resolver Resolver
@@ -93,6 +96,8 @@ func DefaultOptions() Options {
 		SnapshotInterval: 2 * time.Hour,
 		ShutdownOnRemove: true,
 		Bandwidth:        256 * 1024,
+		LogSegmentSize:   16 * 1024 * 1024,
+		SnapshotsRetain:  1,
 		Logger:           new(defaultLogger),
 		Trace:            DefaultTrace(logger("[INFO]"), logger("[WARN]")),
 	}
