@@ -46,6 +46,7 @@ func (c *candidate) startElection() {
 	d := c.rtime.duration(c.hbTimeout)
 	deadline := time.Now().Add(d)
 	c.timer.reset(d)
+	c.logger.Info("started election for term", c.term)
 	if c.trace.ElectionStarted != nil {
 		c.trace.ElectionStarted(c.liveInfo())
 	}
@@ -77,6 +78,7 @@ func (c *candidate) onVoteResult(resp rpcResponse) {
 		println(c, resp)
 	}
 	if resp.err != nil {
+		c.logger.Warn(trimPrefix(resp.err))
 		return
 	}
 

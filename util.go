@@ -201,3 +201,7 @@ func toErr(v interface{}) error {
 	}
 	return nil
 }
+
+func trimPrefix(err error) string {
+	return strings.TrimPrefix(err.Error(), "raft: ")
+}

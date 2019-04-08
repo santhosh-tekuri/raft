@@ -43,6 +43,7 @@ func (f *follower) onTimeout() {
 		if trace {
 			println(f, "electionAborted", reason)
 		}
+		f.logger.Info(reason+",", "aborting election")
 		if f.trace.ElectionAborted != nil {
 			f.trace.ElectionAborted(f.liveInfo(), reason)
 		}

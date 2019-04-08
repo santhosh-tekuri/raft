@@ -111,6 +111,10 @@ func openStorage(dir string, opt StorageOptions) (*storage, error) {
 	if err := os.MkdirAll(dir, opt.DirMode); err != nil {
 		return nil, err
 	}
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, err
+	}
 	s, err := &storage{}, error(nil)
 	defer func() {
 		if err != nil {
@@ -301,6 +305,7 @@ func (r *Raft) compactLog(lte uint64) error {
 		}
 		return err
 	}
+	r.logger.Info("log upto index ", r.log.PrevIndex(), "is discarded")
 	if r.trace.LogCompacted != nil {
 		r.trace.LogCompacted(r.liveInfo())
 	}

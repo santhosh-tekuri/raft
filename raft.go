@@ -16,6 +16,7 @@ package raft
 
 import (
 	"net"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
@@ -51,6 +52,7 @@ type Raft struct {
 	quorumWait       time.Duration
 	promoteThreshold time.Duration
 	shutdownOnRemove bool
+	logger           Logger
 	trace            Trace
 	bandwidth        int64
 
@@ -73,6 +75,9 @@ type Raft struct {
 func New(opt Options, fsm FSM, storage *Storage) (*Raft, error) {
 	if err := opt.validate(); err != nil {
 		return nil, err
+	}
+	if opt.Logger == nil {
+		opt.Logger = nopLogger{}
 	}
 	store := storage.storage
 	if store.cid == 0 || store.nid == 0 {
@@ -100,6 +105,7 @@ func New(opt Options, fsm FSM, storage *Storage) (*Raft, error) {
 		quorumWait:       opt.QuorumWait,
 		promoteThreshold: opt.PromoteThreshold,
 		shutdownOnRemove: opt.ShutdownOnRemove,
+		logger:           opt.Logger,
 		trace:            opt.Trace,
 		bandwidth:        opt.Bandwidth,
 		dialFn:           net.DialTimeout,
@@ -132,6 +138,10 @@ func (r *Raft) Serve(l net.Listener) error {
 		println(r, "serving at", l.Addr())
 		defer println(r, "<< shutdown()")
 	}
+	r.logger.Info("storage:", filepath.Dir(r.snaps.dir))
+	r.logger.Info("cid:", r.cid, "nid:", r.nid)
+	r.logger.Info(r.configs.Latest)
+	r.logger.Info("listening at", l.Addr())
 	if r.trace.Starting != nil {
 		r.trace.Starting(r.liveInfo(), l.Addr())
 	}
@@ -324,6 +334,13 @@ func (r *Raft) doClose(reason error) {
 		if trace {
 			println(r, ">> shutdown()", reason)
 		}
+		if reason == ErrServerClosed {
+			r.logger.Info("shutting down")
+		} else if reason == ErrNodeRemoved {
+			r.logger.Info("node removed, shutting down")
+		} else {
+			r.logger.Warn(trimPrefix(reason), "shutting down")
+		}
 		if r.trace.ShuttingDown != nil {
 			r.trace.ShuttingDown(r.liveInfo(), reason)
 		}
@@ -355,6 +372,7 @@ func (r *Raft) setState(s State) {
 		if trace {
 			println(r, r.state, "->", s)
 		}
+		r.logger.Info("changing state", r.state, "->", s)
 		r.state = s
 		if r.trace.StateChanged != nil {
 			r.trace.StateChanged(r.liveInfo())
@@ -368,6 +386,13 @@ func (r *Raft) setLeader(id uint64) {
 			println(r, "leader:", id)
 		}
 		r.leader = id
+		if r.leader == 0 {
+			r.logger.Info("no known leader")
+		} else if r.leader == r.nid {
+			r.logger.Info("cluster leadership acquired")
+		} else {
+			r.logger.Info("following leader node", r.leader)
+		}
 		if r.trace.LeaderChanged != nil {
 			r.trace.LeaderChanged(r.liveInfo())
 		}

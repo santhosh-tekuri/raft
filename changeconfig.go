@@ -172,6 +172,7 @@ func (l *leader) checkConfigAction(t *task, config Config, status *replicationSt
 			if trace {
 				println(l, status.id, "finished:", r)
 			}
+			l.logger.Info("nonVoter", status.id, "completed round", r.Ordinal, "in", r.Duration(), ", its lastIndex:", r.LastIndex)
 			if l.trace.RoundCompleted != nil {
 				l.trace.RoundCompleted(l.liveInfo(), status.id, *r)
 			}
@@ -199,20 +200,24 @@ func (l *leader) checkConfigAction(t *task, config Config, status *replicationSt
 	// perform configAction
 	switch action {
 	case Promote:
+		l.logger.Info("promoting nonvoter ", n.ID, ", after", status.round.Ordinal, "round(s)")
 		config = config.clone()
 		n.Voter, n.Action = true, None
 		config.Nodes[n.ID] = n
 	case Remove:
 		if status.matchIndex >= l.configs.Latest.Index {
+			l.logger.Info("removing nonvoter", n.ID)
 			config = config.clone()
 			delete(config.Nodes, n.ID)
 		} else {
 			return
 		}
 	case ForceRemove:
+		l.logger.Info("force removing node", n.ID)
 		config = config.clone()
 		delete(config.Nodes, n.ID)
 	case Demote:
+		l.logger.Info("demoting voter", n.ID)
 		config = config.clone()
 		n.Voter = false
 		if n.Action == Demote {

@@ -47,3 +47,5 @@ package raft
 // todo: rename opt.PromoteThreshold to RoundThreshold
 
 // todo: deadlines in server and rpc
+
+// todo: add lock file to storage directory containing pid, so that two raft instance does not use same storage dir

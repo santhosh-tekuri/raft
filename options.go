@@ -18,7 +18,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"strconv"
 	"sync"
 	"time"
 )
@@ -58,6 +57,7 @@ type Options struct {
 	// and InstallSnapshotRequest RPCs
 	Bandwidth int64
 
+	Logger   Logger
 	Trace    Trace
 	Resolver Resolver
 }
@@ -93,11 +93,40 @@ func DefaultOptions() Options {
 		SnapshotInterval: 2 * time.Hour,
 		ShutdownOnRemove: true,
 		Bandwidth:        256 * 1024,
+		Logger:           new(defaultLogger),
 		Trace:            DefaultTrace(logger("[INFO]"), logger("[WARN]")),
 	}
 }
 
 // trace ----------------------------------------------------------
+
+type Logger interface {
+	Info(v ...interface{})
+	Warn(v ...interface{})
+}
+
+type nopLogger struct{}
+
+func (nopLogger) Info(v ...interface{}) {}
+func (nopLogger) Warn(v ...interface{}) {}
+
+type defaultLogger struct {
+	mu sync.Mutex
+}
+
+func (l *defaultLogger) Info(v ...interface{}) {
+	l.mu.Lock()
+	fmt.Print("[INFO] raft: ")
+	fmt.Println(v...)
+	l.mu.Unlock()
+}
+
+func (l *defaultLogger) Warn(v ...interface{}) {
+	l.mu.Lock()
+	fmt.Print("[WARN] raft: ")
+	fmt.Println(v...)
+	l.mu.Unlock()
+}
 
 type Trace struct {
 	Error               func(err error)
@@ -122,85 +151,85 @@ func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
 	trace.Error = func(err error) {
 		warn(err)
 	}
-	trace.Starting = func(rinfo Info, addr net.Addr) {
-		info("raft: cid:", rinfo.CID(), "nid:", rinfo.NID())
-		info("raft:", rinfo.Configs().Latest)
-		info("raft: listening at", addr)
-	}
-	trace.StateChanged = func(rinfo Info) {
-		info("raft: state changed to", rinfo.State())
-	}
-	trace.LeaderChanged = func(rinfo Info) {
-		if rinfo.Leader() == 0 {
-			info("raft: no known leader")
-		} else if rinfo.Leader() == rinfo.NID() {
-			info("raft: cluster leadership acquired")
-		} else {
-			info("raft: following leader node", rinfo.Leader())
-		}
-	}
-	trace.ElectionStarted = func(rinfo Info) {
-		info("raft: started election, term", rinfo.Term())
-	}
-	trace.ElectionAborted = func(rinfo Info, reason string) {
-		info("raft: aborting election:", reason)
-	}
-	trace.CommitReady = func(rinfo Info) {
-		info("raft: ready for commit")
-	}
-	trace.ConfigChanged = func(rinfo Info) {
-		if rinfo.Configs().Latest.Index == 1 {
-			info("raft: bootstrapped with", rinfo.Configs().Latest)
-		} else {
-			info("raft: changed to", rinfo.Configs().Latest)
-		}
-	}
-	trace.ConfigCommitted = func(rinfo Info) {
-		info("raft: committed", rinfo.Configs().Latest)
-		if rinfo.Configs().IsStable() {
-			info("raft: config is stable")
-		}
-	}
-	trace.ConfigReverted = func(rinfo Info) {
-		info("raft: reverted to", rinfo.Configs().Latest)
-	}
-	trace.RoundCompleted = func(rinfo Info, id uint64, r Round) {
-		info("raft: nonVoter", id, "completed round", r.Ordinal, "in", r.Duration(), ", its lastIndex:", r.LastIndex)
-	}
-	trace.LogCompacted = func(rinfo Info) {
-		info("raft: log upto index ", rinfo.FirstLogIndex()-1, "is discarded")
-	}
-	trace.ConfigActionStarted = func(rinfo Info, id uint64, action ConfigAction) {
-		switch action {
-		case Promote:
-			info("raft: promoting nonvoter ", id, ", after", rinfo.Followers()[id].Round, "round(s)")
-		case Demote:
-			info("raft: demoting voter", id)
-		case Remove:
-			info("raft: removing nonvoter", id)
-		}
-	}
-	trace.Unreachable = func(rinfo Info, id uint64, since time.Time, err error) {
-		if since.IsZero() {
-			info("raft: node", id, "is reachable now")
-		} else {
-			warn("raft: node", id, "is unreachable since", since.Format(time.RFC3339), "reason:", err)
-		}
-	}
-	trace.QuorumUnreachable = func(rinfo Info, since time.Time) {
-		if since.IsZero() {
-			info("raft: quorum is reachable now")
-		} else {
-			warn("raft: quorum is unreachable since", since.Format(time.RFC3339))
-		}
-	}
-	trace.ShuttingDown = func(rinfo Info, reason error) {
-		if reason == ErrServerClosed {
-			info("raft: shutting down")
-		} else {
-			warn("raft: shutting down, reason", strconv.Quote(reason.Error()))
-		}
-	}
+	//trace.Starting = func(rinfo Info, addr net.Addr) {
+	//	info("raft: cid:", rinfo.CID(), "nid:", rinfo.NID())
+	//	info("raft:", rinfo.Configs().Latest)
+	//	info("raft: listening at", addr)
+	//}
+	//trace.StateChanged = func(rinfo Info) {
+	//	info("raft: state changed to", rinfo.State())
+	//}
+	//trace.LeaderChanged = func(rinfo Info) {
+	//	if rinfo.Leader() == 0 {
+	//		info("raft: no known leader")
+	//	} else if rinfo.Leader() == rinfo.NID() {
+	//		info("raft: cluster leadership acquired")
+	//	} else {
+	//		info("raft: following leader node", rinfo.Leader())
+	//	}
+	//}
+	//trace.ElectionStarted = func(rinfo Info) {
+	//	info("raft: started election, term", rinfo.Term())
+	//}
+	//trace.ElectionAborted = func(rinfo Info, reason string) {
+	//	info("raft: aborting election:", reason)
+	//}
+	//trace.CommitReady = func(rinfo Info) {
+	//	info("raft: ready for commit")
+	//}
+	//trace.ConfigChanged = func(rinfo Info) {
+	//	if rinfo.Configs().Latest.Index == 1 {
+	//		info("raft: bootstrapped with", rinfo.Configs().Latest)
+	//	} else {
+	//		info("raft: changed to", rinfo.Configs().Latest)
+	//	}
+	//}
+	//trace.ConfigCommitted = func(rinfo Info) {
+	//	info("raft: committed", rinfo.Configs().Latest)
+	//	if rinfo.Configs().IsStable() {
+	//		info("raft: config is stable")
+	//	}
+	//}
+	//trace.ConfigReverted = func(rinfo Info) {
+	//	info("raft: reverted to", rinfo.Configs().Latest)
+	//}
+	//trace.RoundCompleted = func(rinfo Info, id uint64, r Round) {
+	//	info("raft: nonVoter", id, "completed round", r.Ordinal, "in", r.Duration(), ", its lastIndex:", r.LastIndex)
+	//}
+	//trace.LogCompacted = func(rinfo Info) {
+	//	info("raft: log upto index ", rinfo.FirstLogIndex()-1, "is discarded")
+	//}
+	//trace.ConfigActionStarted = func(rinfo Info, id uint64, action ConfigAction) {
+	//	switch action {
+	//	case Promote:
+	//		info("raft: promoting nonvoter ", id, ", after", rinfo.Followers()[id].Round, "round(s)")
+	//	case Demote:
+	//		info("raft: demoting voter", id)
+	//	case Remove:
+	//		info("raft: removing nonvoter", id)
+	//	}
+	//}
+	//trace.Unreachable = func(rinfo Info, id uint64, since time.Time, err error) {
+	//	if since.IsZero() {
+	//		info("raft: node", id, "is reachable now")
+	//	} else {
+	//		warn("raft: node", id, "is unreachable since", since.Format(time.RFC3339), "reason:", err)
+	//	}
+	//}
+	//trace.QuorumUnreachable = func(rinfo Info, since time.Time) {
+	//	if since.IsZero() {
+	//		info("raft: quorum is reachable now")
+	//	} else {
+	//		warn("raft: quorum is unreachable since", since.Format(time.RFC3339))
+	//	}
+	//}
+	//trace.ShuttingDown = func(rinfo Info, reason error) {
+	//	if reason == ErrServerClosed {
+	//		info("raft: shutting down")
+	//	} else {
+	//		warn("raft: shutting down, reason", strconv.Quote(reason.Error()))
+	//	}
+	//}
 	return
 }
 

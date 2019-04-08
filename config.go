@@ -359,6 +359,7 @@ func (l *leader) setCommitIndex(index uint64) {
 	}
 	l.storage.commitLog(index)
 	if l.commitIndex < l.startIndex && index >= l.startIndex {
+		l.logger.Info("ready for commit")
 		if l.trace.CommitReady != nil {
 			l.trace.CommitReady(l.liveInfo())
 		}
@@ -369,6 +370,7 @@ func (l *leader) setCommitIndex(index uint64) {
 			if trace {
 				println(l, "stableConfig")
 			}
+			l.logger.Info("config is stable")
 			for _, t := range l.waitStable {
 				t.reply(l.configs.Latest)
 			}
@@ -442,6 +444,11 @@ func (r *Raft) changeConfig(config Config) {
 	}
 	r.configs.Committed = r.configs.Latest
 	r.setLatest(config)
+	if r.configs.Latest.Index == 1 {
+		r.logger.Info("bootstrapped with", r.configs.Latest)
+	} else {
+		r.logger.Info("changed to", r.configs.Latest)
+	}
 	if r.trace.ConfigChanged != nil {
 		r.trace.ConfigChanged(r.liveInfo())
 	}
@@ -455,6 +462,7 @@ func (r *Raft) commitConfig() {
 		r.setLeader(0) // for faster election
 	}
 	r.configs.Committed = r.configs.Latest
+	r.logger.Info("committed", r.configs.Latest)
 	if r.trace.ConfigCommitted != nil {
 		r.trace.ConfigCommitted(r.liveInfo())
 	}
@@ -465,6 +473,7 @@ func (r *Raft) revertConfig() {
 		println(r, "revertConfig", r.configs.Committed)
 	}
 	r.setLatest(r.configs.Committed)
+	r.logger.Info("reverted to", r.configs.Latest)
 	if r.trace.ConfigReverted != nil {
 		r.trace.ConfigReverted(r.liveInfo())
 	}
