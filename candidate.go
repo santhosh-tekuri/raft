@@ -78,7 +78,7 @@ func (c *candidate) onVoteResult(resp rpcResponse) {
 		println(c, resp)
 	}
 	if resp.err != nil {
-		c.logger.Warn(trimPrefix(resp.err))
+		c.logger.Warn("requestVote node", resp.from, ": "+trimPrefix(resp.err))
 		return
 	}
 
