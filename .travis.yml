@@ -8,8 +8,11 @@ os:
 go:
   - 1.12.1
 
+before_install:
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then sed -i '' 's/trace = false/trace = true/g' notrace.go; fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sed -i 's/trace = false/trace = true/g' notrace.go; fi
+
 script:
-  - sed -i '' 's/trace = false/trace = true/g' notrace.go
   - go get -t ./...
   - go test -v -race -coverprofile=coverage.txt ./...
 
