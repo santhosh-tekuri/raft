@@ -9,6 +9,7 @@ go:
   - 1.12.1
 
 script:
+  - sed -i '' 's/trace = false/trace = true/g' notrace.go
   - go get -t ./...
   - go test -v -race -coverprofile=coverage.txt ./...
 
