@@ -203,7 +203,7 @@ func (s *storage) setTerm(term uint64) {
 		if term < s.term {
 			panic(fmt.Sprintf("term cannot be changed from %d to %d", s.term, term))
 		}
-		if err := s.termVal.set(s.term, 0); err != nil {
+		if err := s.termVal.set(term, 0); err != nil {
 			panic(opError(err, "storage.setTermVote(%d, %d)", term, 0))
 		}
 		s.term, s.votedFor = term, 0
@@ -218,7 +218,7 @@ func (s *storage) setVotedFor(term, candidate uint64) {
 	}
 	err := grantingVote(s, term, candidate)
 	if err == nil {
-		err = s.termVal.set(s.term, candidate)
+		err = s.termVal.set(term, candidate)
 	}
 	if err != nil {
 		panic(opError(err, "storage.setTermVote(%d, %d)", term, candidate))
