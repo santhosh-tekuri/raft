@@ -140,7 +140,7 @@ func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
 		}
 	}
 	trace.ElectionStarted = func(rinfo Info) {
-		info("raft: started election")
+		info("raft: started election, term", rinfo.Term())
 	}
 	trace.ElectionAborted = func(rinfo Info, reason string) {
 		info("raft: aborting election:", reason)
@@ -195,7 +195,11 @@ func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
 		}
 	}
 	trace.ShuttingDown = func(rinfo Info, reason error) {
-		info("raft: shutting down, reason", strconv.Quote(reason.Error()))
+		if reason == ErrServerClosed {
+			info("raft: shutting down")
+		} else {
+			warn("raft: shutting down, reason", strconv.Quote(reason.Error()))
+		}
 	}
 	return
 }
