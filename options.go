@@ -75,6 +75,12 @@ func (o Options) validate() error {
 	if o.Bandwidth <= 0 {
 		return errors.New("raft.options: PromoteThreshold is zero")
 	}
+	if o.SnapshotsRetain < 1 {
+		return errors.New("raft: must retain at least one snapshot")
+	}
+	if o.LogSegmentSize < 1024 {
+		return fmt.Errorf("raft: LogSegmentSize is too smal")
+	}
 	return nil
 }
 

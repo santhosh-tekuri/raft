@@ -17,11 +17,14 @@ package raft
 import (
 	crand "crypto/rand"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"math"
 	"math/big"
 	"math/rand"
 	"net"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -39,6 +42,14 @@ func max(a, b uint64) uint64 {
 		return a
 	}
 	return b
+}
+
+func safeClose(ch chan struct{}) {
+	select {
+	case <-ch:
+	default:
+		close(ch)
+	}
 }
 
 func isClosed(ch <-chan struct{}) bool {
@@ -159,6 +170,49 @@ func (rt randTime) deadline(min time.Duration) time.Time {
 
 func (rt randTime) after(min time.Duration) <-chan time.Time {
 	return time.After(rt.duration(min))
+}
+
+// -------------------------------------------------------------------------
+
+func lockDir(dir string) error {
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return fmt.Errorf("raft.lockDir: %v", err)
+	}
+	tempFile, err := ioutil.TempFile(dir, "lock*.tmp")
+	if err != nil {
+		return fmt.Errorf("raft.lockDir: %v", err)
+	}
+	defer func() {
+		_ = tempFile.Close()
+		_ = os.Remove(tempFile.Name())
+	}()
+	if _, err := io.WriteString(tempFile, fmt.Sprintf("%d\n", os.Getpid())); err != nil {
+		return fmt.Errorf("raft.lockDir: %v", err)
+	}
+	lockFile := filepath.Join(dir, "lock")
+	if err := os.Link(tempFile.Name(), lockFile); err != nil {
+		if os.IsExist(err) {
+			return ErrLockExists
+		}
+		return fmt.Errorf("raft.lockDir: %v", err)
+	}
+	tempInfo, err := os.Lstat(tempFile.Name())
+	if err != nil {
+		return fmt.Errorf("raft.lockDir: %v", err)
+	}
+	lockInfo, err := os.Lstat(lockFile)
+	if err != nil {
+		return fmt.Errorf("raft.lockDir: %v", err)
+	}
+	if !os.SameFile(tempInfo, lockInfo) {
+		return ErrLockExists
+	}
+	return nil
+}
+
+func unlockDir(dir string) error {
+	return os.RemoveAll(filepath.Join(dir, "lock"))
 }
 
 // -------------------------------------------------------------------------

@@ -20,6 +20,8 @@ import (
 )
 
 var (
+	ErrLockExists = errors.New("raft: lock file exists in storageDir")
+
 	// ErrServerClosed is returned by the Raft.Serve if it was closed due to Shutdown call
 	ErrServerClosed = errors.New("raft: server closed")
 

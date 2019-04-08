@@ -140,11 +140,15 @@ func (r *Raft) ListenAndServe(addr string) error {
 }
 
 func (r *Raft) Serve(l net.Listener) error {
-	defer close(r.closed)
-
+	defer safeClose(r.closed)
 	if r.isClosed() {
 		return ErrServerClosed
 	}
+	storageDir := filepath.Dir(r.snaps.dir)
+	if err := lockDir(storageDir); err != nil {
+		return err
+	}
+	defer unlockDir(storageDir)
 	if trace {
 		println(r, "serving at", l.Addr())
 		defer println(r, "<< shutdown()")

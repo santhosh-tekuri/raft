@@ -40,9 +40,6 @@ type snapshots struct {
 }
 
 func openSnapshots(dir string, opt Options) (*snapshots, error) {
-	if opt.SnapshotsRetain < 1 {
-		return nil, fmt.Errorf("raft: must retain at least one snapshot")
-	}
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}

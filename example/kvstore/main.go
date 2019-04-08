@@ -18,7 +18,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 
 	"github.com/santhosh-tekuri/raft"
 )
@@ -44,6 +46,15 @@ func main() {
 		panic(err)
 	}
 	go http.ListenAndServe(httpAddr, handler{r})
+
+	// always shutdown raft, otherwise lock file remains in storageDir
+	go func() {
+		ch := make(chan os.Signal, 2)
+		signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
+		<-ch
+		<-r.Shutdown()
+	}()
+
 	err = r.ListenAndServe(raftAddr)
 	if err != raft.ErrServerClosed && err != raft.ErrNodeRemoved {
 		panic(err)

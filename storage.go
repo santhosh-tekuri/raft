@@ -28,7 +28,7 @@ import (
 // SetIdentity sets the server identity.
 // If identity is already set, it ensures that they match
 // with the given values.
-func SetIdentity(dir string, cid, nid uint64) error {
+func SetIdentity(dir string, cid, nid uint64) (err error) {
 	if cid == 0 {
 		return errors.New("raft: cid is zero")
 	}
@@ -42,6 +42,12 @@ func SetIdentity(dir string, cid, nid uint64) error {
 	if !d.IsDir() {
 		return fmt.Errorf("raft: %q is not a diretory", dir)
 	}
+	if err := lockDir(dir); err != nil {
+		return err
+	}
+	defer func() {
+		err = unlockDir(dir)
+	}()
 	val, err := openValue(dir, ".id")
 	if err != nil {
 		return err
@@ -73,10 +79,6 @@ type storage struct {
 }
 
 func openStorage(dir string, opt Options) (*storage, error) {
-	dir, err := filepath.Abs(dir)
-	if err != nil {
-		return nil, err
-	}
 	s, err := &storage{}, error(nil)
 	defer func() {
 		if err != nil {
