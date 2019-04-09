@@ -36,7 +36,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	key := parts[1]
 	switch r.Method {
 	case "GET":
-		res, err := h.execute(raft.ReadFSM(encodeCmd(get{key})))
+		res, err := h.execute(raft.ReadFSM(get{key}))
 		w.Header().Set("Content-Type", "text/plain")
 		if err != nil {
 			h.replyErr(w, r, err)

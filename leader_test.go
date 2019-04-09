@@ -310,8 +310,8 @@ func TestLeader_readFSM(t *testing.T) {
 		ldr.FSMTasks() <- UpdateFSM([]byte(cmd))
 		if i%10 == 0 {
 			qq := []FSMTask{
-				ReadFSM([]byte("last")),
-				ReadFSM([]byte("last")),
+				ReadFSM("last"),
+				ReadFSM("last"),
 			}
 			for _, q := range qq {
 				ldr.FSMTasks() <- q

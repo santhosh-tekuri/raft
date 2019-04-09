@@ -24,7 +24,6 @@ import (
 	"os"
 	"reflect"
 	"runtime"
-	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -944,8 +943,8 @@ func waitUpdate(r *Raft, cmd string, timeout time.Duration) (fsmReply, error) {
 	return waitFSMTask(r, UpdateFSM([]byte(cmd)), timeout)
 }
 
-func waitRead(r *Raft, read string, timeout time.Duration) (fsmReply, error) {
-	return waitFSMTask(r, ReadFSM([]byte(read)), timeout)
+func waitRead(r *Raft, read interface{}, timeout time.Duration) (fsmReply, error) {
+	return waitFSMTask(r, ReadFSM(read), timeout)
 }
 
 func requestVote(from, to *Raft, transfer bool) (granted bool, err error) {
@@ -1287,21 +1286,17 @@ func (fsm *fsmMock) Update(cmd []byte) interface{} {
 	return fsmReply{s, len(fsm.cmds)}
 }
 
-func (fsm *fsmMock) Read(cmd []byte) interface{} {
+func (fsm *fsmMock) Read(cmd interface{}) interface{} {
 	fsm.mu.Lock()
 	defer fsm.mu.Unlock()
-	s := string(cmd)
-	if s == "last" {
+	if cmd == "last" {
 		sz := len(fsm.cmds)
 		if sz == 0 {
 			return errNoCommands
 		}
 		return fsmReply{fsm.cmds[sz-1], sz - 1}
 	}
-	i, err := strconv.Atoi(s)
-	if err != nil {
-		return err
-	}
+	i := cmd.(int)
 	if i < 0 || i >= len(fsm.cmds) {
 		return errNoCommandAt
 	}

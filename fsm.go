@@ -24,7 +24,7 @@ import (
 
 type FSM interface {
 	Update(cmd []byte) interface{}
-	Read(cmd []byte) interface{}
+	Read(cmd interface{}) interface{}
 	Snapshot() (FSMState, error)
 	RestoreFrom(io.Reader) error
 }
@@ -104,7 +104,7 @@ func (fsm *stateMachine) onApply(t fsmApply) {
 		}
 		var resp interface{}
 		if ne.typ == entryRead {
-			resp = fsm.Read(ne.data)
+			resp = fsm.Read(ne.cmd)
 		} else if ne.typ == entryUpdate {
 			resp = fsm.Update(ne.data)
 		}

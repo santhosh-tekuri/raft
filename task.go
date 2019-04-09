@@ -77,6 +77,7 @@ type FSMTask interface {
 }
 
 type newEntry struct {
+	cmd interface{}
 	*task
 	*entry
 	next *newEntry
@@ -90,26 +91,27 @@ func (r *Raft) FSMTasks() chan<- FSMTask {
 	return r.fsmTaskCh
 }
 
-func fsmTask(typ entryType, data []byte) FSMTask {
+func fsmTask(typ entryType, cmd interface{}, data []byte) FSMTask {
 	return &newEntry{
 		task:  newTask(),
+		cmd:   cmd,
 		entry: &entry{typ: typ, data: data},
 	}
 }
 
 func UpdateFSM(data []byte) FSMTask {
-	return fsmTask(entryUpdate, data)
+	return fsmTask(entryUpdate, nil, data)
 }
 
-func ReadFSM(data []byte) FSMTask {
-	return fsmTask(entryRead, data)
+func ReadFSM(cmd interface{}) FSMTask {
+	return fsmTask(entryRead, cmd, nil)
 }
 
 // BarrierFSM is used to issue a command that blocks until all preceding
 // commands have been applied to the FSM. It can be used to ensure the
 // FSM reflects all queued commands.
 func BarrierFSM() FSMTask {
-	return fsmTask(entryBarrier, nil)
+	return fsmTask(entryBarrier, nil, nil)
 }
 
 // ------------------------------------------------------------------------

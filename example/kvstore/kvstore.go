@@ -45,19 +45,15 @@ func (s *kvStore) Update(b []byte) interface{} {
 		delete(s.data, cmd.Key)
 		return nil
 	}
-	return errors.New("unknown cmd")
+	return fmt.Errorf("unknown cmd: %T", cmd)
 }
 
-func (s *kvStore) Read(b []byte) interface{} {
-	cmd, err := decodeCmd(b)
-	if err != nil {
-		return err
-	}
+func (s *kvStore) Read(cmd interface{}) interface{} {
 	switch cmd := cmd.(type) {
 	case get:
 		return s.data[cmd.Key]
 	}
-	return errors.New("unknown cmd")
+	return fmt.Errorf("unknown cmd: %T", cmd)
 }
 
 func (s *kvStore) Snapshot() (raft.FSMState, error) {
@@ -83,7 +79,6 @@ type cmdType byte
 
 const (
 	cmdSet cmdType = iota
-	cmdGet
 	cmdDel
 )
 
@@ -111,12 +106,6 @@ func decodeCmd(b []byte) (interface{}, error) {
 			return nil, err
 		}
 		return cmd, nil
-	case cmdGet:
-		cmd := get{}
-		if err := decoder.Decode(&cmd); err != nil {
-			return nil, err
-		}
-		return cmd, nil
 	case cmdDel:
 		cmd := del{}
 		if err := decoder.Decode(&cmd); err != nil {
@@ -124,7 +113,7 @@ func decodeCmd(b []byte) (interface{}, error) {
 		}
 		return cmd, nil
 	default:
-		return nil, errors.New("unknown cmd")
+		return nil, fmt.Errorf("unknown cmd: %d", b[0])
 	}
 }
 
@@ -133,8 +122,6 @@ func encodeCmd(cmd interface{}) []byte {
 	switch cmd.(type) {
 	case set:
 		typ = cmdSet
-	case get:
-		typ = cmdGet
 	case del:
 		typ = cmdDel
 	default:
