@@ -35,31 +35,29 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	key := parts[1]
 	switch r.Method {
-	case "GET":
+	case http.MethodGet:
 		res, err := h.execute(raft.ReadFSM(get{key}))
-		w.Header().Set("Content-Type", "text/plain")
 		if err != nil {
 			h.replyErr(w, r, err)
 		} else {
+			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(res.(string)))
 		}
-	case "POST":
+	case http.MethodPost:
 		b, err := ioutil.ReadAll(r.Body)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 		_, err = h.execute(raft.UpdateFSM(encodeCmd(set{key, string(b)})))
-		w.Header().Set("Content-Type", "text/plain")
 		if err != nil {
 			h.replyErr(w, r, err)
 		} else {
 			w.WriteHeader(http.StatusOK)
 		}
-	case "DELETE":
+	case http.MethodDelete:
 		_, err := h.execute(raft.UpdateFSM(encodeCmd(del{key})))
-		w.Header().Set("Content-Type", "text/plain")
 		if err != nil {
 			h.replyErr(w, r, err)
 		} else {
@@ -76,6 +74,7 @@ func (h handler) replyErr(w http.ResponseWriter, r *http.Request, err error) {
 		http.Redirect(w, r, url, http.StatusPermanentRedirect)
 		return
 	}
+	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusInternalServerError)
 	w.Write([]byte(err.Error()))
 }
