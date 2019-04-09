@@ -122,6 +122,7 @@ func New(opt Options, fsm FSM, storageDir string) (*Raft, error) {
 	r.resolver = &resolver{
 		delegate: opt.Resolver,
 		addrs:    make(map[uint64]string),
+		logger:   r.logger,
 		trace:    &r.trace,
 	}
 	r.resolver.update(store.configs.Latest)

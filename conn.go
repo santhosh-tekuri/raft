@@ -72,7 +72,8 @@ func (c *conn) doRPC(req request, resp response, deadline time.Time) error {
 
 type resolver struct {
 	delegate Resolver // user given resolver
-	trace    *Trace   // used to trace lookup failures
+	logger   Logger
+	trace    *Trace // used to trace lookup failures
 	mu       sync.RWMutex
 	addrs    map[uint64]string
 }
@@ -91,8 +92,10 @@ func (r *resolver) lookupID(id uint64, timeout time.Duration) (string, error) {
 		if err == nil {
 			return addr, nil
 		}
+		err = opError(err, "Resolver.LookupID(%q)", id)
+		r.logger.Warn(trimPrefix(err))
 		if r.trace.Error != nil {
-			r.trace.Error(opError(err, "Resolver.LookupID(%q)", id))
+			r.trace.Error(err)
 		}
 	}
 

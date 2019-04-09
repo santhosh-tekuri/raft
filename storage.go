@@ -264,6 +264,7 @@ func (r *Raft) compactLog(lte uint64) error {
 		println(r, "compactLog", lte)
 	}
 	if err := r.storage.removeLTE(lte); err != nil {
+		r.logger.Warn(trimPrefix(err))
 		if r.trace.Error != nil {
 			r.trace.Error(err)
 		}
