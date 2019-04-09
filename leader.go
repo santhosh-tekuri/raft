@@ -160,13 +160,13 @@ func (l *leader) storeEntry(ne *newEntry) {
 		}
 		break
 	}
+	if trace {
+		println(l, "got batch of", i, "entries")
+	}
 	if l.neHead != nil && !l.neHead.isLogEntry() {
 		l.applyCommitted()
 	}
 	if l.lastLogIndex > lastIndex {
-		if trace {
-			println(l, "got batch of", l.lastLogIndex-lastIndex, "entries")
-		}
 		l.beginFinishedRounds()
 		l.notifyFlr(l.configs.Latest.Index > configIndex)
 		if l.numVoters == 1 && l.node.Voter {
