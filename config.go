@@ -36,15 +36,15 @@ const (
 func (a ConfigAction) String() string {
 	switch a {
 	case None:
-		return "None"
+		return "none"
 	case Promote:
-		return "Promote"
+		return "promote"
 	case Demote:
-		return "Demote"
+		return "demote"
 	case Remove:
-		return "Remove"
+		return "remove"
 	case ForceRemove:
-		return "ForceRemove"
+		return "forceRemove"
 	}
 	return fmt.Sprintf("Action(%d)", a)
 }

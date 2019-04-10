@@ -317,3 +317,28 @@ func encodeTaskResp(t Task, w *bufio.Writer) (err error) {
 func (s State) MarshalJSON() ([]byte, error) {
 	return []byte(strconv.Quote(s.String())), nil
 }
+
+func (a ConfigAction) MarshalJSON() ([]byte, error) {
+	return []byte(strconv.Quote(a.String())), nil
+}
+
+func (a *ConfigAction) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		*a = None
+		return nil
+	}
+	if len(data) < 2 || data[0] != '"' {
+		return errors.New("configAction must be json string")
+	}
+	s, err := strconv.Unquote(string(data))
+	if err != nil {
+		return err
+	}
+	for _, ca := range []ConfigAction{None, Promote, Demote, Remove, ForceRemove} {
+		if ca.String() == s {
+			*a = ca
+			return nil
+		}
+	}
+	return fmt.Errorf("%q is not a valid configAction", s)
+}
