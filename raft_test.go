@@ -613,6 +613,11 @@ func (c *cluster) waitForLeader(rr ...*Raft) *Raft {
 	stateChanged := c.registerFor(eventStateChanged)
 	defer c.unregister(stateChanged)
 	if !stateChanged.waitFor(condition, c.longTimeout) {
+		c.eventMu.RLock()
+		defer c.eventMu.RUnlock()
+		for _, r := range rr {
+			c.Log(host(r), c.states[r.nid], c.electionCount[r.nid])
+		}
 		c.Fatalf("waitForLeader: timeout")
 	}
 	return ldr
@@ -1085,10 +1090,11 @@ type events struct {
 	observerID  int
 	observers   map[int]observer
 
-	eventMu     sync.RWMutex
-	states      map[uint64]State
-	ldrs        map[uint64]uint64
-	commitReady map[uint64]bool
+	eventMu       sync.RWMutex
+	states        map[uint64]State
+	electionCount map[uint64]int
+	ldrs          map[uint64]uint64
+	commitReady   map[uint64]bool
 }
 
 func (ee *events) register(filter func(event) bool) observer {
@@ -1146,6 +1152,7 @@ func (ee *events) trace() (trace Trace) {
 		ee.eventMu.Lock()
 		ee.states[info.NID()] = info.State()
 		ee.commitReady[info.NID()] = false
+		ee.electionCount[info.NID()] = 0
 		ee.eventMu.Unlock()
 		ee.sendEvent(event{
 			src:   info.NID(),
@@ -1164,6 +1171,9 @@ func (ee *events) trace() (trace Trace) {
 		})
 	}
 	trace.ElectionStarted = func(info Info) {
+		ee.eventMu.Lock()
+		ee.electionCount[info.NID()]++
+		ee.eventMu.Unlock()
 		ee.sendEvent(event{
 			src: info.NID(),
 			typ: eventElectionStarted,
