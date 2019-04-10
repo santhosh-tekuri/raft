@@ -257,10 +257,11 @@ func newCluster(t *testing.T) *cluster {
 		longTimeout:      5 * time.Second,
 		commitTimeout:    5 * time.Millisecond,
 		events: &events{
-			observers:   make(map[int]observer),
-			states:      make(map[uint64]State),
-			ldrs:        make(map[uint64]uint64),
-			commitReady: make(map[uint64]bool),
+			observers:     make(map[int]observer),
+			states:        make(map[uint64]State),
+			ldrs:          make(map[uint64]uint64),
+			commitReady:   make(map[uint64]bool),
+			electionCount: make(map[uint64]int),
 		},
 	}
 	c.opt = Options{
