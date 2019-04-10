@@ -52,7 +52,7 @@ func println(args ...interface{}) {
 	// uncomment this to print only debug lines with first argument "xxx"
 	// this is useful for to print only specific debug lines
 
-	//if args[0] != "xxx" {
+	//if len(args) == 0 || args[0] != "xxx" {
 	//	return
 	//}
 
