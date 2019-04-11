@@ -102,10 +102,6 @@ func (l *leader) release() {
 		ne.reply(err)
 	}
 	l.neHead, l.neTail = nil, nil
-	for buffed := len(l.fsmTaskCh); buffed > 0; buffed-- {
-		t := <-l.fsmTaskCh
-		t.reply(err)
-	}
 
 	for _, t := range l.waitStable {
 		t.reply(err)
@@ -118,9 +114,9 @@ func (l *leader) release() {
 }
 
 func (l *leader) storeEntry(ne *newEntry) {
-	i, lastIndex, configIndex := 0, l.lastLogIndex, l.configs.Latest.Index
-	for {
-		i++
+	assert(ne != nil)
+	lastIndex, configIndex := l.lastLogIndex, l.configs.Latest.Index
+	for ne != nil {
 		if l.transfer.inProgress() {
 			ne.reply(InProgressError("transferLeadership"))
 		} else if !l.node.Voter {
@@ -150,18 +146,10 @@ func (l *leader) storeEntry(ne *newEntry) {
 				}
 			}
 		}
-		if i < maxAppendEntries {
-			select {
-			case t := <-l.fsmTaskCh:
-				ne = t.newEntry()
-				continue
-			default:
-			}
-		}
-		break
+		ne = ne.next
 	}
-	if trace {
-		println(l, "got batch of", i, "entries")
+	if l.neTail != nil {
+		l.neTail.next = nil
 	}
 	if l.neHead != nil && !l.neHead.isLogEntry() {
 		l.applyCommitted()

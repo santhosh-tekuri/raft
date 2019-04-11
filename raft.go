@@ -64,8 +64,9 @@ type Raft struct {
 	ldr *leader
 	cnd *candidate
 
-	taskCh    chan Task
-	fsmTaskCh chan FSMTask
+	taskCh     chan Task
+	fsmTaskCh  chan FSMTask
+	newEntryCh chan *newEntry
 
 	closeOnce sync.Once
 	close     chan struct{}
@@ -114,7 +115,8 @@ func New(opt Options, fsm FSM, storageDir string) (*Raft, error) {
 		dialFn:           net.DialTimeout,
 		connPools:        make(map[uint64]*connPool),
 		taskCh:           make(chan Task),
-		fsmTaskCh:        make(chan FSMTask, maxAppendEntries), // todo
+		fsmTaskCh:        make(chan FSMTask),
+		newEntryCh:       make(chan *newEntry),
 		close:            make(chan struct{}),
 		closed:           make(chan struct{}),
 	}
@@ -195,7 +197,15 @@ func (r *Raft) Serve(l net.Listener) error {
 	}()
 	defer s.shutdown()
 
-	return r.stateLoop()
+	go r.runBatch()
+	err := r.stateLoop()
+	for ne := range r.newEntryCh {
+		for ne != nil {
+			ne.reply(ErrServerClosed)
+			ne = ne.next
+		}
+	}
+	return err
 }
 
 func (r *Raft) stateLoop() (err error) {
@@ -284,12 +294,19 @@ func (r *Raft) stateLoop() (err error) {
 				r.timer.active = false
 				states[r.state].onTimeout()
 
-			case t := <-r.fsmTaskCh:
-				ne := t.newEntry()
-				if r.state == Leader {
-					l.storeEntry(ne)
+			case ne, ok := <-r.newEntryCh:
+				if ok {
+					if r.state == Leader {
+						l.storeEntry(ne)
+					} else {
+						for ne != nil {
+							ne.reply(notLeaderError(r, false))
+							ne = ne.next
+						}
+					}
 				} else {
-					ne.reply(notLeaderError(r, false))
+					assert(r.isClosed())
+					return ErrServerClosed
 				}
 
 			case t := <-r.taskCh:
@@ -361,10 +378,6 @@ func (r *Raft) doClose(reason error) {
 			r.trace.ShuttingDown(r.liveInfo(), reason)
 		}
 		close(r.close)
-		for buffed := len(r.fsmTaskCh); buffed > 0; buffed-- {
-			t := <-r.fsmTaskCh
-			t.reply(ErrServerClosed)
-		}
 	})
 }
 

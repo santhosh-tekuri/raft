@@ -91,6 +91,38 @@ func (r *Raft) FSMTasks() chan<- FSMTask {
 	return r.fsmTaskCh
 }
 
+func (r *Raft) runBatch() {
+	var neHead, neTail *newEntry
+	newEntryCh := r.newEntryCh
+	i := 0
+	for {
+		select {
+		case <-r.close:
+			if neHead != nil {
+				r.newEntryCh <- neHead
+			}
+			close(r.newEntryCh)
+			return
+		case t := <-r.fsmTaskCh:
+			i++
+			ne := t.newEntry()
+			if neTail != nil {
+				neTail.next, neTail = ne, ne
+			} else {
+				neHead, neTail = ne, ne
+				newEntryCh = r.newEntryCh
+			}
+		case newEntryCh <- neHead:
+			if trace {
+				println(r, "got batch of", i, "entries")
+			}
+			i = 0
+			neHead, neTail = nil, nil
+			newEntryCh = nil
+		}
+	}
+}
+
 func fsmTask(typ entryType, cmd interface{}, data []byte) FSMTask {
 	return &newEntry{
 		task:  newTask(),
