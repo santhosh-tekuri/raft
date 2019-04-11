@@ -15,6 +15,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -64,12 +65,19 @@ func info(c raft.Client) {
 		errln(err.Error())
 		os.Exit(1)
 	}
-	b, err := json.MarshalIndent(info.JSON(), "", "    ")
-	if err != nil {
+	buf := new(bytes.Buffer)
+	enc := json.NewEncoder(buf)
+	enc.SetEscapeHTML(false) // to avoid html escape as in "read tcp 127.0.0.1:56350-\u003e127.0.0.1:8083: read: connection reset by peer"
+	if err := enc.Encode(info.JSON()); err != nil {
 		errln(err.Error())
 		os.Exit(1)
 	}
-	fmt.Println(string(b))
+	var indented bytes.Buffer
+	if err = json.Indent(&indented, buf.Bytes(), "", "    "); err != nil {
+		errln(err.Error())
+		os.Exit(1)
+	}
+	fmt.Printf("%s\n", indented.Bytes())
 }
 
 func config(c raft.Client, args []string) {
