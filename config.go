@@ -248,7 +248,6 @@ func (c *Config) decode(e *entry) error {
 		}
 		c.Nodes[n.ID] = n
 	}
-	c.Index, c.Term = e.index, e.term
 	return nil
 }
 
