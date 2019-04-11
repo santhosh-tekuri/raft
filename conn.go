@@ -202,7 +202,7 @@ func (r *Raft) getConnPool(nid uint64) *connPool {
 			nid:      nid,
 			resolver: r.resolver,
 			dialFn:   r.dialFn,
-			max:      3,
+			max:      1,
 		}
 		r.connPools[nid] = pool
 	}
