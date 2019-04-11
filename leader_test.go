@@ -248,6 +248,7 @@ func TODO_TestLeader_backPressure(t *testing.T) {
 			fmt.Println("lastLogIndex:", info.LastLogIndex(), "committed:", info.Committed())
 			t.Fatalf("leader changed state to %s", e.state)
 		case <-timer:
+			fmt.Println("timer hit")
 			info := ldr.Info()
 			fmt.Println("lastLogIndex:", info.LastLogIndex(), "committed:", info.Committed())
 		}
