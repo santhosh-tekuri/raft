@@ -34,7 +34,7 @@ func TestConnPool_getConn_IdentityError(t *testing.T) {
 
 	// ensure that ldr detects that nonvoter is does not belong to cluser
 	// and treats it as unreachable
-	_, err := c1.waitUnreachableDetected(ldr, r2)
+	err := c1.waitUnreachableDetected(ldr, r2)
 	if _, ok := err.(IdentityError); !ok {
 		c1.Fatalf("got %v, want IdentityError", err)
 	}
@@ -50,7 +50,7 @@ func TestConnPool_getConn_ConfigAddrUpdate(t *testing.T) {
 	c.shutdown(flrs[0])
 
 	// wait for leader to detect that follower is unreachable
-	_, _ = c.waitUnreachableDetected(ldr, flrs[0])
+	_ = c.waitUnreachableDetected(ldr, flrs[0])
 
 	// restart follower at different address
 	c.ports[flrs[0].nid] = 9999
@@ -82,7 +82,7 @@ func TestConnPool_getConn_Resolver(t *testing.T) {
 	c.shutdown(flrs[0])
 
 	// wait for leader to detect that follower is unreachable
-	_, _ = c.waitUnreachableDetected(ldr, flrs[0])
+	_ = c.waitUnreachableDetected(ldr, flrs[0])
 
 	// restart follower at different address with resolver addr updated
 	c.resolverMu.Lock()

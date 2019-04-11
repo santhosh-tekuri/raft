@@ -262,6 +262,7 @@ func newCluster(t *testing.T) *cluster {
 			ldrs:          make(map[uint64]uint64),
 			commitReady:   make(map[uint64]bool),
 			electionCount: make(map[uint64]int),
+			unreachable:   make(map[uint64]error),
 		},
 	}
 	c.opt = Options{
@@ -756,13 +757,14 @@ func (c *cluster) waitCatchup(rr ...*Raft) {
 	}
 }
 
-func (c *cluster) waitUnreachableDetected(ldr, failed *Raft) (since *time.Time, err error) {
+func (c *cluster) waitUnreachableDetected(ldr, failed *Raft) (reason error) {
 	c.Helper()
 	testln("waitUnreachableDetected: ldr:", host(ldr), "failed:", host(failed))
 	condition := func(e *event) bool {
-		flr := ldr.Info().Followers()[failed.NID()]
-		since, err = flr.Unreachable, flr.Err
-		return since != nil
+		c.eventMu.RLock()
+		defer c.eventMu.RUnlock()
+		reason = c.unreachable[ldr.nid]
+		return reason != nil
 	}
 	unreachable := c.registerFor(eventUnreachable, ldr)
 	defer c.unregister(unreachable)
@@ -776,7 +778,9 @@ func (c *cluster) waitReachableDetected(ldr, failed *Raft) {
 	c.Helper()
 	testln("waitReachableDetected: ldr:", host(ldr), "failed:", host(failed))
 	condition := func(e *event) bool {
-		return ldr.Info().Followers()[failed.NID()].Unreachable == nil
+		c.eventMu.RLock()
+		defer c.eventMu.RUnlock()
+		return c.unreachable[ldr.nid] == nil
 	}
 	unreachable := c.registerFor(eventUnreachable, ldr)
 	defer c.unregister(unreachable)
@@ -1095,6 +1099,7 @@ type events struct {
 	states        map[uint64]State
 	electionCount map[uint64]int
 	ldrs          map[uint64]uint64
+	unreachable   map[uint64]error
 	commitReady   map[uint64]bool
 }
 
@@ -1221,6 +1226,9 @@ func (ee *events) trace() (trace Trace) {
 	}
 
 	trace.Unreachable = func(info Info, id uint64, since time.Time, err error) {
+		ee.eventMu.Lock()
+		ee.unreachable[info.NID()] = err
+		ee.eventMu.Unlock()
 		ee.sendEvent(event{
 			src:    info.NID(),
 			typ:    eventUnreachable,

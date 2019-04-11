@@ -29,7 +29,7 @@ func TestReplication_behindFollower(t *testing.T) {
 	c.disconnect(behind)
 
 	// wait until leader detects that follower is unreachable
-	_, _ = c.waitUnreachableDetected(ldr, behind)
+	_ = c.waitUnreachableDetected(ldr, behind)
 
 	// commit a lot of things
 	<-c.sendUpdates(ldr, 1, 10).Done()
@@ -95,7 +95,7 @@ func TestReplication_nonvoter_reconnects_catchesUp(t *testing.T) {
 	c.ensure(waitAddNonvoter(ldr, m4.NID(), c.id2Addr(m4.NID()), false))
 
 	// ensure that leader detected that m4 is unreachable
-	_, _ = c.waitUnreachableDetected(ldr, m4)
+	_ = c.waitUnreachableDetected(ldr, m4)
 
 	// send 10 fsm updates, and wait for them to replicate to m1, m2, m3
 	c.sendUpdates(ldr, 1, 10)
