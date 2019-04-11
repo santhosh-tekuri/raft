@@ -113,7 +113,6 @@ type connPool struct {
 	nid      uint64
 	resolver *resolver
 	dialFn   dialFn
-	timeout  time.Duration
 	max      int
 
 	mu    sync.Mutex
@@ -203,7 +202,6 @@ func (r *Raft) getConnPool(nid uint64) *connPool {
 			nid:      nid,
 			resolver: r.resolver,
 			dialFn:   r.dialFn,
-			timeout:  10 * time.Second, // todo
 			max:      3,
 		}
 		r.connPools[nid] = pool
