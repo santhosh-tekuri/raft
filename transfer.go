@@ -156,6 +156,7 @@ func (l *leader) onTimeoutNowResult(rpc rpcResponse) {
 		repl := l.repls[rpc.from]
 		if repl.status.noContact.IsZero() {
 			repl.status.noContact = time.Now()
+			repl.status.err = rpc.err
 		}
 		if l.transfer.target == 0 {
 			l.tryTransfer()
