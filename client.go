@@ -244,7 +244,10 @@ func decodeTaskResp(typ taskType, r io.Reader) (interface{}, error) {
 			if err != nil {
 				return nil, err
 			}
-			status.Unreachable = time.Unix(0, int64(unixNano))
+			if unixNano != 0 {
+				t := time.Unix(0, int64(unixNano))
+				status.Unreachable = &t
+			}
 			if status.ErrMessage, err = readString(r); err != nil {
 				return nil, err
 			}
@@ -305,7 +308,11 @@ func encodeTaskResp(t Task, w *bufio.Writer) (err error) {
 		for _, flr := range flrs {
 			_ = writeUint64(w, flr.ID)
 			_ = writeUint64(w, flr.MatchIndex)
-			_ = writeUint64(w, uint64(flr.Unreachable.UnixNano()))
+			var unixNano uint64
+			if flr.Unreachable != nil {
+				unixNano = uint64(flr.Unreachable.UnixNano())
+			}
+			_ = writeUint64(w, unixNano)
 			_ = writeString(w, flr.ErrMessage)
 			_ = writeUint64(w, flr.Round)
 		}

@@ -756,13 +756,13 @@ func (c *cluster) waitCatchup(rr ...*Raft) {
 	}
 }
 
-func (c *cluster) waitUnreachableDetected(ldr, failed *Raft) (since time.Time, err error) {
+func (c *cluster) waitUnreachableDetected(ldr, failed *Raft) (since *time.Time, err error) {
 	c.Helper()
 	testln("waitUnreachableDetected: ldr:", host(ldr), "failed:", host(failed))
 	condition := func(e *event) bool {
 		flr := ldr.Info().Followers()[failed.NID()]
 		since, err = flr.Unreachable, flr.Err
-		return !flr.Unreachable.IsZero()
+		return since != nil
 	}
 	unreachable := c.registerFor(eventUnreachable, ldr)
 	defer c.unregister(unreachable)
@@ -776,7 +776,7 @@ func (c *cluster) waitReachableDetected(ldr, failed *Raft) {
 	c.Helper()
 	testln("waitReachableDetected: ldr:", host(ldr), "failed:", host(failed))
 	condition := func(e *event) bool {
-		return ldr.Info().Followers()[failed.NID()].Unreachable.IsZero()
+		return ldr.Info().Followers()[failed.NID()].Unreachable == nil
 	}
 	unreachable := c.registerFor(eventUnreachable, ldr)
 	defer c.unregister(unreachable)

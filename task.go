@@ -149,12 +149,12 @@ func BarrierFSM() FSMTask {
 // ------------------------------------------------------------------------
 
 type FlrStatus struct {
-	ID          uint64    `json:"-"`
-	MatchIndex  uint64    `json:"matchIndex"`
-	Unreachable time.Time `json:"unreachable,omitempty"`
-	Err         error     `json:"-"`
-	ErrMessage  string    `json:"error,omitempty"`
-	Round       uint64    `json:"round,omitempty"`
+	ID          uint64     `json:"-"`
+	MatchIndex  uint64     `json:"matchIndex"`
+	Unreachable *time.Time `json:"unreachable,omitempty"`
+	Err         error      `json:"-"`
+	ErrMessage  string     `json:"error,omitempty"`
+	Round       uint64     `json:"round,omitempty"`
 }
 
 type json struct {
@@ -221,10 +221,14 @@ func (info liveInfo) Followers() map[uint64]FlrStatus {
 		if repl.status.round != nil {
 			round = repl.status.round.Ordinal
 		}
+		var unreachable *time.Time
+		if !repl.status.noContact.IsZero() {
+			unreachable = &repl.status.noContact
+		}
 		flrs[id] = FlrStatus{
 			ID:          id,
 			MatchIndex:  repl.status.matchIndex,
-			Unreachable: repl.status.noContact,
+			Unreachable: unreachable,
 			Err:         repl.status.err,
 			ErrMessage:  errMessage,
 			Round:       round,
