@@ -284,6 +284,7 @@ func encodeTaskResp(t Task, w *bufio.Writer) (err error) {
 		return
 	case uint64:
 		_ = writeUint64(w, r)
+		return
 	case Info:
 		_ = writeUint64(w, r.CID())
 		_ = writeUint64(w, r.NID())
