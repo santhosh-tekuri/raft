@@ -17,6 +17,7 @@ package raft
 import (
 	"errors"
 	"fmt"
+	"runtime"
 )
 
 var (
@@ -55,6 +56,8 @@ var (
 )
 
 var (
+	errAssertion   = errors.New("raft: assertion failed")
+	errUnreachable = errors.New("raft: unreachable")
 	errInvalidTask = errors.New("raft: invalid task")
 	errStop        = errors.New("raft: got stop signal")
 )
@@ -180,11 +183,28 @@ func (e temporaryError) Temporary() {}
 func assert(b bool) {
 	if !b {
 		println("barrier") // wait for tracer to finish
-		panic("assertion failed")
+		panic(errAssertion)
 	}
 }
 
-func unreachable() {
+func unreachable() error {
 	println("barrier") // wait for tracer to finish
-	panic("unreachable")
+	return errUnreachable
+}
+
+func recoverErr(r interface{}) error {
+	if r == nil {
+		return nil
+	}
+	if r == errAssertion || r == errUnreachable {
+		panic(r)
+	}
+	if _, ok := r.(runtime.Error); ok {
+		panic(r)
+	}
+	if _, ok := r.(error); ok {
+		return r.(error)
+	} else {
+		return fmt.Errorf("unexpected error: %v", r)
+	}
 }

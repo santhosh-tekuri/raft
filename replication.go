@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"runtime"
 	"time"
 
 	"github.com/santhosh-tekuri/raft/log"
@@ -62,10 +61,7 @@ func (r *replication) runLoop(req *appendReq) {
 			r.connPool.returnConn(c)
 		}
 		if v := recover(); v != nil {
-			if _, ok := v.(runtime.Error); ok {
-				panic(v)
-			}
-			r.notifyLdr(toErr(v))
+			r.notifyLdr(recoverErr(v))
 		}
 	}()
 
@@ -173,13 +169,10 @@ func (r *replication) replicate(c *conn, req *appendReq) error {
 			defer func() {
 				close(resultCh)
 				if v := recover(); v != nil {
-					if _, ok := v.(runtime.Error); ok {
-						panic(v)
-					}
 					select {
 					case <-stopCh:
 						return
-					case resultCh <- result{0, toErr(v)}:
+					case resultCh <- result{0, recoverErr(v)}:
 					}
 				}
 			}()

@@ -215,8 +215,7 @@ func (s *server) handleTask(typ taskType, c *conn) error {
 		s.executeTask(t)
 		return encodeTaskResp(t, c.bufw)
 	}
-	unreachable()
-	return nil
+	panic(unreachable())
 }
 
 func (s *server) executeTask(t Task) {

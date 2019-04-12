@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 
 	"github.com/santhosh-tekuri/raft/log"
 )
@@ -308,10 +307,7 @@ func (s *storage) removeGTE(index, prevTerm uint64) {
 func (s *storage) bootstrap(config Config) (err error) {
 	defer func() {
 		if v := recover(); v != nil {
-			if _, ok := v.(runtime.Error); ok {
-				panic(v)
-			}
-			err = toErr(v)
+			err = recoverErr(v)
 		}
 	}()
 	s.appendEntry(config.encode())

@@ -245,17 +245,6 @@ func bug(calldepth int, format string, v ...interface{}) error {
 	return fmt.Errorf(prefix+format, v...)
 }
 
-func toErr(v interface{}) error {
-	if v != nil {
-		if _, ok := v.(error); ok {
-			return v.(error)
-		} else {
-			return fmt.Errorf("unexpected error: %v", v)
-		}
-	}
-	return nil
-}
-
 func trimPrefix(err error) string {
 	return strings.TrimPrefix(err.Error(), "raft: ")
 }
