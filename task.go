@@ -164,6 +164,7 @@ type json struct {
 	Term          uint64               `json:"term"`
 	State         State                `json:"state"`
 	Leader        uint64               `json:"leader,omitempty"`
+	SnapshotIndex uint64               `json:"snapshotIndex"`
 	FirstLogIndex uint64               `json:"firstLogIndex"`
 	LastLogIndex  uint64               `json:"lastLogIndex"`
 	LastLogTerm   uint64               `json:"lastLogTerm"`
@@ -180,6 +181,7 @@ type Info interface {
 	Term() uint64
 	State() State
 	Leader() uint64
+	SnapshotIndex() uint64
 	FirstLogIndex() uint64
 	LastLogIndex() uint64
 	LastLogTerm() uint64
@@ -200,6 +202,7 @@ func (info liveInfo) Addr() string          { return info.r.addr() }
 func (info liveInfo) Term() uint64          { return info.r.term }
 func (info liveInfo) State() State          { return info.r.state }
 func (info liveInfo) Leader() uint64        { return info.r.leader }
+func (info liveInfo) SnapshotIndex() uint64 { return info.r.snaps.index }
 func (info liveInfo) FirstLogIndex() uint64 { return info.r.log.PrevIndex() + 1 }
 func (info liveInfo) LastLogIndex() uint64  { return info.r.lastLogIndex }
 func (info liveInfo) LastLogTerm() uint64   { return info.r.lastLogTerm }
@@ -245,6 +248,7 @@ func (info liveInfo) JSON() interface{} {
 		Term:          info.Term(),
 		State:         info.State(),
 		Leader:        info.Leader(),
+		SnapshotIndex: info.SnapshotIndex(),
 		FirstLogIndex: info.FirstLogIndex(),
 		LastLogIndex:  info.LastLogIndex(),
 		LastLogTerm:   info.LastLogTerm(),
@@ -265,6 +269,7 @@ func (info cachedInfo) Addr() string                    { return info.json.Addr 
 func (info cachedInfo) Term() uint64                    { return info.json.Term }
 func (info cachedInfo) State() State                    { return info.json.State }
 func (info cachedInfo) Leader() uint64                  { return info.json.Leader }
+func (info cachedInfo) SnapshotIndex() uint64           { return info.json.SnapshotIndex }
 func (info cachedInfo) FirstLogIndex() uint64           { return info.json.FirstLogIndex }
 func (info cachedInfo) LastLogIndex() uint64            { return info.json.LastLogIndex }
 func (info cachedInfo) LastLogTerm() uint64             { return info.json.LastLogTerm }

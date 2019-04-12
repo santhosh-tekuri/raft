@@ -198,6 +198,9 @@ func decodeTaskResp(typ taskType, r io.Reader) (interface{}, error) {
 		if json.Leader, err = readUint64(r); err != nil {
 			return nil, err
 		}
+		if json.SnapshotIndex, err = readUint64(r); err != nil {
+			return nil, err
+		}
 		if json.FirstLogIndex, err = readUint64(r); err != nil {
 			return nil, err
 		}
@@ -292,6 +295,7 @@ func encodeTaskResp(t Task, w *bufio.Writer) (err error) {
 		_ = writeUint64(w, r.Term())
 		_ = writeUint8(w, uint8(r.State()))
 		_ = writeUint64(w, r.Leader())
+		_ = writeUint64(w, r.SnapshotIndex())
 		_ = writeUint64(w, r.FirstLogIndex())
 		_ = writeUint64(w, r.LastLogIndex())
 		_ = writeUint64(w, r.LastLogTerm())
