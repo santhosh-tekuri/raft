@@ -64,9 +64,6 @@ func (r *Raft) replyRPC(rpc *rpc) (resetTimer bool) {
 	close(rpc.done)
 
 	if result == unexpectedErr {
-		if r.trace.Error != nil {
-			r.trace.Error(err)
-		}
 		panic(err)
 	}
 	return rpc.req.rpcType() != rpcVote || result == success
