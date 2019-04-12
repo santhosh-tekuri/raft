@@ -67,6 +67,7 @@ func println(args ...interface{}) {
 	if isBarrier(msg) {
 		// wait all pending traceCh are printed
 		<-traceDone
+		traceDone = make(chan struct{})
 	}
 }
 
