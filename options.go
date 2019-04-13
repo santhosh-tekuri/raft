@@ -157,7 +157,7 @@ type tracer struct {
 	configChanged       func(info Info)
 	configCommitted     func(info Info)
 	configReverted      func(info Info)
-	roundCompleted      func(info Info, id uint64, round Round)
+	roundCompleted      func(info Info, id uint64, round round)
 	logCompacted        func(info Info)
 	configActionStarted func(info Info, id uint64, action ConfigAction)
 	unreachable         func(info Info, id uint64, since time.Time, err error)

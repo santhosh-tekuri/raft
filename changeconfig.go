@@ -157,7 +157,7 @@ func (l *leader) checkConfigAction(t *task, config Config, status *replicationSt
 		status.round = nil
 	} else if status.round == nil {
 		// start first round
-		status.round = new(Round)
+		status.round = new(round)
 		status.round.begin(l.lastLogIndex)
 		if trace {
 			println(l, status.id, "started:", status.round)
@@ -246,25 +246,25 @@ func (l *leader) onWaitForStableConfig(t waitForStableConfig) {
 	l.waitStable = append(l.waitStable, t)
 }
 
-// Round ------------------------------------------------
+// round ------------------------------------------------
 
-type Round struct {
+type round struct {
 	Ordinal   uint64
 	Start     time.Time
 	End       time.Time
 	LastIndex uint64
 }
 
-func (r *Round) begin(lastIndex uint64) {
+func (r *round) begin(lastIndex uint64) {
 	r.Ordinal, r.Start, r.LastIndex = r.Ordinal+1, time.Now(), lastIndex
 }
-func (r *Round) finish()                { r.End = time.Now() }
-func (r *Round) finished() bool         { return !r.End.IsZero() }
-func (r Round) Duration() time.Duration { return r.End.Sub(r.Start) }
+func (r *round) finish()                { r.End = time.Now() }
+func (r *round) finished() bool         { return !r.End.IsZero() }
+func (r round) Duration() time.Duration { return r.End.Sub(r.Start) }
 
-func (r Round) String() string {
+func (r round) String() string {
 	if r.finished() {
-		return fmt.Sprintf("Round{#%d %s lastIndex: %d}", r.Ordinal, r.Duration(), r.LastIndex)
+		return fmt.Sprintf("round{#%d %s lastIndex: %d}", r.Ordinal, r.Duration(), r.LastIndex)
 	}
-	return fmt.Sprintf("Round{#%d lastIndex: %d}", r.Ordinal, r.LastIndex)
+	return fmt.Sprintf("round{#%d lastIndex: %d}", r.Ordinal, r.LastIndex)
 }

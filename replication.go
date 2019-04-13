@@ -594,7 +594,7 @@ type replicationStatus struct {
 
 	node Node
 
-	round *Round // nil if no promotion required
+	round *round // nil if no promotion required
 
 	removeLTE uint64
 }

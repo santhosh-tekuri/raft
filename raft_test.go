@@ -1032,7 +1032,7 @@ type event struct {
 	since      time.Time
 	err        error
 	msgType    string
-	round      Round
+	round      round
 	action     ConfigAction
 	numRounds  uint64
 	firstIndex uint64
@@ -1249,7 +1249,7 @@ func (ee *events) trace() (tracer tracer) {
 		})
 	}
 
-	tracer.roundCompleted = func(info Info, id uint64, r Round) {
+	tracer.roundCompleted = func(info Info, id uint64, r round) {
 		ee.sendEvent(event{
 			src:    info.NID(),
 			typ:    eventRoundFinished,
