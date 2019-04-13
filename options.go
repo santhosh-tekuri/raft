@@ -152,7 +152,7 @@ type tracer struct {
 	stateChanged        func(r *Raft)
 	leaderChanged       func(r *Raft)
 	electionStarted     func(r *Raft)
-	electionAborted     func(info Info, reason string)
+	electionAborted     func(r *Raft, reason string)
 	commitReady         func(info Info)
 	configChanged       func(info Info)
 	configCommitted     func(info Info)

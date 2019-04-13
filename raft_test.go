@@ -1188,9 +1188,9 @@ func (ee *events) trace() (tracer tracer) {
 			typ: eventElectionStarted,
 		})
 	}
-	tracer.electionAborted = func(info Info, reason string) {
+	tracer.electionAborted = func(r *Raft, reason string) {
 		ee.sendEvent(event{
-			src:    info.NID(),
+			src:    r.nid,
 			typ:    eventElectionAborted,
 			reason: reason,
 		})
