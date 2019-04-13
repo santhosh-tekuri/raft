@@ -147,7 +147,7 @@ func (nopAlerts) Reachable(id uint64)              {}
 func (nopAlerts) QuorumUnreachable()               {}
 func (nopAlerts) ShuttingDown(reason error)        {}
 
-type tracer struct {
+var tracer struct {
 	error               func(err error)
 	stateChanged        func(r *Raft)
 	leaderChanged       func(r *Raft)

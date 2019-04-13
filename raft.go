@@ -53,7 +53,6 @@ type Raft struct {
 	shutdownOnRemove bool
 	logger           Logger
 	alerts           Alerts
-	tracer           tracer
 	bandwidth        int64
 
 	// dialing
@@ -369,8 +368,8 @@ func (r *Raft) doClose(reason error) {
 			r.logger.Warn(trimPrefix(reason), "shutting down")
 		}
 		r.alerts.ShuttingDown(reason)
-		if r.tracer.shuttingDown != nil {
-			r.tracer.shuttingDown(r, reason)
+		if tracer.shuttingDown != nil {
+			tracer.shuttingDown(r, reason)
 		}
 		close(r.close)
 	})
@@ -398,8 +397,8 @@ func (r *Raft) setState(s State) {
 		}
 		r.logger.Info("changing state", r.state, "->", s)
 		r.state = s
-		if r.tracer.stateChanged != nil {
-			r.tracer.stateChanged(r)
+		if tracer.stateChanged != nil {
+			tracer.stateChanged(r)
 		}
 	}
 }
@@ -417,8 +416,8 @@ func (r *Raft) setLeader(id uint64) {
 		} else {
 			r.logger.Info("following leader node", r.leader)
 		}
-		if r.tracer.leaderChanged != nil {
-			r.tracer.leaderChanged(r)
+		if tracer.leaderChanged != nil {
+			tracer.leaderChanged(r)
 		}
 	}
 }

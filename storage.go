@@ -268,8 +268,8 @@ func (r *Raft) compactLog(lte uint64) error {
 		return err
 	}
 	r.logger.Info("log upto index ", r.log.PrevIndex(), "is discarded")
-	if r.tracer.logCompacted != nil {
-		r.tracer.logCompacted(r)
+	if tracer.logCompacted != nil {
+		tracer.logCompacted(r)
 	}
 	return nil
 }

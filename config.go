@@ -359,8 +359,8 @@ func (l *leader) setCommitIndex(index uint64) {
 	l.storage.commitLog(index)
 	if l.commitIndex < l.startIndex && index >= l.startIndex {
 		l.logger.Info("ready for commit")
-		if l.tracer.commitReady != nil {
-			l.tracer.commitReady(l.Raft)
+		if tracer.commitReady != nil {
+			tracer.commitReady(l.Raft)
 		}
 	}
 	configCommitted := l.Raft.setCommitIndex(index)
@@ -448,8 +448,8 @@ func (r *Raft) changeConfig(config Config) {
 	} else {
 		r.logger.Info("changed to", r.configs.Latest)
 	}
-	if r.tracer.configChanged != nil {
-		r.tracer.configChanged(r)
+	if tracer.configChanged != nil {
+		tracer.configChanged(r)
 	}
 }
 
@@ -462,8 +462,8 @@ func (r *Raft) commitConfig() {
 	}
 	r.configs.Committed = r.configs.Latest
 	r.logger.Info("committed", r.configs.Latest)
-	if r.tracer.configCommitted != nil {
-		r.tracer.configCommitted(r)
+	if tracer.configCommitted != nil {
+		tracer.configCommitted(r)
 	}
 }
 
@@ -473,8 +473,8 @@ func (r *Raft) revertConfig() {
 	}
 	r.setLatest(r.configs.Committed)
 	r.logger.Info("reverted to", r.configs.Latest)
-	if r.tracer.configReverted != nil {
-		r.tracer.configReverted(r)
+	if tracer.configReverted != nil {
+		tracer.configReverted(r)
 	}
 }
 

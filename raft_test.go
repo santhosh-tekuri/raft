@@ -265,7 +265,6 @@ func newCluster(t *testing.T) *cluster {
 		LogSegmentSize:   4 * 1024,
 		SnapshotsRetain:  1,
 	}
-	c.tracer = ee.trace()
 	return c
 }
 
@@ -288,7 +287,6 @@ type cluster struct {
 	commitTimeout    time.Duration
 	opt              Options
 	resolverMu       sync.RWMutex
-	tracer           tracer
 }
 
 func (c *cluster) LookupID(id uint64, timeout time.Duration) (addr string, err error) {
@@ -364,7 +362,6 @@ func (c *cluster) launch(n int, bootstrap bool) map[uint64]*Raft {
 		if err != nil {
 			c.Fatal(err)
 		}
-		r.tracer = c.tracer
 		launched[r.NID()] = r
 		c.rr[node.ID] = r
 		c.storage[node.ID] = storageDir
@@ -461,7 +458,6 @@ func (c *cluster) restart(r *Raft) *Raft {
 	if err != nil {
 		c.Fatal(err)
 	}
-	newr.tracer = c.tracer
 	c.rr[r.NID()] = newr
 	c.serverErrMu.Lock()
 	c.serveErr[r.NID()] = make(chan error, 1)
@@ -1172,7 +1168,7 @@ func (ee *events) onFMSChanged(id identity, len uint64) {
 	})
 }
 
-func (ee *events) trace() (tracer tracer) {
+func init() {
 	tracer.shuttingDown = func(r *Raft, reason error) {
 		ee.sendEvent(event{
 			cid: r.cid,
@@ -1336,7 +1332,6 @@ func (ee *events) trace() (tracer tracer) {
 			numRounds: numRounds,
 		})
 	}
-	return
 }
 
 // fsmMock ---------------------------------------------
