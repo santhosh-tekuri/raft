@@ -46,7 +46,7 @@ func (c Client) getConn() (*conn, error) {
 	}, nil
 }
 
-func (c Client) Info() (Info, error) {
+func (c Client) GetInfo() (Info, error) {
 	conn, err := c.getConn()
 	if err != nil {
 		return Info{}, err

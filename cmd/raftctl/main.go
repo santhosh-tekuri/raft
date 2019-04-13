@@ -60,7 +60,7 @@ func main() {
 }
 
 func info(c raft.Client) {
-	info, err := c.Info()
+	info, err := c.GetInfo()
 	if err != nil {
 		errln(err.Error())
 		os.Exit(1)
@@ -102,7 +102,7 @@ func config(c raft.Client, args []string) {
 }
 
 func getConfig(c raft.Client) {
-	info, err := c.Info()
+	info, err := c.GetInfo()
 	if err != nil {
 		errln(err.Error())
 		os.Exit(1)
