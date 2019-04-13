@@ -87,15 +87,16 @@ func (o Options) validate() error {
 func DefaultOptions() Options {
 	hbTimeout := 1000 * time.Millisecond
 	return Options{
-		HeartbeatTimeout: hbTimeout,
-		QuorumWait:       0,
-		PromoteThreshold: hbTimeout,
-		SnapshotInterval: 2 * time.Hour,
-		ShutdownOnRemove: true,
-		Bandwidth:        256 * 1024,
-		LogSegmentSize:   16 * 1024 * 1024,
-		SnapshotsRetain:  1,
-		Logger:           new(defaultLogger),
+		HeartbeatTimeout:  hbTimeout,
+		QuorumWait:        0,
+		PromoteThreshold:  hbTimeout,
+		SnapshotInterval:  2 * time.Hour,
+		SnapshotThreshold: 8192,
+		ShutdownOnRemove:  true,
+		Bandwidth:         256 * 1024,
+		LogSegmentSize:    16 * 1024 * 1024,
+		SnapshotsRetain:   1,
+		Logger:            new(defaultLogger),
 	}
 }
 
