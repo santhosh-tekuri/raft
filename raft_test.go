@@ -303,11 +303,11 @@ func (c *cluster) status(r *Raft) status {
 	return ee.status[identity{r.cid, r.nid}]
 }
 
-func (c *cluster) registerFor(typ eventType, rr ...*Raft) observer {
+func (c *cluster) registerFor(typ eventType, rr ...*Raft) *observer {
 	return ee.registerFor(typ, c.id, rr...)
 }
 
-func (c *cluster) unregister(ob observer) {
+func (c *cluster) unregister(ob *observer) {
 	ee.unregister(ob)
 }
 
@@ -1079,10 +1079,9 @@ func (e event) matches(typ eventType, cid uint64, rr ...*Raft) bool {
 type observer struct {
 	filter func(event) bool
 	ch     chan event
-	id     int
 }
 
-func (ob observer) waitForEvent(timeout time.Duration) (event, error) {
+func (ob *observer) waitForEvent(timeout time.Duration) (event, error) {
 	select {
 	case e := <-ob.ch:
 		return e, nil
@@ -1091,7 +1090,7 @@ func (ob observer) waitForEvent(timeout time.Duration) (event, error) {
 	}
 }
 
-func (ob observer) waitFor(condition func(*event) bool, timeout time.Duration) bool {
+func (ob *observer) waitFor(condition func(*event) bool, timeout time.Duration) bool {
 	timeoutCh := timeAfter(timeout)
 	if condition(nil) {
 		return true
@@ -1119,48 +1118,45 @@ type status struct {
 }
 
 var ee = events{
-	observers: make(map[int]observer),
+	observers: make(map[*observer]struct{}),
 	status:    make(map[identity]status),
 }
 
 type events struct {
 	observersMu sync.RWMutex
-	observerID  int
-	observers   map[int]observer
+	observers   map[*observer]struct{}
 
 	statusMu sync.RWMutex
 	status   map[identity]status
 }
 
-func (ee *events) register(filter func(event) bool) observer {
+func (ee *events) register(filter func(event) bool) *observer {
 	ee.observersMu.Lock()
 	defer ee.observersMu.Unlock()
-	ob := observer{
+	ob := &observer{
 		filter: filter,
 		ch:     make(chan event, 1000),
-		id:     ee.observerID,
 	}
-	ee.observers[ob.id] = ob
-	ee.observerID++
+	ee.observers[ob] = struct{}{}
 	return ob
 }
 
-func (ee *events) registerFor(typ eventType, cid uint64, rr ...*Raft) observer {
+func (ee *events) registerFor(typ eventType, cid uint64, rr ...*Raft) *observer {
 	return ee.register(func(e event) bool {
 		return e.matches(typ, cid, rr...)
 	})
 }
 
-func (ee *events) unregister(ob observer) {
+func (ee *events) unregister(ob *observer) {
 	ee.observersMu.Lock()
 	defer ee.observersMu.Unlock()
-	delete(ee.observers, ob.id)
+	delete(ee.observers, ob)
 }
 
 func (ee *events) sendEvent(e event) {
 	ee.observersMu.RLock()
 	defer ee.observersMu.RUnlock()
-	for _, ob := range ee.observers {
+	for ob := range ee.observers {
 		if ob.filter(e) {
 			ob.ch <- e
 		}
