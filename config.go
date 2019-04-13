@@ -23,17 +23,46 @@ import (
 	"strconv"
 )
 
-type ConfigAction uint8
+// Action describes the action user would like to
+// perform on a node in cluster.
+type Action uint8
 
 const (
-	None ConfigAction = iota
+	// None means no action to be taken.
+	None Action = iota
+
+	// Promote is used to promote a nonvoter to voter.
+	// Leader promotes only when the node's log sufficiently
+	// caught up, to preserve availability.
 	Promote
+
+	// Demote is used to demote a voter to nonvoter.
+	// Leader can demote any voter including self immediately.
 	Demote
+
+	// Remove is used to remove a node from cluster.
+	//
+	// Removal of voter is two step process, first it is demoted
+	// to nonvoter. once the node realizes that it is nonvoter,
+	// it is removed from cluster. This two step process guarantees
+	// that the removed node does not disrupt the cluster after it is
+	// removed. Node that removal of leader does not require two step,
+	// because leader already knows that it is being removed.
+	//
+	// Removal of nonvoter can be done immediately.
 	Remove
+
+	// ForceRemove is similar to remove, but voter is removed immediately
+	// without demoting it first. This should be used only when the node
+	// removed has crashed and could not be restored. Note that if the
+	// removed node is restored, it can disrupt the cluster.
+	//
+	// The library implements the solution provided in 4.2.4 to handle
+	// disruptive servers.
 	ForceRemove
 )
 
-func (a ConfigAction) String() string {
+func (a Action) String() string {
 	switch a {
 	case None:
 		return "none"
@@ -66,14 +95,14 @@ type Node struct {
 	Data string `json:"data,omitempty"`
 
 	// Action tells the action to be taken by leader, when appropriate.
-	Action ConfigAction `json:"action,omitempty"`
+	Action Action `json:"action,omitempty"`
 }
 
 func (n Node) IsStable() bool {
 	return n.Action == None
 }
 
-func (n Node) nextAction() ConfigAction {
+func (n Node) nextAction() Action {
 	if n.Action == ForceRemove {
 		return ForceRemove
 	}
@@ -122,7 +151,7 @@ func (n *Node) decode(r io.Reader) error {
 	if action, err := readUint8(r); err != nil {
 		return err
 	} else {
-		n.Action = ConfigAction(action)
+		n.Action = Action(action)
 	}
 	return nil
 }

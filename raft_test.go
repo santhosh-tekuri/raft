@@ -1052,7 +1052,7 @@ type event struct {
 	err        error
 	msgType    string
 	round      round
-	action     ConfigAction
+	action     Action
 	numRounds  uint64
 	firstIndex uint64
 	reason     string
@@ -1330,7 +1330,7 @@ func init() {
 		})
 	}
 
-	tracer.configActionStarted = func(r *Raft, id uint64, action ConfigAction) {
+	tracer.configActionStarted = func(r *Raft, id uint64, action Action) {
 		ee.statusMu.RLock()
 		numRounds := ee.status[identity{r.cid, r.nid}].numRounds
 		ee.statusMu.RUnlock()

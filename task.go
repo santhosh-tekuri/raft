@@ -281,7 +281,7 @@ func (c *Config) addNode(n Node) error {
 	return nil
 }
 
-func (c *Config) SetAction(id uint64, action ConfigAction) error {
+func (c *Config) SetAction(id uint64, action Action) error {
 	n, ok := c.Nodes[id]
 	if !ok {
 		return fmt.Errorf("raft: node %d not found", id)

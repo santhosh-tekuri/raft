@@ -330,11 +330,11 @@ func (s State) MarshalJSON() ([]byte, error) {
 	return []byte(strconv.Quote(s.String())), nil
 }
 
-func (a ConfigAction) MarshalJSON() ([]byte, error) {
+func (a Action) MarshalJSON() ([]byte, error) {
 	return []byte(strconv.Quote(a.String())), nil
 }
 
-func (a *ConfigAction) UnmarshalJSON(data []byte) error {
+func (a *Action) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		*a = None
 		return nil
@@ -346,7 +346,7 @@ func (a *ConfigAction) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	for _, ca := range []ConfigAction{None, Promote, Demote, Remove, ForceRemove} {
+	for _, ca := range []Action{None, Promote, Demote, Remove, ForceRemove} {
 		if ca.String() == s {
 			*a = ca
 			return nil

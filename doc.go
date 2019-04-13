@@ -50,4 +50,4 @@ package raft
 
 // todo: add lock file to storage directory containing pid, so that two raft instance does not use same storage dir
 
-// todo: test Config Info ConfigAction State unmarshal/marshal json
+// todo: test Config Info Action State unmarshal/marshal json

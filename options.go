@@ -160,7 +160,7 @@ var tracer struct {
 	configReverted      func(r *Raft)
 	roundCompleted      func(r *Raft, id uint64, round round)
 	logCompacted        func(r *Raft)
-	configActionStarted func(r *Raft, id uint64, action ConfigAction)
+	configActionStarted func(r *Raft, id uint64, action Action)
 	unreachable         func(r *Raft, id uint64, since time.Time, err error)
 	quorumUnreachable   func(r *Raft, since time.Time)
 	shuttingDown        func(r *Raft, reason error)
