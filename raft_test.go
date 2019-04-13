@@ -269,11 +269,11 @@ func newCluster(t *testing.T) *cluster {
 		HeartbeatTimeout: heartbeatTimeout,
 		QuorumWait:       heartbeatTimeout,
 		PromoteThreshold: heartbeatTimeout,
-		Trace:            c.events.trace(),
 		Bandwidth:        256 * 1024,
 		LogSegmentSize:   4 * 1024,
 		SnapshotsRetain:  1,
 	}
+	c.tracer = c.events.trace()
 	return c
 }
 
@@ -296,6 +296,7 @@ type cluster struct {
 	commitTimeout    time.Duration
 	opt              Options
 	resolverMu       sync.RWMutex
+	tracer           tracer
 	*events
 }
 
@@ -358,6 +359,7 @@ func (c *cluster) launch(n int, bootstrap bool) map[uint64]*Raft {
 		if err != nil {
 			c.Fatal(err)
 		}
+		r.tracer = c.tracer
 		launched[r.NID()] = r
 		c.rr[node.ID] = r
 		c.storage[node.ID] = storageDir
@@ -451,6 +453,7 @@ func (c *cluster) restart(r *Raft) *Raft {
 	if err != nil {
 		c.Fatal(err)
 	}
+	newr.tracer = c.tracer
 	c.rr[r.NID()] = newr
 	c.serverErrMu.Lock()
 	c.serveErr[r.NID()] = make(chan error, 1)
@@ -1146,15 +1149,15 @@ func (ee *events) onFMSChanged(id uint64, len uint64) {
 	})
 }
 
-func (ee *events) trace() (trace Trace) {
-	trace.ShuttingDown = func(info Info, reason error) {
+func (ee *events) trace() (tracer tracer) {
+	tracer.ShuttingDown = func(info Info, reason error) {
 		ee.sendEvent(event{
 			src: info.NID(),
 			typ: eventShuttingDown,
 			err: reason,
 		})
 	}
-	trace.StateChanged = func(info Info) {
+	tracer.StateChanged = func(info Info) {
 		ee.eventMu.Lock()
 		ee.states[info.NID()] = info.State()
 		ee.commitReady[info.NID()] = false
@@ -1166,7 +1169,7 @@ func (ee *events) trace() (trace Trace) {
 			state: info.State(),
 		})
 	}
-	trace.LeaderChanged = func(info Info) {
+	tracer.LeaderChanged = func(info Info) {
 		ee.eventMu.Lock()
 		ee.ldrs[info.NID()] = info.Leader()
 		ee.eventMu.Unlock()
@@ -1176,7 +1179,7 @@ func (ee *events) trace() (trace Trace) {
 			leader: info.Leader(),
 		})
 	}
-	trace.ElectionStarted = func(info Info) {
+	tracer.ElectionStarted = func(info Info) {
 		ee.eventMu.Lock()
 		ee.electionCount[info.NID()]++
 		ee.eventMu.Unlock()
@@ -1185,14 +1188,14 @@ func (ee *events) trace() (trace Trace) {
 			typ: eventElectionStarted,
 		})
 	}
-	trace.ElectionAborted = func(info Info, reason string) {
+	tracer.ElectionAborted = func(info Info, reason string) {
 		ee.sendEvent(event{
 			src:    info.NID(),
 			typ:    eventElectionAborted,
 			reason: reason,
 		})
 	}
-	trace.CommitReady = func(info Info) {
+	tracer.CommitReady = func(info Info) {
 		ee.eventMu.Lock()
 		ee.commitReady[info.NID()] = true
 		ee.eventMu.Unlock()
@@ -1201,7 +1204,7 @@ func (ee *events) trace() (trace Trace) {
 			typ: eventCommitReady,
 		})
 	}
-	trace.ConfigChanged = func(info Info) {
+	tracer.ConfigChanged = func(info Info) {
 		ee.sendEvent(event{
 			src:     info.NID(),
 			typ:     eventConfigChanged,
@@ -1209,7 +1212,7 @@ func (ee *events) trace() (trace Trace) {
 		})
 	}
 
-	trace.ConfigCommitted = func(info Info) {
+	tracer.ConfigCommitted = func(info Info) {
 		ee.sendEvent(event{
 			src:     info.NID(),
 			typ:     eventConfigCommitted,
@@ -1217,7 +1220,7 @@ func (ee *events) trace() (trace Trace) {
 		})
 	}
 
-	trace.ConfigReverted = func(info Info) {
+	tracer.ConfigReverted = func(info Info) {
 		ee.sendEvent(event{
 			src:     info.NID(),
 			typ:     eventConfigReverted,
@@ -1225,7 +1228,7 @@ func (ee *events) trace() (trace Trace) {
 		})
 	}
 
-	trace.Unreachable = func(info Info, id uint64, since time.Time, err error) {
+	tracer.Unreachable = func(info Info, id uint64, since time.Time, err error) {
 		ee.eventMu.Lock()
 		ee.unreachable[info.NID()] = err
 		ee.eventMu.Unlock()
@@ -1238,7 +1241,7 @@ func (ee *events) trace() (trace Trace) {
 		})
 	}
 
-	trace.QuorumUnreachable = func(info Info, since time.Time) {
+	tracer.QuorumUnreachable = func(info Info, since time.Time) {
 		ee.sendEvent(event{
 			src:   info.NID(),
 			typ:   eventQuorumUnreachable,
@@ -1246,7 +1249,7 @@ func (ee *events) trace() (trace Trace) {
 		})
 	}
 
-	trace.RoundCompleted = func(info Info, id uint64, r Round) {
+	tracer.RoundCompleted = func(info Info, id uint64, r Round) {
 		ee.sendEvent(event{
 			src:    info.NID(),
 			typ:    eventRoundFinished,
@@ -1255,7 +1258,7 @@ func (ee *events) trace() (trace Trace) {
 		})
 	}
 
-	trace.LogCompacted = func(info Info) {
+	tracer.LogCompacted = func(info Info) {
 		ee.sendEvent(event{
 			src:        info.NID(),
 			typ:        eventLogCompacted,
@@ -1263,7 +1266,7 @@ func (ee *events) trace() (trace Trace) {
 		})
 	}
 
-	trace.ConfigActionStarted = func(info Info, id uint64, action ConfigAction) {
+	tracer.ConfigActionStarted = func(info Info, id uint64, action ConfigAction) {
 		ee.sendEvent(event{
 			src:       info.NID(),
 			typ:       eventConfigActionStarted,

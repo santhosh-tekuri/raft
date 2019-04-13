@@ -61,7 +61,6 @@ type Options struct {
 	SnapshotsRetain int
 
 	Logger   Logger
-	Trace    Trace
 	Alerts   Alerts
 	Resolver Resolver
 }
@@ -87,14 +86,6 @@ func (o Options) validate() error {
 
 // DefaultOptions returns an Options with usable defaults.
 func DefaultOptions() Options {
-	var mu sync.Mutex
-	logger := func(prefix string) func(v ...interface{}) {
-		return func(v ...interface{}) {
-			mu.Lock()
-			defer mu.Unlock()
-			fmt.Println(append(append([]interface{}(nil), prefix), v...)...)
-		}
-	}
 	hbTimeout := 1000 * time.Millisecond
 	return Options{
 		HeartbeatTimeout: hbTimeout,
@@ -106,11 +97,12 @@ func DefaultOptions() Options {
 		LogSegmentSize:   16 * 1024 * 1024,
 		SnapshotsRetain:  1,
 		Logger:           new(defaultLogger),
-		Trace:            DefaultTrace(logger("[INFO]"), logger("[WARN]")),
 	}
 }
 
-// trace ----------------------------------------------------------
+type Resolver interface {
+	LookupID(id uint64, timeout time.Duration) (addr string, err error)
+}
 
 type Logger interface {
 	Info(v ...interface{})
@@ -156,7 +148,7 @@ func (nopAlerts) Reachable(id uint64)              {}
 func (nopAlerts) QuorumUnreachable()               {}
 func (nopAlerts) ShuttingDown(reason error)        {}
 
-type Trace struct {
+type tracer struct {
 	Error               func(err error)
 	Starting            func(info Info, addr net.Addr)
 	StateChanged        func(info Info)
@@ -173,96 +165,4 @@ type Trace struct {
 	Unreachable         func(info Info, id uint64, since time.Time, err error)
 	QuorumUnreachable   func(info Info, since time.Time)
 	ShuttingDown        func(info Info, reason error)
-}
-
-func DefaultTrace(info, warn func(v ...interface{})) (trace Trace) {
-	trace.Error = func(err error) {
-		warn(err)
-	}
-	//trace.Starting = func(rinfo Info, addr net.Addr) {
-	//	info("raft: cid:", rinfo.CID(), "nid:", rinfo.NID())
-	//	info("raft:", rinfo.Configs().Latest)
-	//	info("raft: listening at", addr)
-	//}
-	//trace.StateChanged = func(rinfo Info) {
-	//	info("raft: state changed to", rinfo.State())
-	//}
-	//trace.LeaderChanged = func(rinfo Info) {
-	//	if rinfo.Leader() == 0 {
-	//		info("raft: no known leader")
-	//	} else if rinfo.Leader() == rinfo.NID() {
-	//		info("raft: cluster leadership acquired")
-	//	} else {
-	//		info("raft: following leader node", rinfo.Leader())
-	//	}
-	//}
-	//trace.ElectionStarted = func(rinfo Info) {
-	//	info("raft: started election, term", rinfo.Term())
-	//}
-	//trace.ElectionAborted = func(rinfo Info, reason string) {
-	//	info("raft: aborting election:", reason)
-	//}
-	//trace.CommitReady = func(rinfo Info) {
-	//	info("raft: ready for commit")
-	//}
-	//trace.ConfigChanged = func(rinfo Info) {
-	//	if rinfo.Configs().Latest.Index == 1 {
-	//		info("raft: bootstrapped with", rinfo.Configs().Latest)
-	//	} else {
-	//		info("raft: changed to", rinfo.Configs().Latest)
-	//	}
-	//}
-	//trace.ConfigCommitted = func(rinfo Info) {
-	//	info("raft: committed", rinfo.Configs().Latest)
-	//	if rinfo.Configs().IsStable() {
-	//		info("raft: config is stable")
-	//	}
-	//}
-	//trace.ConfigReverted = func(rinfo Info) {
-	//	info("raft: reverted to", rinfo.Configs().Latest)
-	//}
-	//trace.RoundCompleted = func(rinfo Info, id uint64, r Round) {
-	//	info("raft: nonVoter", id, "completed round", r.Ordinal, "in", r.Duration(), ", its lastIndex:", r.LastIndex)
-	//}
-	//trace.LogCompacted = func(rinfo Info) {
-	//	info("raft: log upto index ", rinfo.FirstLogIndex()-1, "is discarded")
-	//}
-	//trace.ConfigActionStarted = func(rinfo Info, id uint64, action ConfigAction) {
-	//	switch action {
-	//	case Promote:
-	//		info("raft: promoting nonvoter ", id, ", after", rinfo.Followers()[id].Round, "round(s)")
-	//	case Demote:
-	//		info("raft: demoting voter", id)
-	//	case Remove:
-	//		info("raft: removing nonvoter", id)
-	//	}
-	//}
-	//trace.Unreachable = func(rinfo Info, id uint64, since time.Time, err error) {
-	//	if since.IsZero() {
-	//		info("raft: node", id, "is reachable now")
-	//	} else {
-	//		warn("raft: node", id, "is unreachable since", since.Format(time.RFC3339), "reason:", err)
-	//	}
-	//}
-	//trace.QuorumUnreachable = func(rinfo Info, since time.Time) {
-	//	if since.IsZero() {
-	//		info("raft: quorum is reachable now")
-	//	} else {
-	//		warn("raft: quorum is unreachable since", since.Format(time.RFC3339))
-	//	}
-	//}
-	//trace.ShuttingDown = func(rinfo Info, reason error) {
-	//	if reason == ErrServerClosed {
-	//		info("raft: shutting down")
-	//	} else {
-	//		warn("raft: shutting down, reason", strconv.Quote(reason.Error()))
-	//	}
-	//}
-	return
-}
-
-// ----------------------------------------------
-
-type Resolver interface {
-	LookupID(id uint64, timeout time.Duration) (addr string, err error)
 }

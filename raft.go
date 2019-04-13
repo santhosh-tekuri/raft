@@ -53,7 +53,7 @@ type Raft struct {
 	shutdownOnRemove bool
 	logger           Logger
 	alerts           Alerts
-	trace            Trace
+	tracer           tracer
 	bandwidth        int64
 
 	// dialing
@@ -114,7 +114,6 @@ func New(opt Options, fsm FSM, storageDir string) (*Raft, error) {
 		shutdownOnRemove: opt.ShutdownOnRemove,
 		logger:           opt.Logger,
 		alerts:           opt.Alerts,
-		trace:            opt.Trace,
 		bandwidth:        opt.Bandwidth,
 		dialFn:           net.DialTimeout,
 		connPools:        make(map[uint64]*connPool),
@@ -164,8 +163,8 @@ func (r *Raft) Serve(l net.Listener) error {
 	r.logger.Info("cid:", r.cid, "nid:", r.nid)
 	r.logger.Info(r.configs.Latest)
 	r.logger.Info("listening at", l.Addr())
-	if r.trace.Starting != nil {
-		r.trace.Starting(r.liveInfo(), l.Addr())
+	if r.tracer.Starting != nil {
+		r.tracer.Starting(r.liveInfo(), l.Addr())
 	}
 
 	var wg sync.WaitGroup
@@ -373,8 +372,8 @@ func (r *Raft) doClose(reason error) {
 			r.logger.Warn(trimPrefix(reason), "shutting down")
 		}
 		r.alerts.ShuttingDown(reason)
-		if r.trace.ShuttingDown != nil {
-			r.trace.ShuttingDown(r.liveInfo(), reason)
+		if r.tracer.ShuttingDown != nil {
+			r.tracer.ShuttingDown(r.liveInfo(), reason)
 		}
 		close(r.close)
 	})
@@ -402,8 +401,8 @@ func (r *Raft) setState(s State) {
 		}
 		r.logger.Info("changing state", r.state, "->", s)
 		r.state = s
-		if r.trace.StateChanged != nil {
-			r.trace.StateChanged(r.liveInfo())
+		if r.tracer.StateChanged != nil {
+			r.tracer.StateChanged(r.liveInfo())
 		}
 	}
 }
@@ -421,8 +420,8 @@ func (r *Raft) setLeader(id uint64) {
 		} else {
 			r.logger.Info("following leader node", r.leader)
 		}
-		if r.trace.LeaderChanged != nil {
-			r.trace.LeaderChanged(r.liveInfo())
+		if r.tracer.LeaderChanged != nil {
+			r.tracer.LeaderChanged(r.liveInfo())
 		}
 	}
 }

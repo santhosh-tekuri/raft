@@ -304,12 +304,6 @@ func (r *Raft) Info() Info {
 	return info
 }
 
-func (r *Raft) SetTrace(trace Trace) error {
-	return r.inspect(func(*Raft) {
-		r.trace = trace
-	})
-}
-
 // ------------------------------------------------------------------------
 
 // AddVoter adds given node as voter.

@@ -115,8 +115,8 @@ func (l *leader) checkConfigActions(t *task, config Config) {
 		if trace {
 			println(l, n.ID, "started", n.Action)
 		}
-		if l.trace.ConfigActionStarted != nil {
-			l.trace.ConfigActionStarted(l.liveInfo(), n.ID, n.Action)
+		if l.tracer.ConfigActionStarted != nil {
+			l.tracer.ConfigActionStarted(l.liveInfo(), n.ID, n.Action)
 		}
 		switch n.Action {
 		case Demote:
@@ -173,8 +173,8 @@ func (l *leader) checkConfigAction(t *task, config Config, status *replicationSt
 				println(l, status.id, "finished:", r)
 			}
 			l.logger.Info("nonVoter", status.id, "completed round", r.Ordinal, "in", r.Duration(), ", its lastIndex:", r.LastIndex)
-			if l.trace.RoundCompleted != nil {
-				l.trace.RoundCompleted(l.liveInfo(), status.id, *r)
+			if l.tracer.RoundCompleted != nil {
+				l.tracer.RoundCompleted(l.liveInfo(), status.id, *r)
 			}
 		}
 		if !r.finished() {
@@ -228,8 +228,8 @@ func (l *leader) checkConfigAction(t *task, config Config, status *replicationSt
 	if trace {
 		println(l, status.id, "started", action)
 	}
-	if l.trace.ConfigActionStarted != nil {
-		l.trace.ConfigActionStarted(l.liveInfo(), n.ID, action)
+	if l.tracer.ConfigActionStarted != nil {
+		l.tracer.ConfigActionStarted(l.liveInfo(), n.ID, action)
 	}
 	l.doChangeConfig(t, config)
 }

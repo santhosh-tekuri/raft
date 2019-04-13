@@ -47,8 +47,8 @@ func (c *candidate) startElection() {
 	deadline := time.Now().Add(d)
 	c.timer.reset(d)
 	c.logger.Info("started election for term", c.term)
-	if c.trace.ElectionStarted != nil {
-		c.trace.ElectionStarted(c.liveInfo())
+	if c.tracer.ElectionStarted != nil {
+		c.tracer.ElectionStarted(c.liveInfo())
 	}
 
 	// send RequestVote RPCs to all other servers
