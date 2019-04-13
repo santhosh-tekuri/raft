@@ -32,7 +32,7 @@ func TestTransfer_singleVoter(t *testing.T) {
 	// launch new raft, and add him as nonvoter
 	c.launch(1, false)
 	c.waitCommitReady(ldr)
-	c.ensure(waitAddNonvoter(ldr, 2, c.id2Addr(2), false))
+	c.ensure(c.waitAddNonvoter(ldr, 2, c.id2Addr(2), false))
 
 	// transfer leadership, must return ErrLeadershipTransferNoVoter
 	_, err := waitTask(ldr, TransferLeadership(0, c.longTimeout), c.longTimeout)
@@ -47,7 +47,7 @@ func TestTransfer_fiveNodes(t *testing.T) {
 		// launch 5 node cluster
 		c, ldr, _ := launchCluster(t, 5)
 		defer c.shutdown()
-		term := ldr.Info().Term()
+		term := c.info(ldr).Term
 
 		c.sendUpdates(ldr, 1, 20)
 		if targetsReady {
@@ -66,7 +66,7 @@ func TestTransfer_fiveNodes(t *testing.T) {
 		}
 
 		// new leader term must be one greater than old leader term
-		if got := newLdr.Info().Term(); got != term+1 {
+		if got := c.info(newLdr).Term; got != term+1 {
 			c.Fatalf("newLdr.term: got %d, want %d", got, term+1)
 		}
 	}
@@ -88,7 +88,7 @@ func setupTransferTimeout(t *testing.T, quorumWait, taskTimeout time.Duration) (
 	ldr, flrs = c.ensureLaunch(3)
 
 	// wait for bootstrap config committed by all
-	c.waitForCommitted(ldr.Info().LastLogIndex())
+	c.waitForCommitted(c.info(ldr).LastLogIndex)
 
 	// shutdown all followers
 	c.shutdown(flrs...)
@@ -132,7 +132,7 @@ func TestTransfer_rejectLogUpdateTasks(t *testing.T) {
 	}
 
 	// send configChange request, must be rejected with InProgressError
-	err = waitAddNonvoter(ldr, 5, c.id2Addr(5), false)
+	err = c.waitAddNonvoter(ldr, 5, c.id2Addr(5), false)
 	if _, ok := err.(InProgressError); !ok {
 		t.Fatalf("err: got %#v, want InProgressError", err)
 	}

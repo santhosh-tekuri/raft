@@ -68,7 +68,7 @@ func info(c raft.Client) {
 	buf := new(bytes.Buffer)
 	enc := json.NewEncoder(buf)
 	enc.SetEscapeHTML(false) // to avoid html escape as in "read tcp 127.0.0.1:56350-\u003e127.0.0.1:8083: read: connection reset by peer"
-	if err := enc.Encode(info.JSON()); err != nil {
+	if err := enc.Encode(info); err != nil {
 		errln(err.Error())
 		os.Exit(1)
 	}
@@ -107,17 +107,17 @@ func getConfig(c raft.Client) {
 		errln(err.Error())
 		os.Exit(1)
 	}
-	b, err := json.MarshalIndent(info.Configs().Latest, "", "    ")
+	b, err := json.MarshalIndent(info.Configs.Latest, "", "    ")
 	if err != nil {
 		errln(err.Error())
 		os.Exit(1)
 	}
 	fmt.Println(string(b))
-	if info.Configs().IsBootstrap() {
+	if info.Configs.IsBootstrap() {
 		errln("raft is not bootstrapped yet")
-	} else if !info.Configs().IsCommitted() {
+	} else if !info.Configs.IsCommitted() {
 		errln("config is not yet committed")
-	} else if !info.Configs().IsStable() {
+	} else if !info.Configs.IsStable() {
 		errln("config is not yet stable")
 	}
 }

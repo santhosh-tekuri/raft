@@ -170,13 +170,8 @@ func (s *server) handleConn(rwc net.Conn) error {
 func (s *server) handleTask(typ taskType, c *conn) error {
 	switch typ {
 	case taskInfo:
-		info := s.r.Info()
-		t := &task{}
-		if info == nil {
-			t.result = ErrServerClosed
-		} else {
-			t.result = info
-		}
+		t := GetInfo()
+		s.executeTask(t)
 		return encodeTaskResp(t, c.bufw)
 	case taskChangeConfig:
 		e := &entry{}

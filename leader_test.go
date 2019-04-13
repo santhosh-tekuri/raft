@@ -39,7 +39,7 @@ func TestLeader_stepDown(t *testing.T) {
 	c.waitFSMLen(1)
 
 	// disconnect leader
-	ldrTerm := ldr.Info().Term()
+	ldrTerm := c.info(ldr).Term
 	c.disconnect(ldr)
 
 	// leader should stepDown
@@ -49,7 +49,7 @@ func TestLeader_stepDown(t *testing.T) {
 	newLdr := c.waitForLeader(c.exclude(ldr)...)
 
 	// ensure leader term is greater
-	if newLdrTerm := newLdr.Info().Term(); newLdrTerm <= ldrTerm {
+	if newLdrTerm := c.info(newLdr).Term; newLdrTerm <= ldrTerm {
 		t.Fatalf("expected new leader term: newLdrTerm=%d, ldrTerm=%d", newLdrTerm, ldrTerm)
 	}
 
@@ -174,7 +174,7 @@ func TestLeader_updateFSM_nonLeader(t *testing.T) {
 	defer c.shutdown()
 
 	// apply should work not work on non-leader
-	ldrAddr := ldr.Info().Addr()
+	ldrAddr := c.info(ldr).Addr
 	for _, r := range c.rr {
 		if r != ldr {
 			_, err := waitUpdate(r, "reject", c.longTimeout)
@@ -239,18 +239,18 @@ func TODO_TestLeader_backPressure(t *testing.T) {
 		select {
 		case <-wgCh:
 			fmt.Println("waitgroup finished")
-			info := ldr.Info()
-			fmt.Println("lastLogIndex:", info.LastLogIndex(), "committed:", info.Committed())
+			info := c.info(ldr)
+			fmt.Println("lastLogIndex:", info.LastLogIndex, "committed:", info.Committed)
 			return
 		case e := <-stateChanged.ch:
 			fmt.Println("statechanged:", e.state)
-			info := ldr.Info()
-			fmt.Println("lastLogIndex:", info.LastLogIndex(), "committed:", info.Committed())
+			info := c.info(ldr)
+			fmt.Println("lastLogIndex:", info.LastLogIndex, "committed:", info.Committed)
 			t.Fatalf("leader changed state to %s", e.state)
 		case <-timer:
 			fmt.Println("timer hit")
-			info := ldr.Info()
-			fmt.Println("lastLogIndex:", info.LastLogIndex(), "committed:", info.Committed())
+			info := c.info(ldr)
+			fmt.Println("lastLogIndex:", info.LastLogIndex, "committed:", info.Committed)
 		}
 	}
 }
@@ -267,17 +267,17 @@ func TestLeader_barrierFSM(t *testing.T) {
 	c.ensureFSMLen(100, ldr)
 
 	// ensure leader's lastLogIndex matches with at-least one of follower
-	len0 := ldr.Info().LastLogIndex()
-	len1 := followers[0].Info().LastLogIndex()
-	len2 := followers[1].Info().LastLogIndex()
+	len0 := c.info(ldr).LastLogIndex
+	len1 := c.info(followers[0]).LastLogIndex
+	len2 := c.info(followers[1]).LastLogIndex
 	if len0 != len1 && len0 != len2 {
 		t.Fatalf("len0 %d, len1 %d, len2 %d", len0, len1, len2)
 	}
 
 	// ensure that barrier is not stored in log
-	want := ldr.Info().LastLogIndex()
+	want := c.info(ldr).LastLogIndex
 	c.waitBarrier(ldr, 0)
-	if got := ldr.Info().LastLogIndex(); got != want {
+	if got := c.info(ldr).LastLogIndex; got != want {
 		t.Fatalf("lastLogIndex: got %d, want %d", got, want)
 	}
 }
@@ -290,13 +290,13 @@ func TestLeader_readFSM(t *testing.T) {
 	c.waitBarrier(ldr, 0)
 
 	// send query
-	want := ldr.Info().LastLogIndex()
+	want := c.info(ldr).LastLogIndex
 	if _, err := waitRead(ldr, "last", 0); err != errNoCommands {
 		t.Fatalf("got %v, want %v", err, errNoCommands)
 	}
 
 	// ensure query is not stored in log
-	if got := ldr.Info().LastLogIndex(); got != want {
+	if got := c.info(ldr).LastLogIndex; got != want {
 		t.Fatalf("got %d, want %d", got, want)
 	}
 
@@ -332,7 +332,7 @@ func TestLeader_readFSM(t *testing.T) {
 
 	// ensure queries are not stored in log
 	want += 101
-	if got := ldr.Info().LastLogIndex(); got != want {
+	if got := c.info(ldr).LastLogIndex; got != want {
 		t.Fatalf("got %d, want %d", got, want)
 	}
 

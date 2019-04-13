@@ -148,6 +148,59 @@ func BarrierFSM() FSMTask {
 
 // ------------------------------------------------------------------------
 
+type infoTask struct {
+	*task
+}
+
+func GetInfo() Task {
+	return infoTask{newTask()}
+}
+
+func (r *Raft) info() Info {
+	var flrs map[uint64]FlrStatus
+	if r.state == Leader {
+		flrs := make(map[uint64]FlrStatus)
+		for id, repl := range r.ldr.repls {
+			errMessage := ""
+			if repl.status.err != nil {
+				errMessage = repl.status.err.Error()
+			}
+			var round uint64
+			if repl.status.round != nil {
+				round = repl.status.round.Ordinal
+			}
+			var unreachable *time.Time
+			if !repl.status.noContact.IsZero() {
+				unreachable = &repl.status.noContact
+			}
+			flrs[id] = FlrStatus{
+				ID:          id,
+				MatchIndex:  repl.status.matchIndex,
+				Unreachable: unreachable,
+				Err:         repl.status.err,
+				ErrMessage:  errMessage,
+				Round:       round,
+			}
+		}
+	}
+	return Info{
+		CID:           r.cid,
+		NID:           r.nid,
+		Addr:          r.addr(),
+		Term:          r.term,
+		State:         r.state,
+		Leader:        r.leader,
+		SnapshotIndex: r.snaps.index,
+		FirstLogIndex: r.log.PrevIndex() + 1,
+		LastLogIndex:  r.lastLogIndex,
+		LastLogTerm:   r.lastLogTerm,
+		Committed:     r.commitIndex,
+		LastApplied:   r.lastApplied(),
+		Configs:       r.configs.clone(),
+		Followers:     flrs,
+	}
+}
+
 type FlrStatus struct {
 	ID          uint64     `json:"-"`
 	MatchIndex  uint64     `json:"matchIndex"`
@@ -157,7 +210,7 @@ type FlrStatus struct {
 	Round       uint64     `json:"round,omitempty"`
 }
 
-type json struct {
+type Info struct {
 	CID           uint64               `json:"cid"`
 	NID           uint64               `json:"nid"`
 	Addr          string               `json:"addr"`
@@ -174,110 +227,7 @@ type json struct {
 	Followers     map[uint64]FlrStatus `json:"followers,omitempty"`
 }
 
-type Info interface {
-	CID() uint64
-	NID() uint64
-	Addr() string
-	Term() uint64
-	State() State
-	Leader() uint64
-	SnapshotIndex() uint64
-	FirstLogIndex() uint64
-	LastLogIndex() uint64
-	LastLogTerm() uint64
-	Committed() uint64
-	LastApplied() uint64
-	Configs() Configs
-	Followers() map[uint64]FlrStatus
-	JSON() interface{}
-}
-
-type liveInfo struct {
-	r *Raft
-}
-
-func (info liveInfo) CID() uint64           { return info.r.cid }
-func (info liveInfo) NID() uint64           { return info.r.nid }
-func (info liveInfo) Addr() string          { return info.r.addr() }
-func (info liveInfo) Term() uint64          { return info.r.term }
-func (info liveInfo) State() State          { return info.r.state }
-func (info liveInfo) Leader() uint64        { return info.r.leader }
-func (info liveInfo) SnapshotIndex() uint64 { return info.r.snaps.index }
-func (info liveInfo) FirstLogIndex() uint64 { return info.r.log.PrevIndex() + 1 }
-func (info liveInfo) LastLogIndex() uint64  { return info.r.lastLogIndex }
-func (info liveInfo) LastLogTerm() uint64   { return info.r.lastLogTerm }
-func (info liveInfo) Committed() uint64     { return info.r.commitIndex }
-func (info liveInfo) LastApplied() uint64   { return info.r.lastApplied() }
-func (info liveInfo) Configs() Configs      { return info.r.configs.clone() }
-
-func (info liveInfo) Followers() map[uint64]FlrStatus {
-	if info.r.state != Leader {
-		return nil
-	}
-	flrs := make(map[uint64]FlrStatus)
-	for id, repl := range info.r.ldr.repls {
-		errMessage := ""
-		if repl.status.err != nil {
-			errMessage = repl.status.err.Error()
-		}
-		var round uint64
-		if repl.status.round != nil {
-			round = repl.status.round.Ordinal
-		}
-		var unreachable *time.Time
-		if !repl.status.noContact.IsZero() {
-			unreachable = &repl.status.noContact
-		}
-		flrs[id] = FlrStatus{
-			ID:          id,
-			MatchIndex:  repl.status.matchIndex,
-			Unreachable: unreachable,
-			Err:         repl.status.err,
-			ErrMessage:  errMessage,
-			Round:       round,
-		}
-	}
-	return flrs
-}
-
-func (info liveInfo) JSON() interface{} {
-	return json{
-		CID:           info.CID(),
-		NID:           info.NID(),
-		Addr:          info.Addr(),
-		Term:          info.Term(),
-		State:         info.State(),
-		Leader:        info.Leader(),
-		SnapshotIndex: info.SnapshotIndex(),
-		FirstLogIndex: info.FirstLogIndex(),
-		LastLogIndex:  info.LastLogIndex(),
-		LastLogTerm:   info.LastLogTerm(),
-		Committed:     info.Committed(),
-		LastApplied:   info.LastApplied(),
-		Configs:       info.Configs(),
-		Followers:     info.Followers(),
-	}
-}
-
-type cachedInfo struct {
-	json json
-}
-
-func (info cachedInfo) CID() uint64                     { return info.json.CID }
-func (info cachedInfo) NID() uint64                     { return info.json.NID }
-func (info cachedInfo) Addr() string                    { return info.json.Addr }
-func (info cachedInfo) Term() uint64                    { return info.json.Term }
-func (info cachedInfo) State() State                    { return info.json.State }
-func (info cachedInfo) Leader() uint64                  { return info.json.Leader }
-func (info cachedInfo) SnapshotIndex() uint64           { return info.json.SnapshotIndex }
-func (info cachedInfo) FirstLogIndex() uint64           { return info.json.FirstLogIndex }
-func (info cachedInfo) LastLogIndex() uint64            { return info.json.LastLogIndex }
-func (info cachedInfo) LastLogTerm() uint64             { return info.json.LastLogTerm }
-func (info cachedInfo) Committed() uint64               { return info.json.Committed }
-func (info cachedInfo) LastApplied() uint64             { return info.json.LastApplied }
-func (info cachedInfo) Configs() Configs                { return info.json.Configs }
-func (info cachedInfo) Followers() map[uint64]FlrStatus { return info.json.Followers }
-func (info cachedInfo) JSON() interface{}               { return info.json }
+// ------------------------------------------------------------------------
 
 type inspect struct {
 	*task
@@ -293,15 +243,6 @@ func (r *Raft) inspect(fn func(r *Raft)) error {
 		<-t.Done()
 		return nil
 	}
-}
-func (r *Raft) Info() Info {
-	var info Info
-	_ = r.inspect(func(r *Raft) {
-		info = cachedInfo{
-			json: r.liveInfo().JSON().(json),
-		}
-	})
-	return info
 }
 
 // ------------------------------------------------------------------------
@@ -435,6 +376,8 @@ func TransferLeadership(target uint64, timeout time.Duration) Task {
 // todo: reply tasks even on panic
 func (r *Raft) executeTask(t Task) {
 	switch t := t.(type) {
+	case infoTask:
+		t.reply(r.info())
 	case changeConfig:
 		if r.state == Leader {
 			r.ldr.executeTask(t)

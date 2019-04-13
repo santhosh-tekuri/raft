@@ -28,11 +28,11 @@ func TestConnPool_getConn_IdentityError(t *testing.T) {
 	defer c2.shutdown()
 
 	// add node in cluster 2 as nonvoter in cluster1
-	if err := waitAddNonvoter(ldr, 2, c2.id2Addr(2), false); err != nil {
+	if err := c1.waitAddNonvoter(ldr, 2, c2.id2Addr(2), false); err != nil {
 		t.Fatal(err)
 	}
 
-	// ensure that ldr detects that nonvoter is does not belong to cluser
+	// ensure that ldr detects that nonvoter is does not belong to cluster
 	// and treats it as unreachable
 	err := c1.waitUnreachableDetected(ldr, r2)
 	if _, ok := err.(IdentityError); !ok {
@@ -60,7 +60,7 @@ func TestConnPool_getConn_ConfigAddrUpdate(t *testing.T) {
 	c.waitCommitReady(ldr)
 
 	// submit ChangeConfig with new addr
-	config := ldr.Info().Configs().Latest
+	config := c.info(ldr).Configs.Latest
 	if err := config.SetAddr(flrs[0].nid, c.id2Addr(flrs[0].nid)); err != nil {
 		t.Fatal(err)
 	}

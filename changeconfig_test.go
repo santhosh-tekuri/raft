@@ -27,20 +27,20 @@ func TestChangeConfig_validations(t *testing.T) {
 	// wait until leader is commit ready
 	c.waitCommitReady(ldr)
 
-	configs := ldr.Info().Configs()
+	configs := c.info(ldr).Configs
 
 	// adding node with empty id should fail
-	if err := waitAddNonvoter(ldr, 0, "localhost:8888", false); err == nil {
+	if err := c.waitAddNonvoter(ldr, 0, "localhost:8888", false); err == nil {
 		t.Fatal(err)
 	}
 
 	// adding node with empty addr should fail
-	if err := waitAddNonvoter(ldr, 10, "", false); err == nil {
+	if err := c.waitAddNonvoter(ldr, 10, "", false); err == nil {
 		t.Fatal(err)
 	}
 
 	// adding node with existing id should fail
-	config := ldr.Info().Configs().Latest
+	config := c.info(ldr).Configs.Latest
 	for id := range config.Nodes {
 		if err := config.AddNonvoter(id, "localhost:8888", false); err == nil {
 			t.Fatal(err)
@@ -48,14 +48,14 @@ func TestChangeConfig_validations(t *testing.T) {
 	}
 
 	// adding node with existing addr should fail
-	for _, n := range ldr.Info().Configs().Latest.Nodes {
-		if err := waitAddNonvoter(ldr, 12, n.Addr, false); err == nil {
+	for _, n := range c.info(ldr).Configs.Latest.Nodes {
+		if err := c.waitAddNonvoter(ldr, 12, n.Addr, false); err == nil {
 			t.Fatal(err)
 		}
 	}
 
 	// ensure that config is not changed because of above errors
-	if configsNow := ldr.Info().Configs(); !reflect.DeepEqual(configsNow, configs) {
+	if configsNow := c.info(ldr).Configs; !reflect.DeepEqual(configsNow, configs) {
 		t.Log("old: ", configs)
 		t.Log("new: ", configsNow)
 		t.Fatal("configs changed")
@@ -71,13 +71,13 @@ func TestChangeConfig_trace(t *testing.T) {
 	c.waitCommitReady(ldr)
 
 	// wait for bootstrap config committed by all
-	c.waitForCommitted(ldr.Info().LastLogIndex())
+	c.waitForCommitted(c.info(ldr).LastLogIndex)
 
 	configRelated := c.registerFor(eventConfigRelated)
 	defer c.unregister(configRelated)
 
 	// add M3 as nonvoter, wait for success reply
-	c.ensure(waitAddNonvoter(ldr, 3, c.id2Addr(3), false))
+	c.ensure(c.waitAddNonvoter(ldr, 3, c.id2Addr(3), false))
 
 	// ensure that leader raised configChange
 	select {
@@ -119,7 +119,7 @@ func TestChangeConfig_trace(t *testing.T) {
 	}
 
 	// wait and ensure that followers raised configCommitted
-	c.waitForCommitted(ldr.Info().LastLogIndex(), followers[0])
+	c.waitForCommitted(c.info(ldr).LastLogIndex, followers[0])
 	select {
 	case e := <-configRelated.ch:
 		if e.src != followers[0].NID() {
@@ -136,18 +136,18 @@ func TestChangeConfig_trace(t *testing.T) {
 	m3 := c.launch(1, false)[3]
 
 	// ensure that config committed by all
-	c.waitForCommitted(ldr.Info().LastLogIndex(), m3)
+	c.waitForCommitted(c.info(ldr).LastLogIndex, m3)
 	for _, r := range c.rr {
-		info := r.Info()
-		if !info.Configs().IsCommitted() {
-			t.Fatalf("config is not committed by M%d %s", info.NID(), info.State())
+		info := c.info(r)
+		if !info.Configs.IsCommitted() {
+			t.Fatalf("config is not committed by M%d %s", info.NID, info.State)
 		}
-		m3, ok := info.Configs().Committed.Nodes[3]
+		m3, ok := info.Configs.Committed.Nodes[3]
 		if !ok {
-			t.Fatalf("m3 is not present in M%d %s", info.NID(), info.State())
+			t.Fatalf("m3 is not present in M%d %s", info.NID, info.State)
 		}
 		if m3.Voter {
-			t.Fatalf("m3 must be nonvoter in M%d %s", info.NID(), info.State())
+			t.Fatalf("m3 must be nonvoter in M%d %s", info.NID, info.State)
 		}
 	}
 }
@@ -170,7 +170,7 @@ func TestChangeConfig_promote_newNode_singleRound(t *testing.T) {
 		nr := c.launch(1, false)[id]
 
 		// add him as nonvoter with promote=true
-		c.ensure(waitAddNonvoter(ldr, id, c.id2Addr(id), true))
+		c.ensure(c.waitAddNonvoter(ldr, id, c.id2Addr(id), true))
 
 		// wait until leader promotes him to voter
 		e, err := promoting.waitForEvent(c.longTimeout)
@@ -189,7 +189,7 @@ func TestChangeConfig_promote_newNode_singleRound(t *testing.T) {
 
 		// wait for config commit, with new raft as voter
 		isVoter := func() bool {
-			n, ok := ldr.Info().Configs().Committed.Nodes[id]
+			n, ok := c.info(ldr).Configs.Committed.Nodes[id]
 			return ok && n.Voter
 		}
 		if !waitForCondition(isVoter, c.commitTimeout, c.longTimeout) {
@@ -198,7 +198,7 @@ func TestChangeConfig_promote_newNode_singleRound(t *testing.T) {
 
 		// check that new node, knows that it is voter
 		isVoter = func() bool {
-			n, ok := nr.Info().Configs().Committed.Nodes[id]
+			n, ok := c.info(nr).Configs.Committed.Nodes[id]
 			return ok && n.Voter
 		}
 		if !waitForCondition(isVoter, c.commitTimeout, c.longTimeout) {
@@ -207,7 +207,7 @@ func TestChangeConfig_promote_newNode_singleRound(t *testing.T) {
 	}
 
 	// make sure that we have 5 voters in clusters
-	configs := ldr.Info().Configs()
+	configs := c.info(ldr).Configs
 	if !configs.IsCommitted() {
 		t.Fatal("config must be committed")
 	}
@@ -229,7 +229,7 @@ func TestChangeConfig_promote_newNode_uptodateButConfigChangeInProgress(t *testi
 	c.waitCommitReady(ldr)
 
 	// wait for bootstrap config committed by all
-	c.waitForCommitted(ldr.Info().LastLogIndex())
+	c.waitForCommitted(c.info(ldr).LastLogIndex)
 
 	// shutdown the follower
 	c.shutdown(followers[0])
@@ -239,7 +239,7 @@ func TestChangeConfig_promote_newNode_uptodateButConfigChangeInProgress(t *testi
 	defer c.unregister(roundCompleted)
 	promoting := c.registerFor(eventConfigActionStarted, ldr)
 	defer c.unregister(promoting)
-	task := addNonvoter(ldr, 3, c.id2Addr(3), true)
+	task := c.addNonvoter(ldr, 3, c.id2Addr(3), true)
 	select {
 	case <-task.Done():
 		t.Fatalf("should not be done: %v", task.Err())
@@ -263,7 +263,7 @@ func TestChangeConfig_promote_newNode_uptodateButConfigChangeInProgress(t *testi
 	time.Sleep(time.Second)
 
 	// ensure config is not committed, and m3 is still nonvoter
-	configs := ldr.Info().Configs()
+	configs := c.info(ldr).Configs
 	if configs.IsCommitted() {
 		t.Fatal("config should not be committed")
 	}
@@ -296,7 +296,7 @@ func TestChangeConfig_promote_newNode_uptodateButConfigChangeInProgress(t *testi
 
 	// wait for config commit, with m3 as voter
 	isVoter := func() bool {
-		n, ok := ldr.Info().Configs().Committed.Nodes[m3.nid]
+		n, ok := c.info(ldr).Configs.Committed.Nodes[m3.nid]
 		return ok && n.Voter
 	}
 	waitForCondition(isVoter, c.commitTimeout, c.longTimeout)
@@ -317,7 +317,7 @@ func TestChangeConfig_removeVoters(t *testing.T) {
 	defer c.unregister(electionAborted1)
 
 	// submit ChangeConfig with two voters removed
-	config := ldr.Info().Configs().Latest
+	config := c.info(ldr).Configs.Latest
 	if err := config.SetAction(flrs[0].nid, Remove); err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +364,7 @@ func TestChangeConfig_removeLeader(t *testing.T) {
 	c.waitCommitReady(ldr)
 
 	// submit ChangeConfig with two voters removed
-	config := ldr.Info().Configs().Latest
+	config := c.info(ldr).Configs.Latest
 	if err := config.SetAction(ldr.nid, Remove); err != nil {
 		t.Fatal(err)
 	}

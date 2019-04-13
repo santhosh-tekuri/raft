@@ -58,7 +58,7 @@ func TestReplication_nonvoter_catchesUp_followsLeader(t *testing.T) {
 	m4 := c.launch(1, false)[4]
 
 	// add M4 as nonvoter, wait for success reply
-	c.ensure(waitAddNonvoter(ldr, m4.NID(), c.id2Addr(m4.NID()), false))
+	c.ensure(c.waitAddNonvoter(ldr, m4.NID(), c.id2Addr(m4.NID()), false))
 
 	// ensure that M4 got its FSM replicated
 	c.waitFSMLen(10, m4)
@@ -92,7 +92,7 @@ func TestReplication_nonvoter_reconnects_catchesUp(t *testing.T) {
 	c.waitCommitReady(ldr)
 
 	// add M4 as nonvoter, wait for success reply
-	c.ensure(waitAddNonvoter(ldr, m4.NID(), c.id2Addr(m4.NID()), false))
+	c.ensure(c.waitAddNonvoter(ldr, m4.NID(), c.id2Addr(m4.NID()), false))
 
 	// ensure that leader detected that m4 is unreachable
 	_ = c.waitUnreachableDetected(ldr, m4)
@@ -114,9 +114,9 @@ func TestReplication_nonvoter_reconnects_catchesUp(t *testing.T) {
 	c.waitFSMLen(10, m4)
 
 	// restart m4, and check that he started with earlier config
-	before := m4.Info().Configs()
+	before := c.info(m4).Configs
 	m4 = c.restart(m4)
-	after := m4.Info().Configs()
+	after := c.info(m4).Configs
 	if !reflect.DeepEqual(before.Latest, after.Latest) {
 		t.Log("before.latest:", before.Latest)
 		t.Log(" after.latest:", after.Latest)
@@ -136,7 +136,7 @@ func TestReplication_nonvoter_leaderChanged_followsNewLeader(t *testing.T) {
 	c.waitCommitReady(ldr)
 
 	// add M4 as nonvoter, wait for success reply
-	c.ensure(waitAddNonvoter(ldr, m4.NID(), c.id2Addr(m4.NID()), false))
+	c.ensure(c.waitAddNonvoter(ldr, m4.NID(), c.id2Addr(m4.NID()), false))
 
 	// now shutdown the leader
 	c.shutdown(ldr)
@@ -171,7 +171,7 @@ func testInstallSnapCase(t *testing.T, updateFSMAfterSnap bool) {
 	<-c.sendUpdates(ldr, 1, 30).Done()
 
 	// add two nonVoters M4; wait all commit them
-	c.ensure(waitAddNonvoter(ldr, 4, c.id2Addr(4), false))
+	c.ensure(c.waitAddNonvoter(ldr, 4, c.id2Addr(4), false))
 	c.waitCatchup()
 
 	logCompacted := c.registerFor(eventLogCompacted, ldr)

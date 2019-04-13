@@ -74,7 +74,7 @@ func TestRaft_bootstrap(t *testing.T) {
 	// bootstrap one of the nodes
 	testln("prepareBootStrapConfig")
 	ldr := c.rr[1]
-	config := ldr.Info().Configs().Latest
+	config := c.info(ldr).Configs.Latest
 	for _, r := range c.rr {
 		if err := config.AddVoter(r.NID(), c.id2Addr(r.NID())); err != nil {
 			c.Fatal(err)
@@ -467,6 +467,14 @@ func (c *cluster) restart(r *Raft) *Raft {
 	return newr
 }
 
+func (c *cluster) info(r *Raft) Info {
+	res, err := waitTask(r, GetInfo(), 0)
+	if err != nil {
+		c.Fatal(err)
+	}
+	return res.(Info)
+}
+
 func (c *cluster) waitForStability(rr ...*Raft) {
 	c.Helper()
 	testln("waitForStability:", hosts(rr))
@@ -538,8 +546,11 @@ func (c *cluster) waitForHealthy() *Raft {
 
 func (c *cluster) ensureLeader(leader uint64) {
 	c.Helper()
+	ee.statusMu.RLock()
+	defer ee.statusMu.RUnlock()
 	for _, r := range c.rr {
-		if got := r.Info().Leader(); got != leader {
+		status := ee.status[identity{r.cid, r.nid}]
+		if got := status.leader; got != leader {
 			c.Fatalf("leader of M%d: got M%d, want M%d", r.NID(), got, leader)
 		}
 	}
@@ -715,10 +726,10 @@ func (c *cluster) waitForCommitted(index uint64, rr ...*Raft) {
 	log := false
 	condition := func() bool {
 		for _, r := range rr {
-			info := r.Info()
-			if info.Committed() < index {
+			info := c.info(r)
+			if info.Committed < index {
 				if log {
-					c.Logf("waitForCommitted: M%d lastLogIndex:%d committed:%d", r.NID(), info.LastLogIndex(), info.Committed())
+					c.Logf("waitForCommitted: M%d lastLogIndex:%d committed:%d", r.NID(), info.LastLogIndex, info.Committed)
 				}
 				return false
 			}
@@ -742,15 +753,15 @@ func (c *cluster) waitCatchup(rr ...*Raft) {
 	if len(rr) == 0 {
 		rr = c.exclude(leaders[0])
 	}
-	ldr := leaders[0].Info()
+	ldr := c.info(leaders[0])
 	log := false
 	condition := func() bool {
 		for _, r := range rr {
-			info := r.Info()
-			if info.LastLogIndex() < ldr.LastLogIndex() ||
-				info.Committed() < ldr.Committed() {
+			info := c.info(r)
+			if info.LastLogIndex < ldr.LastLogIndex ||
+				info.Committed < ldr.Committed {
 				if log {
-					c.Logf("waitCatchup: M%d lastLogIndex:%d committed:%d", r.NID(), info.LastLogIndex(), info.Committed())
+					c.Logf("waitCatchup: M%d lastLogIndex:%d committed:%d", r.NID(), info.LastLogIndex, info.Committed)
 				}
 				return false
 			}
@@ -758,7 +769,7 @@ func (c *cluster) waitCatchup(rr ...*Raft) {
 		return true
 	}
 	if !waitForCondition(condition, c.commitTimeout, c.longTimeout) {
-		c.Logf("waitCatchup: ldr M%d lastLogIndex:%d committed:%d", ldr.NID(), ldr.LastLogIndex(), ldr.Committed())
+		c.Logf("waitCatchup: ldr M%d lastLogIndex:%d committed:%d", ldr.NID, ldr.LastLogIndex, ldr.Committed)
 		log = true
 		condition()
 		c.Fatal("waitCatchup: timeout")
@@ -903,9 +914,9 @@ func waitBootstrap(r *Raft, c Config, timeout time.Duration) error {
 	return err
 }
 
-func addNonvoter(ldr *Raft, id uint64, addr string, promote bool) Task {
+func (c *cluster) addNonvoter(ldr *Raft, id uint64, addr string, promote bool) Task {
 	testln("addNonvoter:", host(ldr), id2Host(id), addr, promote)
-	newConf := ldr.Info().Configs().Latest
+	newConf := c.info(ldr).Configs.Latest
 	action := None
 	if promote {
 		action = Promote
@@ -916,9 +927,9 @@ func addNonvoter(ldr *Raft, id uint64, addr string, promote bool) Task {
 	return t
 }
 
-func waitAddNonvoter(ldr *Raft, id uint64, addr string, promote bool) error {
+func (c *cluster) waitAddNonvoter(ldr *Raft, id uint64, addr string, promote bool) error {
 	testln("waitAddNonvoter:", host(ldr), id2Host(id), addr, promote)
-	newConf := ldr.Info().Configs().Latest
+	newConf := c.info(ldr).Configs.Latest
 	action := None
 	if promote {
 		action = Promote

@@ -449,10 +449,6 @@ func (r *Raft) leaderAddr() string {
 	return addr
 }
 
-func (r *Raft) liveInfo() Info {
-	return liveInfo{r: r}
-}
-
 // state ----------------------------------
 
 type State byte

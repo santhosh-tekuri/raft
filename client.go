@@ -49,19 +49,19 @@ func (c Client) getConn() (*conn, error) {
 func (c Client) Info() (Info, error) {
 	conn, err := c.getConn()
 	if err != nil {
-		return nil, err
+		return Info{}, err
 	}
 	defer conn.rwc.Close()
 
 	if err = conn.bufw.WriteByte(byte(taskInfo)); err != nil {
-		return nil, err
+		return Info{}, err
 	}
 	if err = conn.bufw.Flush(); err != nil {
-		return nil, err
+		return Info{}, err
 	}
 	result, err := decodeTaskResp(taskInfo, conn.bufr)
 	if err != nil {
-		return nil, err
+		return Info{}, err
 	}
 	return result.(Info), nil
 }
@@ -177,59 +177,59 @@ func decodeTaskResp(typ taskType, r io.Reader) (interface{}, error) {
 	}
 	switch typ {
 	case taskInfo:
-		json := json{}
-		if json.CID, err = readUint64(r); err != nil {
+		info := Info{}
+		if info.CID, err = readUint64(r); err != nil {
 			return nil, err
 		}
-		if json.NID, err = readUint64(r); err != nil {
+		if info.NID, err = readUint64(r); err != nil {
 			return nil, err
 		}
-		if json.Addr, err = readString(r); err != nil {
+		if info.Addr, err = readString(r); err != nil {
 			return nil, err
 		}
-		if json.Term, err = readUint64(r); err != nil {
+		if info.Term, err = readUint64(r); err != nil {
 			return nil, err
 		}
 		b, err := readUint8(r)
 		if err != nil {
 			return nil, err
 		}
-		json.State = State(b)
-		if json.Leader, err = readUint64(r); err != nil {
+		info.State = State(b)
+		if info.Leader, err = readUint64(r); err != nil {
 			return nil, err
 		}
-		if json.SnapshotIndex, err = readUint64(r); err != nil {
+		if info.SnapshotIndex, err = readUint64(r); err != nil {
 			return nil, err
 		}
-		if json.FirstLogIndex, err = readUint64(r); err != nil {
+		if info.FirstLogIndex, err = readUint64(r); err != nil {
 			return nil, err
 		}
-		if json.LastLogIndex, err = readUint64(r); err != nil {
+		if info.LastLogIndex, err = readUint64(r); err != nil {
 			return nil, err
 		}
-		if json.LastLogTerm, err = readUint64(r); err != nil {
+		if info.LastLogTerm, err = readUint64(r); err != nil {
 			return nil, err
 		}
-		if json.Committed, err = readUint64(r); err != nil {
+		if info.Committed, err = readUint64(r); err != nil {
 			return nil, err
 		}
-		if json.LastApplied, err = readUint64(r); err != nil {
+		if info.LastApplied, err = readUint64(r); err != nil {
 			return nil, err
 		}
 		e := &entry{}
 		if err = e.decode(r); err != nil {
 			return nil, err
 		}
-		if err = json.Configs.Committed.decode(e); err != nil {
+		if err = info.Configs.Committed.decode(e); err != nil {
 			return nil, err
 		}
 		if err = e.decode(r); err != nil {
 			return nil, err
 		}
-		if err = json.Configs.Latest.decode(e); err != nil {
+		if err = info.Configs.Latest.decode(e); err != nil {
 			return nil, err
 		}
-		json.Followers = map[uint64]FlrStatus{}
+		info.Followers = map[uint64]FlrStatus{}
 		sz, err := readUint32(r)
 		if err != nil {
 			return nil, err
@@ -260,9 +260,9 @@ func decodeTaskResp(typ taskType, r io.Reader) (interface{}, error) {
 			if status.Round, err = readUint64(r); err != nil {
 				return nil, err
 			}
-			json.Followers[status.ID] = status
+			info.Followers[status.ID] = status
 		}
-		return cachedInfo{json}, nil
+		return info, nil
 	case taskChangeConfig, taskWaitForStableConfig, taskTransferLdr:
 		return nil, nil
 	case taskTakeSnapshot:
@@ -289,26 +289,26 @@ func encodeTaskResp(t Task, w *bufio.Writer) (err error) {
 		_ = writeUint64(w, r)
 		return
 	case Info:
-		_ = writeUint64(w, r.CID())
-		_ = writeUint64(w, r.NID())
-		_ = writeString(w, r.Addr())
-		_ = writeUint64(w, r.Term())
-		_ = writeUint8(w, uint8(r.State()))
-		_ = writeUint64(w, r.Leader())
-		_ = writeUint64(w, r.SnapshotIndex())
-		_ = writeUint64(w, r.FirstLogIndex())
-		_ = writeUint64(w, r.LastLogIndex())
-		_ = writeUint64(w, r.LastLogTerm())
-		_ = writeUint64(w, r.Committed())
-		_ = writeUint64(w, r.LastApplied())
-		configs := r.Configs()
+		_ = writeUint64(w, r.CID)
+		_ = writeUint64(w, r.NID)
+		_ = writeString(w, r.Addr)
+		_ = writeUint64(w, r.Term)
+		_ = writeUint8(w, uint8(r.State))
+		_ = writeUint64(w, r.Leader)
+		_ = writeUint64(w, r.SnapshotIndex)
+		_ = writeUint64(w, r.FirstLogIndex)
+		_ = writeUint64(w, r.LastLogIndex)
+		_ = writeUint64(w, r.LastLogTerm)
+		_ = writeUint64(w, r.Committed)
+		_ = writeUint64(w, r.LastApplied)
+		configs := r.Configs
 		if err = configs.Committed.encode().encode(w); err != nil {
 			return err
 		}
 		if err = configs.Latest.encode().encode(w); err != nil {
 			return err
 		}
-		flrs := r.Followers()
+		flrs := r.Followers
 		_ = writeUint32(w, uint32(len(flrs)))
 		for _, flr := range flrs {
 			_ = writeUint64(w, flr.ID)
