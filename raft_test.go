@@ -256,15 +256,6 @@ func newCluster(t *testing.T) *cluster {
 		heartbeatTimeout: heartbeatTimeout,
 		longTimeout:      5 * time.Second,
 		commitTimeout:    5 * time.Millisecond,
-		events: &events{
-			observers:     make(map[int]observer),
-			states:        make(map[uint64]State),
-			ldrs:          make(map[uint64]uint64),
-			commitReady:   make(map[uint64]bool),
-			electionCount: make(map[uint64]int),
-			unreachable:   make(map[uint64]error),
-			numRounds:     make(map[uint64]uint64),
-		},
 	}
 	c.opt = Options{
 		HeartbeatTimeout: heartbeatTimeout,
@@ -274,7 +265,7 @@ func newCluster(t *testing.T) *cluster {
 		LogSegmentSize:   4 * 1024,
 		SnapshotsRetain:  1,
 	}
-	c.tracer = c.events.trace()
+	c.tracer = ee.trace()
 	return c
 }
 
@@ -298,13 +289,26 @@ type cluster struct {
 	opt              Options
 	resolverMu       sync.RWMutex
 	tracer           tracer
-	*events
 }
 
 func (c *cluster) LookupID(id uint64, timeout time.Duration) (addr string, err error) {
 	c.resolverMu.RLock()
 	defer c.resolverMu.RUnlock()
 	return c.id2Addr(id), nil
+}
+
+func (c *cluster) status(r *Raft) status {
+	ee.statusMu.RLock()
+	defer ee.statusMu.RUnlock()
+	return ee.status[identity{r.cid, r.nid}]
+}
+
+func (c *cluster) registerFor(typ eventType, rr ...*Raft) observer {
+	return ee.registerFor(typ, c.id, rr...)
+}
+
+func (c *cluster) unregister(ob observer) {
+	ee.unregister(ob)
 }
 
 // if last param is error, call t.Fatal
@@ -355,7 +359,7 @@ func (c *cluster) launch(n int, bootstrap bool) map[uint64]*Raft {
 				c.Fatalf("Storage.bootstrap failed: %v", err)
 			}
 		}
-		fsm := &fsmMock{id: node.ID, changed: c.events.onFMSChanged}
+		fsm := &fsmMock{id: identity{c.id, node.ID}, changed: ee.onFMSChanged}
 		r, err := New(c.opt, fsm, storageDir)
 		if err != nil {
 			c.Fatal(err)
@@ -384,10 +388,13 @@ func (c *cluster) serve(r *Raft) {
 	if err != nil {
 		c.Fatalf("raft.listen failed: %v", err)
 	}
-	c.eventMu.Lock()
-	c.states[r.nid] = Follower
-	c.ldrs[r.nid] = 0
-	c.eventMu.Unlock()
+	ee.statusMu.Lock()
+	identity := identity{r.cid, r.nid}
+	status := ee.status[identity]
+	status.state = Follower
+	status.leader = 0
+	ee.status[identity] = status
+	ee.statusMu.Unlock()
 	go func() {
 		err := r.Serve(l)
 		c.serverErrMu.RLock()
@@ -448,7 +455,7 @@ func (c *cluster) restart(r *Raft) *Raft {
 	c.Helper()
 	c.shutdown(r)
 
-	newFSM := &fsmMock{id: r.NID(), changed: c.events.onFMSChanged}
+	newFSM := &fsmMock{id: identity{r.cid, r.nid}, changed: ee.onFMSChanged}
 	storage := c.storage[r.NID()]
 	newr, err := New(c.opt, newFSM, storage)
 	if err != nil {
@@ -489,9 +496,7 @@ func (c *cluster) waitForStability(rr ...*Raft) {
 }
 
 func (c *cluster) getState(r *Raft) State {
-	c.eventMu.RLock()
-	defer c.eventMu.RUnlock()
-	return c.states[r.nid]
+	return c.status(r).state
 }
 
 func (c *cluster) getInState(state State, rr ...*Raft) []*Raft {
@@ -499,10 +504,11 @@ func (c *cluster) getInState(state State, rr ...*Raft) []*Raft {
 		rr = c.exclude()
 	}
 	var inState []*Raft
-	c.eventMu.RLock()
-	defer c.eventMu.RUnlock()
+	ee.statusMu.RLock()
+	defer ee.statusMu.RUnlock()
 	for _, r := range rr {
-		if c.states[r.nid] == state {
+		status := ee.status[identity{r.cid, r.nid}]
+		if status.state == state {
 			inState = append(inState, r)
 		}
 	}
@@ -550,16 +556,17 @@ func (c *cluster) waitForFollowers() *Raft {
 
 	var ldr uint64
 	condition := func(e *event) bool {
-		c.eventMu.RLock()
-		defer c.eventMu.RUnlock()
+		ee.statusMu.RLock()
+		defer ee.statusMu.RUnlock()
 		ldr = 0
-		for _, v := range c.ldrs {
-			if v == 0 {
+		for _, r := range c.rr {
+			status := ee.status[identity{r.cid, r.nid}]
+			if status.leader == 0 {
 				return false
 			}
 			if ldr == 0 {
-				ldr = v
-			} else if ldr != v {
+				ldr = status.leader
+			} else if ldr != status.leader {
 				return false
 			}
 		}
@@ -568,11 +575,12 @@ func (c *cluster) waitForFollowers() *Raft {
 	leaderChanged := c.registerFor(eventLeaderChanged)
 	defer c.unregister(leaderChanged)
 	if !leaderChanged.waitFor(condition, c.longTimeout) {
-		c.eventMu.RLock()
-		for id, ldr := range c.ldrs {
-			c.Logf("leader of M%d: M%d", id, ldr)
+		ee.statusMu.RLock()
+		for _, r := range c.rr {
+			status := ee.status[identity{r.cid, r.nid}]
+			c.Logf("leader of M%d: M%d", r.nid, status.leader)
 		}
-		c.eventMu.RUnlock()
+		ee.statusMu.RUnlock()
 		c.Fatalf("waitForFollowers timeout")
 	}
 	return c.rr[ldr]
@@ -606,10 +614,11 @@ func (c *cluster) waitForLeader(rr ...*Raft) *Raft {
 	}
 	var ldr *Raft
 	condition := func(e *event) bool {
-		c.eventMu.RLock()
-		defer c.eventMu.RUnlock()
+		ee.statusMu.RLock()
+		defer ee.statusMu.RUnlock()
 		for _, r := range rr {
-			if c.states[r.nid] == Leader {
+			status := ee.status[identity{r.cid, r.nid}]
+			if status.state == Leader {
 				ldr = r
 				return true
 			}
@@ -619,10 +628,11 @@ func (c *cluster) waitForLeader(rr ...*Raft) *Raft {
 	stateChanged := c.registerFor(eventStateChanged)
 	defer c.unregister(stateChanged)
 	if !stateChanged.waitFor(condition, 2*c.longTimeout) {
-		c.eventMu.RLock()
-		defer c.eventMu.RUnlock()
+		ee.statusMu.RLock()
+		defer ee.statusMu.RUnlock()
 		for _, r := range rr {
-			c.Log(host(r), c.states[r.nid], c.electionCount[r.nid])
+			status := ee.status[identity{r.cid, r.nid}]
+			c.Log(host(r), status.state, status.electionCount)
 		}
 		c.Fatalf("waitForLeader: timeout")
 	}
@@ -633,9 +643,7 @@ func (c *cluster) waitCommitReady(ldr *Raft) {
 	c.Helper()
 	testln("waitCommitReady:", host(ldr))
 	condition := func(e *event) bool {
-		c.eventMu.RLock()
-		defer c.eventMu.RUnlock()
-		return c.commitReady[ldr.nid]
+		return c.status(ldr).commitReady
 	}
 	commitReady := c.registerFor(eventCommitReady)
 	defer c.unregister(commitReady)
@@ -765,10 +773,11 @@ func (c *cluster) waitUnreachableDetected(ldr, failed *Raft) (reason error) {
 	c.Helper()
 	testln("waitUnreachableDetected: ldr:", host(ldr), "failed:", host(failed))
 	condition := func(e *event) bool {
-		c.eventMu.RLock()
-		defer c.eventMu.RUnlock()
-		reason = c.unreachable[ldr.nid]
-		return reason != nil
+		ee.statusMu.RLock()
+		defer ee.statusMu.RUnlock()
+		status := ee.status[identity{ldr.cid, failed.nid}]
+		reason = status.unreachable
+		return status.unreachable != nil
 	}
 	unreachable := c.registerFor(eventUnreachable, ldr)
 	defer c.unregister(unreachable)
@@ -782,9 +791,10 @@ func (c *cluster) waitReachableDetected(ldr, failed *Raft) {
 	c.Helper()
 	testln("waitReachableDetected: ldr:", host(ldr), "failed:", host(failed))
 	condition := func(e *event) bool {
-		c.eventMu.RLock()
-		defer c.eventMu.RUnlock()
-		return c.unreachable[ldr.nid] == nil
+		ee.statusMu.RLock()
+		defer ee.statusMu.RUnlock()
+		status := ee.status[identity{ldr.cid, failed.nid}]
+		return status.unreachable == nil
 	}
 	unreachable := c.registerFor(eventUnreachable, ldr)
 	defer c.unregister(unreachable)
@@ -1022,6 +1032,7 @@ const (
 )
 
 type event struct {
+	cid uint64
 	src uint64
 	typ eventType
 
@@ -1040,7 +1051,10 @@ type event struct {
 	reason     string
 }
 
-func (e event) matches(typ eventType, rr ...*Raft) bool {
+func (e event) matches(typ eventType, cid uint64, rr ...*Raft) bool {
+	if e.cid != cid {
+		return false
+	}
 	if typ == eventConfigRelated {
 		switch e.typ {
 		case eventConfigChanged, eventConfigCommitted, eventConfigReverted:
@@ -1053,7 +1067,7 @@ func (e event) matches(typ eventType, rr ...*Raft) bool {
 
 	if len(rr) > 0 {
 		for _, r := range rr {
-			if e.src == r.NID() {
+			if e.src == r.nid {
 				return true
 			}
 		}
@@ -1094,18 +1108,28 @@ func (ob observer) waitFor(condition func(*event) bool, timeout time.Duration) b
 	}
 }
 
+type identity [2]uint64
+type status struct {
+	state         State
+	leader        uint64
+	electionCount int
+	unreachable   error
+	commitReady   bool
+	numRounds     uint64
+}
+
+var ee = events{
+	observers: make(map[int]observer),
+	status:    make(map[identity]status),
+}
+
 type events struct {
 	observersMu sync.RWMutex
 	observerID  int
 	observers   map[int]observer
 
-	eventMu       sync.RWMutex
-	states        map[uint64]State
-	electionCount map[uint64]int
-	ldrs          map[uint64]uint64
-	unreachable   map[uint64]error
-	commitReady   map[uint64]bool
-	numRounds     map[uint64]uint64
+	statusMu sync.RWMutex
+	status   map[identity]status
 }
 
 func (ee *events) register(filter func(event) bool) observer {
@@ -1121,9 +1145,9 @@ func (ee *events) register(filter func(event) bool) observer {
 	return ob
 }
 
-func (ee *events) registerFor(typ eventType, rr ...*Raft) observer {
+func (ee *events) registerFor(typ eventType, cid uint64, rr ...*Raft) observer {
 	return ee.register(func(e event) bool {
-		return e.matches(typ, rr...)
+		return e.matches(typ, cid, rr...)
 	})
 }
 
@@ -1143,9 +1167,10 @@ func (ee *events) sendEvent(e event) {
 	}
 }
 
-func (ee *events) onFMSChanged(id uint64, len uint64) {
+func (ee *events) onFMSChanged(id identity, len uint64) {
 	ee.sendEvent(event{
-		src:    id,
+		cid:    id[0],
+		src:    id[1],
 		typ:    eventFSMChanged,
 		fsmLen: len,
 	})
@@ -1154,60 +1179,79 @@ func (ee *events) onFMSChanged(id uint64, len uint64) {
 func (ee *events) trace() (tracer tracer) {
 	tracer.shuttingDown = func(r *Raft, reason error) {
 		ee.sendEvent(event{
+			cid: r.cid,
 			src: r.nid,
 			typ: eventShuttingDown,
 			err: reason,
 		})
 	}
 	tracer.stateChanged = func(r *Raft) {
-		ee.eventMu.Lock()
-		ee.states[r.nid] = r.state
-		ee.commitReady[r.nid] = false
-		ee.electionCount[r.nid] = 0
-		ee.eventMu.Unlock()
+		ee.statusMu.Lock()
+		identity := identity{r.cid, r.nid}
+		status := ee.status[identity]
+		status.state = r.state
+		status.commitReady = false
+		status.electionCount = 0
+		ee.status[identity] = status
+		ee.statusMu.Unlock()
 		ee.sendEvent(event{
+			cid:   r.cid,
 			src:   r.nid,
 			typ:   eventStateChanged,
 			state: r.state,
 		})
 	}
 	tracer.leaderChanged = func(r *Raft) {
-		ee.eventMu.Lock()
-		ee.ldrs[r.nid] = r.leader
-		ee.eventMu.Unlock()
+		ee.statusMu.Lock()
+		identity := identity{r.cid, r.nid}
+		status := ee.status[identity]
+		status.leader = r.leader
+		ee.status[identity] = status
+		ee.statusMu.Unlock()
 		ee.sendEvent(event{
+			cid:    r.cid,
 			src:    r.nid,
 			typ:    eventLeaderChanged,
 			leader: r.leader,
 		})
 	}
 	tracer.electionStarted = func(r *Raft) {
-		ee.eventMu.Lock()
-		ee.electionCount[r.nid]++
-		ee.eventMu.Unlock()
+		ee.statusMu.Lock()
+		identity := identity{r.cid, r.nid}
+		status := ee.status[identity]
+		status.electionCount++
+		ee.status[identity] = status
+		ee.statusMu.Unlock()
 		ee.sendEvent(event{
+			cid: r.cid,
 			src: r.nid,
 			typ: eventElectionStarted,
 		})
 	}
 	tracer.electionAborted = func(r *Raft, reason string) {
 		ee.sendEvent(event{
+			cid:    r.cid,
 			src:    r.nid,
 			typ:    eventElectionAborted,
 			reason: reason,
 		})
 	}
 	tracer.commitReady = func(r *Raft) {
-		ee.eventMu.Lock()
-		ee.commitReady[r.nid] = true
-		ee.eventMu.Unlock()
+		ee.statusMu.Lock()
+		identity := identity{r.cid, r.nid}
+		status := ee.status[identity]
+		status.commitReady = true
+		ee.status[identity] = status
+		ee.statusMu.Unlock()
 		ee.sendEvent(event{
+			cid: r.cid,
 			src: r.nid,
 			typ: eventCommitReady,
 		})
 	}
 	tracer.configChanged = func(r *Raft) {
 		ee.sendEvent(event{
+			cid:     r.cid,
 			src:     r.nid,
 			typ:     eventConfigChanged,
 			configs: r.configs,
@@ -1216,6 +1260,7 @@ func (ee *events) trace() (tracer tracer) {
 
 	tracer.configCommitted = func(r *Raft) {
 		ee.sendEvent(event{
+			cid:     r.cid,
 			src:     r.nid,
 			typ:     eventConfigCommitted,
 			configs: r.configs,
@@ -1224,6 +1269,7 @@ func (ee *events) trace() (tracer tracer) {
 
 	tracer.configReverted = func(r *Raft) {
 		ee.sendEvent(event{
+			cid:     r.cid,
 			src:     r.nid,
 			typ:     eventConfigReverted,
 			configs: r.configs,
@@ -1231,10 +1277,14 @@ func (ee *events) trace() (tracer tracer) {
 	}
 
 	tracer.unreachable = func(r *Raft, id uint64, since time.Time, err error) {
-		ee.eventMu.Lock()
-		ee.unreachable[r.nid] = err
-		ee.eventMu.Unlock()
+		ee.statusMu.Lock()
+		identity := identity{r.cid, id}
+		status := ee.status[identity]
+		status.unreachable = err
+		ee.status[identity] = status
+		ee.statusMu.Unlock()
 		ee.sendEvent(event{
+			cid:    r.cid,
 			src:    r.nid,
 			typ:    eventUnreachable,
 			target: id,
@@ -1245,6 +1295,7 @@ func (ee *events) trace() (tracer tracer) {
 
 	tracer.quorumUnreachable = func(r *Raft, since time.Time) {
 		ee.sendEvent(event{
+			cid:   r.cid,
 			src:   r.nid,
 			typ:   eventQuorumUnreachable,
 			since: since,
@@ -1252,10 +1303,14 @@ func (ee *events) trace() (tracer tracer) {
 	}
 
 	tracer.roundCompleted = func(r *Raft, id uint64, round round) {
-		ee.eventMu.Lock()
-		ee.numRounds[id] = round.Ordinal
-		ee.eventMu.Unlock()
+		ee.statusMu.Lock()
+		identity := identity{r.cid, r.nid}
+		status := ee.status[identity]
+		status.numRounds = round.Ordinal
+		ee.status[identity] = status
+		ee.statusMu.Unlock()
 		ee.sendEvent(event{
+			cid:    r.cid,
 			src:    r.nid,
 			typ:    eventRoundFinished,
 			target: id,
@@ -1265,6 +1320,7 @@ func (ee *events) trace() (tracer tracer) {
 
 	tracer.logCompacted = func(r *Raft) {
 		ee.sendEvent(event{
+			cid:        r.cid,
 			src:        r.nid,
 			typ:        eventLogCompacted,
 			firstIndex: r.log.PrevIndex() + 1,
@@ -1272,10 +1328,11 @@ func (ee *events) trace() (tracer tracer) {
 	}
 
 	tracer.configActionStarted = func(r *Raft, id uint64, action ConfigAction) {
-		ee.eventMu.Lock()
-		numRounds := ee.numRounds[id]
-		ee.eventMu.Unlock()
+		ee.statusMu.RLock()
+		numRounds := ee.status[identity{r.cid, r.nid}].numRounds
+		ee.statusMu.RUnlock()
 		ee.sendEvent(event{
+			cid:       r.cid,
 			src:       r.nid,
 			typ:       eventConfigActionStarted,
 			target:    id,
@@ -1292,10 +1349,10 @@ var errNoCommands = errors.New("no commands")
 var errNoCommandAt = errors.New("no command at index")
 
 type fsmMock struct {
-	id      uint64
+	id      identity
 	mu      sync.RWMutex
 	cmds    []string
-	changed func(id uint64, len uint64)
+	changed func(id identity, len uint64)
 }
 
 var _ FSM = (*fsmMock)(nil)

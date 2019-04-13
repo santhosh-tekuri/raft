@@ -36,7 +36,7 @@ func TestConnPool_getConn_IdentityError(t *testing.T) {
 	// and treats it as unreachable
 	err := c1.waitUnreachableDetected(ldr, r2)
 	if _, ok := err.(IdentityError); !ok {
-		c1.Fatalf("got %v, want IdentityError", err)
+		c1.Fatalf("waitUnreachableDetected: got %v, want IdentityError", err)
 	}
 }
 
