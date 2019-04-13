@@ -229,8 +229,10 @@ func (l *leader) checkReplUpdates(u replUpdate) {
 				status.noContact, status.err = u.time, u.err
 				if u.time.IsZero() {
 					l.logger.Info("node", status.id, "is reachable now")
+					l.alerts.Reachable(status.id)
 				} else {
 					l.logger.Warn("node", status.id, "is unreachable, reason:", u.err)
+					l.alerts.UnReachable(status.id, u.err)
 				}
 				if l.trace.Unreachable != nil {
 					l.trace.Unreachable(l.liveInfo(), status.id, u.time, u.err)
@@ -289,6 +291,7 @@ func (l *leader) checkQuorum(wait time.Duration) {
 				println(l, "quorumReachable")
 			}
 			l.logger.Info("quorum is reachable now")
+			l.alerts.QuorumUnreachable()
 			if l.trace.QuorumUnreachable != nil {
 				l.trace.QuorumUnreachable(l.liveInfo(), time.Time{})
 			}

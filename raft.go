@@ -52,6 +52,7 @@ type Raft struct {
 	promoteThreshold time.Duration
 	shutdownOnRemove bool
 	logger           Logger
+	alerts           Alerts
 	trace            Trace
 	bandwidth        int64
 
@@ -78,6 +79,9 @@ func New(opt Options, fsm FSM, storageDir string) (*Raft, error) {
 	}
 	if opt.Logger == nil {
 		opt.Logger = nopLogger{}
+	}
+	if opt.Alerts == nil {
+		opt.Alerts = nopAlerts{}
 	}
 	store, err := openStorage(storageDir, opt)
 	if err != nil {
@@ -109,6 +113,7 @@ func New(opt Options, fsm FSM, storageDir string) (*Raft, error) {
 		promoteThreshold: opt.PromoteThreshold,
 		shutdownOnRemove: opt.ShutdownOnRemove,
 		logger:           opt.Logger,
+		alerts:           opt.Alerts,
 		trace:            opt.Trace,
 		bandwidth:        opt.Bandwidth,
 		dialFn:           net.DialTimeout,
@@ -124,7 +129,7 @@ func New(opt Options, fsm FSM, storageDir string) (*Raft, error) {
 		delegate: opt.Resolver,
 		addrs:    make(map[uint64]string),
 		logger:   r.logger,
-		trace:    &r.trace,
+		alerts:   r.alerts,
 	}
 	r.resolver.update(store.configs.Latest)
 
@@ -367,6 +372,7 @@ func (r *Raft) doClose(reason error) {
 		} else {
 			r.logger.Warn(trimPrefix(reason), "shutting down")
 		}
+		r.alerts.ShuttingDown(reason)
 		if r.trace.ShuttingDown != nil {
 			r.trace.ShuttingDown(r.liveInfo(), reason)
 		}

@@ -62,6 +62,7 @@ type Options struct {
 
 	Logger   Logger
 	Trace    Trace
+	Alerts   Alerts
 	Resolver Resolver
 }
 
@@ -138,6 +139,22 @@ func (l *defaultLogger) Warn(v ...interface{}) {
 	fmt.Println(v...)
 	l.mu.Unlock()
 }
+
+type Alerts interface {
+	Error(err error)
+	UnReachable(id uint64, err error)
+	Reachable(id uint64)
+	QuorumUnreachable()
+	ShuttingDown(reason error)
+}
+
+type nopAlerts struct{}
+
+func (nopAlerts) Error(err error)                  {}
+func (nopAlerts) UnReachable(id uint64, err error) {}
+func (nopAlerts) Reachable(id uint64)              {}
+func (nopAlerts) QuorumUnreachable()               {}
+func (nopAlerts) ShuttingDown(reason error)        {}
 
 type Trace struct {
 	Error               func(err error)

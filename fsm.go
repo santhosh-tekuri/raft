@@ -233,9 +233,7 @@ func (r *Raft) onSnapshotTaken(t snapTaken) {
 	if t.err != nil {
 		if err, ok := t.err.(OpError); ok {
 			r.logger.Warn(trimPrefix(err))
-			if r.trace.Error != nil {
-				r.trace.Error(err)
-			}
+			r.alerts.Error(err)
 		}
 		t.req.reply(t.err)
 		return
