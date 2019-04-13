@@ -38,7 +38,7 @@ var (
 
 	// ErrFaultyFollower signals that the follower is faulty, and should be
 	// removed from cluster. Such follower is treated as unreachable by leader.
-	// This used use by Trace.Unreachable and FlrStatus.Err.
+	// This used use by Alerts.Unreachable and FlrStatus.Err.
 	ErrFaultyFollower = errors.New("raft: faulty follower, denies matchIndex")
 
 	// ErrNotCommitReady is returned by ChangeConfig, if leader is not yet ready to commit.

@@ -163,9 +163,6 @@ func (r *Raft) Serve(l net.Listener) error {
 	r.logger.Info("cid:", r.cid, "nid:", r.nid)
 	r.logger.Info(r.configs.Latest)
 	r.logger.Info("listening at", l.Addr())
-	if r.tracer.Starting != nil {
-		r.tracer.Starting(r.liveInfo(), l.Addr())
-	}
 
 	var wg sync.WaitGroup
 	defer wg.Wait()
@@ -372,8 +369,8 @@ func (r *Raft) doClose(reason error) {
 			r.logger.Warn(trimPrefix(reason), "shutting down")
 		}
 		r.alerts.ShuttingDown(reason)
-		if r.tracer.ShuttingDown != nil {
-			r.tracer.ShuttingDown(r.liveInfo(), reason)
+		if r.tracer.shuttingDown != nil {
+			r.tracer.shuttingDown(r.liveInfo(), reason)
 		}
 		close(r.close)
 	})
@@ -401,8 +398,8 @@ func (r *Raft) setState(s State) {
 		}
 		r.logger.Info("changing state", r.state, "->", s)
 		r.state = s
-		if r.tracer.StateChanged != nil {
-			r.tracer.StateChanged(r.liveInfo())
+		if r.tracer.stateChanged != nil {
+			r.tracer.stateChanged(r.liveInfo())
 		}
 	}
 }
@@ -420,8 +417,8 @@ func (r *Raft) setLeader(id uint64) {
 		} else {
 			r.logger.Info("following leader node", r.leader)
 		}
-		if r.tracer.LeaderChanged != nil {
-			r.tracer.LeaderChanged(r.liveInfo())
+		if r.tracer.leaderChanged != nil {
+			r.tracer.leaderChanged(r.liveInfo())
 		}
 	}
 }

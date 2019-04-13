@@ -17,7 +17,6 @@ package raft
 import (
 	"errors"
 	"fmt"
-	"net"
 	"sync"
 	"time"
 )
@@ -149,20 +148,19 @@ func (nopAlerts) QuorumUnreachable()               {}
 func (nopAlerts) ShuttingDown(reason error)        {}
 
 type tracer struct {
-	Error               func(err error)
-	Starting            func(info Info, addr net.Addr)
-	StateChanged        func(info Info)
-	LeaderChanged       func(info Info)
-	ElectionStarted     func(info Info)
-	ElectionAborted     func(info Info, reason string)
-	CommitReady         func(info Info)
-	ConfigChanged       func(info Info)
-	ConfigCommitted     func(info Info)
-	ConfigReverted      func(info Info)
-	RoundCompleted      func(info Info, id uint64, round Round)
-	LogCompacted        func(info Info)
-	ConfigActionStarted func(info Info, id uint64, action ConfigAction)
-	Unreachable         func(info Info, id uint64, since time.Time, err error)
-	QuorumUnreachable   func(info Info, since time.Time)
-	ShuttingDown        func(info Info, reason error)
+	error               func(err error)
+	stateChanged        func(info Info)
+	leaderChanged       func(info Info)
+	electionStarted     func(info Info)
+	electionAborted     func(info Info, reason string)
+	commitReady         func(info Info)
+	configChanged       func(info Info)
+	configCommitted     func(info Info)
+	configReverted      func(info Info)
+	roundCompleted      func(info Info, id uint64, round Round)
+	logCompacted        func(info Info)
+	configActionStarted func(info Info, id uint64, action ConfigAction)
+	unreachable         func(info Info, id uint64, since time.Time, err error)
+	quorumUnreachable   func(info Info, since time.Time)
+	shuttingDown        func(info Info, reason error)
 }
