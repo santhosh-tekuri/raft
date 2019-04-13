@@ -418,7 +418,7 @@ func (r *Raft) setLeader(id uint64) {
 			r.logger.Info("following leader node", r.leader)
 		}
 		if r.tracer.leaderChanged != nil {
-			r.tracer.leaderChanged(r.liveInfo())
+			r.tracer.leaderChanged(r)
 		}
 	}
 }
