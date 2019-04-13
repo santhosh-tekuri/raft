@@ -45,14 +45,14 @@ var (
 	// User can retry ChangeConfig after some time in case of this error.
 	ErrNotCommitReady = temporaryError("raft.configChange: not ready to commit")
 
-	ErrStaleConfig                      = errors.New("raft.configChange: submitted config is stale")
-	ErrSnapshotThreshold                = errors.New("raft.takeSnapshot: not enough outstanding logs to snapshot")
-	ErrNoUpdates                        = errors.New("raft.takeSnapshot: no updates to FSM")
-	ErrQuorumUnreachable                = errors.New("raft: quorum unreachable")
-	ErrLeadershipTransferNoVoter        = errors.New("raft.transferLeadership: no other voter to transfer")
-	ErrLeadershipTransferSelf           = errors.New("raft.transferLeadership: target is already leader")
-	ErrLeadershipTransferTargetNonvoter = errors.New("raft.transferLeadership: target is nonvoter")
-	ErrLeadershipTransferInvalidTarget  = errors.New("raft.transferLeadership: no such target found")
+	ErrStaleConfig            = errors.New("raft.configChange: submitted config is stale")
+	ErrSnapshotThreshold      = errors.New("raft.takeSnapshot: not enough outstanding logs to snapshot")
+	ErrNoUpdates              = errors.New("raft.takeSnapshot: no updates to FSM")
+	ErrQuorumUnreachable      = errors.New("raft: quorum unreachable")
+	ErrTransferNoVoter        = errors.New("raft.transferLeadership: no other voter to transfer")
+	ErrTransferSelf           = errors.New("raft.transferLeadership: target is already leader")
+	ErrTransferTargetNonvoter = errors.New("raft.transferLeadership: target is nonvoter")
+	ErrTransferInvalidTarget  = errors.New("raft.transferLeadership: no such target found")
 )
 
 var (

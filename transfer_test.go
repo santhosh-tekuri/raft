@@ -23,7 +23,7 @@ import (
 // todo: if ldr knows that a node is unreachable it should not try sending timeoutNow
 
 // in cluster with single voter, leader should reject transfer
-// requests with ErrLeadershipTransferNoVoter
+// requests with ErrTransferNoVoter
 func TestTransfer_singleVoter(t *testing.T) {
 	// launch single node cluster
 	c, ldr, _ := launchCluster(t, 1)
@@ -34,10 +34,10 @@ func TestTransfer_singleVoter(t *testing.T) {
 	c.waitCommitReady(ldr)
 	c.ensure(c.waitAddNonvoter(ldr, 2, c.id2Addr(2), false))
 
-	// transfer leadership, must return ErrLeadershipTransferNoVoter
+	// transfer leadership, must return ErrTransferNoVoter
 	_, err := waitTask(ldr, TransferLeadership(0, c.longTimeout), c.longTimeout)
-	if err != ErrLeadershipTransferNoVoter {
-		c.Fatalf("err: got %v, want %v", err, ErrLeadershipTransferNoVoter)
+	if err != ErrTransferNoVoter {
+		c.Fatalf("err: got %v, want %v", err, ErrTransferNoVoter)
 	}
 }
 

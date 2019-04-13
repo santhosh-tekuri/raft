@@ -90,18 +90,18 @@ func (l *leader) validateTransfer(t transferLdr) error {
 		return InProgressError("transferLeadership")
 	}
 	if l.configs.Latest.numVoters() == 1 {
-		return ErrLeadershipTransferNoVoter
+		return ErrTransferNoVoter
 	}
 	if t.target != 0 {
 		if t.target == l.nid {
-			return ErrLeadershipTransferSelf
+			return ErrTransferSelf
 		}
 		if n, ok := l.configs.Latest.Nodes[t.target]; ok {
 			if !n.Voter {
-				return ErrLeadershipTransferTargetNonvoter
+				return ErrTransferTargetNonvoter
 			}
 		} else {
-			return ErrLeadershipTransferInvalidTarget
+			return ErrTransferInvalidTarget
 		}
 	}
 	return nil
