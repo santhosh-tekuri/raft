@@ -126,9 +126,7 @@ func openStorage(dir string, opt Options) (*storage, error) {
 		if err := e.decode(bytes.NewReader(data)); err != nil {
 			return nil, opError(err, "Log.Get(%d).decode", s.log.LastIndex())
 		}
-		if e.index != s.log.LastIndex() {
-			panic("BUG")
-		}
+		assert(e.index == s.log.LastIndex())
 		s.lastLogIndex, s.lastLogTerm = e.index, e.term
 	}
 
@@ -226,9 +224,6 @@ func (s *storage) mustGetEntry(index uint64, e *entry) {
 
 // called by raft.runLoop. getEntry call can be called during this
 func (s *storage) appendEntry(e *entry) {
-	if s.lastLogIndex != s.log.LastIndex() {
-		panic("BUG")
-	}
 	assert(e.index == s.lastLogIndex+1)
 	w := new(bytes.Buffer)
 	if err := e.encode(w); err != nil {
@@ -238,9 +233,6 @@ func (s *storage) appendEntry(e *entry) {
 		panic(opError(err, "Log.Append"))
 	}
 	s.lastLogIndex, s.lastLogTerm = e.index, e.term
-	if s.lastLogIndex != s.log.LastIndex() {
-		panic("BUG")
-	}
 }
 
 func (s *storage) commitLog(n uint64) {
@@ -280,12 +272,8 @@ func (s *storage) clearLog() error {
 	if err := s.log.Reset(s.snaps.index); err != nil {
 		return opError(err, "Log.Reset(%d)", s.snaps.index)
 	}
-	if s.log.LastIndex() != s.snaps.index {
-		panic("BUG")
-	}
-	if s.log.PrevIndex() != s.snaps.index {
-		panic("BUG")
-	}
+	assert(s.log.LastIndex() == s.snaps.index)
+	assert(s.log.PrevIndex() == s.snaps.index)
 	s.lastLogIndex, s.lastLogTerm = s.snaps.index, s.snaps.term
 	return nil
 }
@@ -296,9 +284,7 @@ func (s *storage) removeGTE(index, prevTerm uint64) {
 	if err := s.log.RemoveGTE(index); err != nil {
 		panic(opError(err, "Log.RemoveGTE(%d)", index))
 	}
-	if s.log.LastIndex() != index-1 {
-		panic("BUG")
-	}
+	assert(s.log.LastIndex() == index-1)
 	s.lastLogIndex, s.lastLogTerm = index-1, prevTerm
 }
 
