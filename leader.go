@@ -235,7 +235,7 @@ func (l *leader) checkReplUpdates(u replUpdate) {
 					l.alerts.UnReachable(status.id, u.err)
 				}
 				if l.tracer.unreachable != nil {
-					l.tracer.unreachable(l.liveInfo(), status.id, u.time, u.err)
+					l.tracer.unreachable(l.Raft, status.id, u.time, u.err)
 				}
 			case newTerm:
 				// if response contains term T > currentTerm:
@@ -293,7 +293,7 @@ func (l *leader) checkQuorum(wait time.Duration) {
 			l.logger.Info("quorum is reachable now")
 			l.alerts.QuorumUnreachable()
 			if l.tracer.quorumUnreachable != nil {
-				l.tracer.quorumUnreachable(l.liveInfo(), time.Time{})
+				l.tracer.quorumUnreachable(l.Raft, time.Time{})
 			}
 			l.timer.stop()
 		}
@@ -303,7 +303,7 @@ func (l *leader) checkQuorum(wait time.Duration) {
 	if l.quorumWait == 0 || !l.timer.active {
 		l.logger.Info("quorum is unreachable")
 		if l.tracer.quorumUnreachable != nil {
-			l.tracer.quorumUnreachable(l.liveInfo(), time.Now())
+			l.tracer.quorumUnreachable(l.Raft, time.Now())
 		}
 	}
 	if wait == 0 {

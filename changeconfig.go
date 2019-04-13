@@ -116,7 +116,7 @@ func (l *leader) checkConfigActions(t *task, config Config) {
 			println(l, n.ID, "started", n.Action)
 		}
 		if l.tracer.configActionStarted != nil {
-			l.tracer.configActionStarted(l.liveInfo(), n.ID, n.Action)
+			l.tracer.configActionStarted(l.Raft, n.ID, n.Action)
 		}
 		switch n.Action {
 		case Demote:
@@ -174,7 +174,7 @@ func (l *leader) checkConfigAction(t *task, config Config, status *replicationSt
 			}
 			l.logger.Info("nonVoter", status.id, "completed round", r.Ordinal, "in", r.Duration(), ", its lastIndex:", r.LastIndex)
 			if l.tracer.roundCompleted != nil {
-				l.tracer.roundCompleted(l.liveInfo(), status.id, *r)
+				l.tracer.roundCompleted(l.Raft, status.id, *r)
 			}
 		}
 		if !r.finished() {
@@ -229,7 +229,7 @@ func (l *leader) checkConfigAction(t *task, config Config, status *replicationSt
 		println(l, status.id, "started", action)
 	}
 	if l.tracer.configActionStarted != nil {
-		l.tracer.configActionStarted(l.liveInfo(), n.ID, action)
+		l.tracer.configActionStarted(l.Raft, n.ID, action)
 	}
 	l.doChangeConfig(t, config)
 }

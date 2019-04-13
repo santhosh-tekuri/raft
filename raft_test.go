@@ -263,6 +263,7 @@ func newCluster(t *testing.T) *cluster {
 			commitReady:   make(map[uint64]bool),
 			electionCount: make(map[uint64]int),
 			unreachable:   make(map[uint64]error),
+			numRounds:     make(map[uint64]uint64),
 		},
 	}
 	c.opt = Options{
@@ -1104,6 +1105,7 @@ type events struct {
 	ldrs          map[uint64]uint64
 	unreachable   map[uint64]error
 	commitReady   map[uint64]bool
+	numRounds     map[uint64]uint64
 }
 
 func (ee *events) register(filter func(event) bool) observer {
@@ -1150,9 +1152,9 @@ func (ee *events) onFMSChanged(id uint64, len uint64) {
 }
 
 func (ee *events) trace() (tracer tracer) {
-	tracer.shuttingDown = func(info Info, reason error) {
+	tracer.shuttingDown = func(r *Raft, reason error) {
 		ee.sendEvent(event{
-			src: info.NID(),
+			src: r.nid,
 			typ: eventShuttingDown,
 			err: reason,
 		})
@@ -1195,45 +1197,45 @@ func (ee *events) trace() (tracer tracer) {
 			reason: reason,
 		})
 	}
-	tracer.commitReady = func(info Info) {
+	tracer.commitReady = func(r *Raft) {
 		ee.eventMu.Lock()
-		ee.commitReady[info.NID()] = true
+		ee.commitReady[r.nid] = true
 		ee.eventMu.Unlock()
 		ee.sendEvent(event{
-			src: info.NID(),
+			src: r.nid,
 			typ: eventCommitReady,
 		})
 	}
-	tracer.configChanged = func(info Info) {
+	tracer.configChanged = func(r *Raft) {
 		ee.sendEvent(event{
-			src:     info.NID(),
+			src:     r.nid,
 			typ:     eventConfigChanged,
-			configs: info.Configs(),
+			configs: r.configs,
 		})
 	}
 
-	tracer.configCommitted = func(info Info) {
+	tracer.configCommitted = func(r *Raft) {
 		ee.sendEvent(event{
-			src:     info.NID(),
+			src:     r.nid,
 			typ:     eventConfigCommitted,
-			configs: info.Configs(),
+			configs: r.configs,
 		})
 	}
 
-	tracer.configReverted = func(info Info) {
+	tracer.configReverted = func(r *Raft) {
 		ee.sendEvent(event{
-			src:     info.NID(),
+			src:     r.nid,
 			typ:     eventConfigReverted,
-			configs: info.Configs(),
+			configs: r.configs,
 		})
 	}
 
-	tracer.unreachable = func(info Info, id uint64, since time.Time, err error) {
+	tracer.unreachable = func(r *Raft, id uint64, since time.Time, err error) {
 		ee.eventMu.Lock()
-		ee.unreachable[info.NID()] = err
+		ee.unreachable[r.nid] = err
 		ee.eventMu.Unlock()
 		ee.sendEvent(event{
-			src:    info.NID(),
+			src:    r.nid,
 			typ:    eventUnreachable,
 			target: id,
 			since:  since,
@@ -1241,38 +1243,44 @@ func (ee *events) trace() (tracer tracer) {
 		})
 	}
 
-	tracer.quorumUnreachable = func(info Info, since time.Time) {
+	tracer.quorumUnreachable = func(r *Raft, since time.Time) {
 		ee.sendEvent(event{
-			src:   info.NID(),
+			src:   r.nid,
 			typ:   eventQuorumUnreachable,
 			since: since,
 		})
 	}
 
-	tracer.roundCompleted = func(info Info, id uint64, r round) {
+	tracer.roundCompleted = func(r *Raft, id uint64, round round) {
+		ee.eventMu.Lock()
+		ee.numRounds[id] = round.Ordinal
+		ee.eventMu.Unlock()
 		ee.sendEvent(event{
-			src:    info.NID(),
+			src:    r.nid,
 			typ:    eventRoundFinished,
 			target: id,
-			round:  r,
+			round:  round,
 		})
 	}
 
-	tracer.logCompacted = func(info Info) {
+	tracer.logCompacted = func(r *Raft) {
 		ee.sendEvent(event{
-			src:        info.NID(),
+			src:        r.nid,
 			typ:        eventLogCompacted,
-			firstIndex: info.FirstLogIndex(),
+			firstIndex: r.log.PrevIndex() + 1,
 		})
 	}
 
-	tracer.configActionStarted = func(info Info, id uint64, action ConfigAction) {
+	tracer.configActionStarted = func(r *Raft, id uint64, action ConfigAction) {
+		ee.eventMu.Lock()
+		numRounds := ee.numRounds[id]
+		ee.eventMu.Unlock()
 		ee.sendEvent(event{
-			src:       info.NID(),
+			src:       r.nid,
 			typ:       eventConfigActionStarted,
 			target:    id,
 			action:    action,
-			numRounds: info.Followers()[id].Round,
+			numRounds: numRounds,
 		})
 	}
 	return

@@ -370,7 +370,7 @@ func (r *Raft) doClose(reason error) {
 		}
 		r.alerts.ShuttingDown(reason)
 		if r.tracer.shuttingDown != nil {
-			r.tracer.shuttingDown(r.liveInfo(), reason)
+			r.tracer.shuttingDown(r, reason)
 		}
 		close(r.close)
 	})
