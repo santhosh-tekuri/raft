@@ -399,7 +399,7 @@ func (r *Raft) setState(s State) {
 		r.logger.Info("changing state", r.state, "->", s)
 		r.state = s
 		if r.tracer.stateChanged != nil {
-			r.tracer.stateChanged(r.liveInfo())
+			r.tracer.stateChanged(r)
 		}
 	}
 }

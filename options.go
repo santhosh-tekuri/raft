@@ -149,7 +149,7 @@ func (nopAlerts) ShuttingDown(reason error)        {}
 
 type tracer struct {
 	error               func(err error)
-	stateChanged        func(info Info)
+	stateChanged        func(r *Raft)
 	leaderChanged       func(info Info)
 	electionStarted     func(info Info)
 	electionAborted     func(info Info, reason string)

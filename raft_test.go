@@ -617,7 +617,7 @@ func (c *cluster) waitForLeader(rr ...*Raft) *Raft {
 	}
 	stateChanged := c.registerFor(eventStateChanged)
 	defer c.unregister(stateChanged)
-	if !stateChanged.waitFor(condition, c.longTimeout) {
+	if !stateChanged.waitFor(condition, 2*c.longTimeout) {
 		c.eventMu.RLock()
 		defer c.eventMu.RUnlock()
 		for _, r := range rr {
@@ -1157,16 +1157,16 @@ func (ee *events) trace() (tracer tracer) {
 			err: reason,
 		})
 	}
-	tracer.stateChanged = func(info Info) {
+	tracer.stateChanged = func(r *Raft) {
 		ee.eventMu.Lock()
-		ee.states[info.NID()] = info.State()
-		ee.commitReady[info.NID()] = false
-		ee.electionCount[info.NID()] = 0
+		ee.states[r.nid] = r.state
+		ee.commitReady[r.nid] = false
+		ee.electionCount[r.nid] = 0
 		ee.eventMu.Unlock()
 		ee.sendEvent(event{
-			src:   info.NID(),
+			src:   r.nid,
 			typ:   eventStateChanged,
-			state: info.State(),
+			state: r.state,
 		})
 	}
 	tracer.leaderChanged = func(info Info) {
