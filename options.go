@@ -151,7 +151,7 @@ type tracer struct {
 	error               func(err error)
 	stateChanged        func(r *Raft)
 	leaderChanged       func(r *Raft)
-	electionStarted     func(info Info)
+	electionStarted     func(r *Raft)
 	electionAborted     func(info Info, reason string)
 	commitReady         func(info Info)
 	configChanged       func(info Info)

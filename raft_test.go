@@ -1179,12 +1179,12 @@ func (ee *events) trace() (tracer tracer) {
 			leader: r.leader,
 		})
 	}
-	tracer.electionStarted = func(info Info) {
+	tracer.electionStarted = func(r *Raft) {
 		ee.eventMu.Lock()
-		ee.electionCount[info.NID()]++
+		ee.electionCount[r.nid]++
 		ee.eventMu.Unlock()
 		ee.sendEvent(event{
-			src: info.NID(),
+			src: r.nid,
 			typ: eventElectionStarted,
 		})
 	}

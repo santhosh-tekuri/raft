@@ -48,7 +48,7 @@ func (c *candidate) startElection() {
 	c.timer.reset(d)
 	c.logger.Info("started election for term", c.term)
 	if c.tracer.electionStarted != nil {
-		c.tracer.electionStarted(c.liveInfo())
+		c.tracer.electionStarted(c.Raft)
 	}
 
 	// send RequestVote RPCs to all other servers
