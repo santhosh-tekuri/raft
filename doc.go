@@ -14,8 +14,6 @@
 
 package raft
 
-// todo: defaultTrace: add delegate
-// todo: info: add func isOK() error
 // todo: ErrConfigInProgress should contains configs
 // todo: ErrCommitNotReady should tell how many entries it is behind to become commit ready
 // todo: Snapshots add recover support
@@ -47,7 +45,3 @@ package raft
 // todo: rename opt.PromoteThreshold to RoundThreshold
 
 // todo: deadlines in server and rpc
-
-// todo: add lock file to storage directory containing pid, so that two raft instance does not use same storage dir
-
-// todo: test Config Info Action State unmarshal/marshal json
