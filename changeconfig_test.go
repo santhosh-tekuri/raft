@@ -187,17 +187,16 @@ func TestChangeConfig_promote_newNode_singleRound(t *testing.T) {
 			t.Fatalf("M%d round: got %d, want %d", id, e.numRounds, 1)
 		}
 
-		// wait for config commit, with new raft as voter
-		isVoter := func() bool {
-			n, ok := c.info(ldr).Configs.Committed.Nodes[id]
-			return ok && n.Voter
-		}
-		if !waitForCondition(isVoter, c.commitTimeout, c.longTimeout) {
-			c.Fatal("waitLdrConfigCommit: timeout")
+		// wait for stable configuration
+		c.waitForStableConfig(ldr)
+
+		// check that new node is voter
+		if !c.info(ldr).Configs.Committed.isVoter(id) {
+			t.Fatalf("new node is not voter")
 		}
 
 		// check that new node, knows that it is voter
-		isVoter = func() bool {
+		isVoter := func() bool {
 			n, ok := c.info(nr).Configs.Committed.Nodes[id]
 			return ok && n.Voter
 		}
