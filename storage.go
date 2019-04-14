@@ -24,30 +24,34 @@ import (
 	"github.com/santhosh-tekuri/raft/log"
 )
 
-// SetIdentity sets the server identity.
-// If identity is already set, it ensures that they match
-// with the given values.
-func SetIdentity(dir string, cid, nid uint64) (err error) {
+// SetIdentity stores the identity in storageDir.
+// If identity is already set, it asserts that stored
+// identity matches with given identity. It is recommended
+// to call SetIdentity before using storageDir.
+//
+// If the storageDir is already in use, returns ErrLockExists.
+// If the stored identity does not match given identity, returns ErrIdentityAlreadySet.
+func SetIdentity(storageDir string, cid, nid uint64) (err error) {
 	if cid == 0 {
 		return errors.New("raft: cid is zero")
 	}
 	if nid == 0 {
 		return errors.New("raft: nid is zero")
 	}
-	d, err := os.Stat(dir)
+	d, err := os.Stat(storageDir)
 	if err != nil {
 		return err
 	}
 	if !d.IsDir() {
-		return fmt.Errorf("raft: %q is not a diretory", dir)
+		return fmt.Errorf("raft: %q is not a diretory", storageDir)
 	}
-	if err := lockDir(dir); err != nil {
+	if err := lockDir(storageDir); err != nil {
 		return err
 	}
 	defer func() {
-		err = unlockDir(dir)
+		err = unlockDir(storageDir)
 	}()
-	val, err := openValue(dir, ".id")
+	val, err := openValue(storageDir, ".id")
 	if err != nil {
 		return err
 	}
