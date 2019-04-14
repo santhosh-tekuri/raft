@@ -98,10 +98,6 @@ type Node struct {
 	Action Action `json:"action,omitempty"`
 }
 
-func (n Node) IsStable() bool {
-	return n.Action == None
-}
-
 func (n Node) nextAction() Action {
 	if n.Action == ForceRemove {
 		return ForceRemove
@@ -195,9 +191,9 @@ func (c Config) IsBootstrap() bool {
 	return c.Index == 0
 }
 
-func (c Config) IsStable() bool {
+func (c Config) isStable() bool {
 	for _, n := range c.Nodes {
-		if !n.IsStable() {
+		if n.Action != None {
 			return false
 		}
 	}
@@ -338,7 +334,7 @@ func (c Configs) IsCommitted() bool {
 }
 
 func (c Configs) IsStable() bool {
-	return c.IsCommitted() && c.Latest.IsStable()
+	return c.IsCommitted() && c.Latest.isStable()
 }
 
 // ---------------------------------------------------------
@@ -361,7 +357,7 @@ func (r *Raft) bootstrap(t changeConfig) {
 		t.reply(fmt.Errorf("raft.bootstrap: invalid config: self %d must be voter", r.nid))
 		return
 	}
-	if !t.newConf.IsStable() {
+	if !t.newConf.isStable() {
 		t.reply(fmt.Errorf("raft.bootstrap: non-stable config"))
 		return
 	}
