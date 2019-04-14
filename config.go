@@ -78,6 +78,8 @@ func (a Action) String() string {
 	return fmt.Sprintf("Action(%d)", a)
 }
 
+// ------------------------------------------------------------------------------
+
 // Node represents a single node in raft configuration.
 type Node struct {
 	// ID uniquely identifies this node in raft cluster.
@@ -179,7 +181,7 @@ func (n Node) validate() error {
 	return nil
 }
 
-// -------------------------------------------------
+// ------------------------------------------------------------------------------
 
 type Config struct {
 	Nodes map[uint64]Node `json:"nodes"`
@@ -226,6 +228,84 @@ func (c Config) numVoters() int {
 
 func (c Config) quorum() int {
 	return c.numVoters()/2 + 1
+}
+
+// AddVoter adds given node as voter.
+//
+// This call fails if config is not bootstrap.
+func (c *Config) AddVoter(id uint64, addr string) error {
+	if !c.IsBootstrap() {
+		return fmt.Errorf("raft: voter cannot be added in bootstrapped config")
+	}
+	return c.addNode(Node{ID: id, Addr: addr, Voter: true})
+}
+
+// AddNonvoter adds given node as nonvoter.
+//
+// Voters can't be directly added to cluster. They must be added as
+// nonvoter with promote turned on. once the node's log catches up,
+// leader promotes it to voter.
+func (c *Config) AddNonvoter(id uint64, addr string, promote bool) error {
+	action := None
+	if promote {
+		action = Promote
+	}
+	return c.addNode(Node{ID: id, Addr: addr, Action: action})
+}
+
+func (c *Config) addNode(n Node) error {
+	if err := n.validate(); err != nil {
+		return err
+	}
+	if _, ok := c.Nodes[n.ID]; ok {
+		return fmt.Errorf("raft: node %d already exists", n.ID)
+	}
+	c.Nodes[n.ID] = n
+	return nil
+}
+
+func (c *Config) SetAction(id uint64, action Action) error {
+	n, ok := c.Nodes[id]
+	if !ok {
+		return fmt.Errorf("raft: node %d not found", id)
+	}
+	n.Action = action
+	if err := n.validate(); err != nil {
+		return err
+	}
+	c.Nodes[id] = n
+	return nil
+}
+
+// SetAddr changes address of given node.
+//
+// If you have set Options.Resolver, the address resolved
+// by Resolver still takes precedence.
+func (c *Config) SetAddr(id uint64, addr string) error {
+	n, ok := c.Nodes[id]
+	if !ok {
+		return fmt.Errorf("raft: node %d not found", id)
+	}
+	n.Addr = addr
+	if err := n.validate(); err != nil {
+		return err
+	}
+	cn, ok := c.nodeForAddr(addr)
+	if ok && cn.ID != id {
+		return fmt.Errorf("raft: address %s is used by node %d", addr, cn.ID)
+	}
+	c.Nodes[id] = n
+	return nil
+}
+
+func (c *Config) SetData(id uint64, data string) error {
+	n, ok := c.Nodes[id]
+	if !ok {
+		return fmt.Errorf("raft: node %d not found", id)
+	}
+	n.Data = data
+	c.Nodes[id] = n
+	return nil
 }
 
 func (c Config) clone() Config {
@@ -312,7 +392,7 @@ func (c Config) String() string {
 	return fmt.Sprintf("Config{index: %d, voters: %v, nonvoters: %v}", c.Index, voters, nonvoters)
 }
 
-// ---------------------------------------------------------
+// ------------------------------------------------------------------------------
 
 type Configs struct {
 	Committed Config `json:"committed"`
