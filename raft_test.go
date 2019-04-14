@@ -256,7 +256,6 @@ func newCluster(t *testing.T) *cluster {
 		heartbeatTimeout: heartbeatTimeout,
 		longTimeout:      5 * time.Second,
 		commitTimeout:    5 * time.Millisecond,
-		quorumWait:       heartbeatTimeout,
 	}
 	c.opt = Options{
 		HeartbeatTimeout: heartbeatTimeout,
