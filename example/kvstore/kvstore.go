@@ -141,7 +141,7 @@ type kvState struct {
 	data map[string]string
 }
 
-func (s *kvState) WriteTo(w io.Writer) error {
+func (s *kvState) Persist(w io.Writer) error {
 	return gob.NewEncoder(w).Encode(s.data)
 }
 

@@ -1428,7 +1428,7 @@ type stateMock struct {
 	cmds []string
 }
 
-func (state stateMock) WriteTo(w io.Writer) error {
+func (state stateMock) Persist(w io.Writer) error {
 	return gob.NewEncoder(w).Encode(state.cmds)
 }
 

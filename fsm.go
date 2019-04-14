@@ -30,7 +30,7 @@ type FSM interface {
 }
 
 type FSMState interface {
-	WriteTo(w io.Writer) error
+	Persist(w io.Writer) error
 	Release()
 }
 
@@ -213,13 +213,13 @@ func doTakeSnapshot(fsm *stateMachine, index uint64, config Config) (snapshotMet
 		return snapshotMeta{}, opError(err, "snapshots.new")
 	}
 	bufw := bufio.NewWriter(sink.file)
-	err = resp.state.WriteTo(bufw)
+	err = resp.state.Persist(bufw)
 	if err == nil {
 		err = bufw.Flush()
 	}
 	meta, doneErr := sink.done(err)
 	if err != nil {
-		return meta, opError(err, "FSMState.WriteTo")
+		return meta, opError(err, "FSMState.Persist")
 	}
 	if doneErr != nil {
 		return meta, opError(err, "snapshotSink.done")
