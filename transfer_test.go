@@ -24,7 +24,7 @@ import (
 
 // in cluster with single voter, leader should reject transfer
 // requests with ErrTransferNoVoter
-func TestTransfer_singleVoter(t *testing.T) {
+func TestTransfer_noVoter(t *testing.T) {
 	// launch single node cluster
 	c, ldr, _ := launchCluster(t, 1)
 	defer c.shutdown()
@@ -38,6 +38,47 @@ func TestTransfer_singleVoter(t *testing.T) {
 	_, err := waitTask(ldr, TransferLeadership(0, c.longTimeout), c.longTimeout)
 	if err != ErrTransferNoVoter {
 		c.Fatalf("err: got %v, want %v", err, ErrTransferNoVoter)
+	}
+}
+
+func TestTransfer_nonVoter(t *testing.T) {
+	// launch two node cluster
+	c, ldr, _ := launchCluster(t, 2)
+	defer c.shutdown()
+
+	// launch new raft wit nid 3, and add him as nonvoter
+	c.launch(1, false)
+	c.waitCommitReady(ldr)
+	c.ensure(c.waitAddNonvoter(ldr, 3, c.id2Addr(3), false))
+
+	// transfer leadership to node 3, must return ErrTransferNonVoter
+	_, err := waitTask(ldr, TransferLeadership(3, c.longTimeout), c.longTimeout)
+	if err != ErrTransferTargetNonvoter {
+		c.Fatalf("err: got %v, want %v", err, ErrTransferTargetNonvoter)
+	}
+}
+
+func TestTransfer_invalidTarget(t *testing.T) {
+	// launch two node cluster
+	c, ldr, _ := launchCluster(t, 2)
+	defer c.shutdown()
+
+	// transfer leadership to unknown node 5, must return ErrTransferInvalidTarget
+	_, err := waitTask(ldr, TransferLeadership(5, c.longTimeout), c.longTimeout)
+	if err != ErrTransferInvalidTarget {
+		c.Fatalf("err: got %v, want %v", err, ErrTransferInvalidTarget)
+	}
+}
+
+func TestTransfer_self(t *testing.T) {
+	// launch two node cluster
+	c, ldr, _ := launchCluster(t, 2)
+	defer c.shutdown()
+
+	// transfer leadership to leader itself, must return ErrTransferSelf
+	_, err := waitTask(ldr, TransferLeadership(ldr.nid, c.longTimeout), c.longTimeout)
+	if err != ErrTransferSelf {
+		c.Fatalf("err: got %v, want %v", err, ErrTransferSelf)
 	}
 }
 
