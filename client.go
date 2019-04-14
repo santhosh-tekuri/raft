@@ -229,14 +229,14 @@ func decodeTaskResp(typ taskType, r io.Reader) (interface{}, error) {
 		if err = info.Configs.Latest.decode(e); err != nil {
 			return nil, err
 		}
-		info.Followers = map[uint64]FlrStatus{}
+		info.Followers = map[uint64]Replication{}
 		sz, err := readUint32(r)
 		if err != nil {
 			return nil, err
 		}
 		for sz > 0 {
 			sz--
-			status := FlrStatus{}
+			status := Replication{}
 			if status.ID, err = readUint64(r); err != nil {
 				return nil, err
 			}

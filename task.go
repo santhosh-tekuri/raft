@@ -157,9 +157,9 @@ func GetInfo() Task {
 }
 
 func (r *Raft) info() Info {
-	var flrs map[uint64]FlrStatus
+	var flrs map[uint64]Replication
 	if r.state == Leader {
-		flrs := make(map[uint64]FlrStatus)
+		flrs := make(map[uint64]Replication)
 		for id, repl := range r.ldr.repls {
 			errMessage := ""
 			if repl.status.err != nil {
@@ -173,7 +173,7 @@ func (r *Raft) info() Info {
 			if !repl.status.noContact.IsZero() {
 				unreachable = &repl.status.noContact
 			}
-			flrs[id] = FlrStatus{
+			flrs[id] = Replication{
 				ID:          id,
 				MatchIndex:  repl.status.matchIndex,
 				Unreachable: unreachable,
@@ -201,7 +201,7 @@ func (r *Raft) info() Info {
 	}
 }
 
-type FlrStatus struct {
+type Replication struct {
 	ID          uint64     `json:"-"`
 	MatchIndex  uint64     `json:"matchIndex"`
 	Unreachable *time.Time `json:"unreachable,omitempty"`
@@ -211,20 +211,20 @@ type FlrStatus struct {
 }
 
 type Info struct {
-	CID           uint64               `json:"cid"`
-	NID           uint64               `json:"nid"`
-	Addr          string               `json:"addr"`
-	Term          uint64               `json:"term"`
-	State         State                `json:"state"`
-	Leader        uint64               `json:"leader,omitempty"`
-	SnapshotIndex uint64               `json:"snapshotIndex"`
-	FirstLogIndex uint64               `json:"firstLogIndex"`
-	LastLogIndex  uint64               `json:"lastLogIndex"`
-	LastLogTerm   uint64               `json:"lastLogTerm"`
-	Committed     uint64               `json:"committed"`
-	LastApplied   uint64               `json:"lastApplied"`
-	Configs       Configs              `json:"configs"`
-	Followers     map[uint64]FlrStatus `json:"followers,omitempty"`
+	CID           uint64                 `json:"cid"`
+	NID           uint64                 `json:"nid"`
+	Addr          string                 `json:"addr"`
+	Term          uint64                 `json:"term"`
+	State         State                  `json:"state"`
+	Leader        uint64                 `json:"leader,omitempty"`
+	SnapshotIndex uint64                 `json:"snapshotIndex"`
+	FirstLogIndex uint64                 `json:"firstLogIndex"`
+	LastLogIndex  uint64                 `json:"lastLogIndex"`
+	LastLogTerm   uint64                 `json:"lastLogTerm"`
+	Committed     uint64                 `json:"committed"`
+	LastApplied   uint64                 `json:"lastApplied"`
+	Configs       Configs                `json:"configs"`
+	Followers     map[uint64]Replication `json:"followers,omitempty"`
 }
 
 // ------------------------------------------------------------------------
