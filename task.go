@@ -93,7 +93,7 @@ func (r *Raft) FSMTasks() chan<- FSMTask {
 
 func (r *Raft) runBatch() {
 	var neHead, neTail *newEntry
-	newEntryCh := r.newEntryCh
+	var newEntryCh chan *newEntry
 	i := 0
 	for {
 		select {
