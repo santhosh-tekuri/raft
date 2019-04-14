@@ -857,6 +857,15 @@ func (c *cluster) takeSnapshot(r *Raft, threshold uint64, want error) {
 	}
 }
 
+func (c *cluster) waitForStableConfig(ldr *Raft) {
+	t := WaitForStableConfig()
+	ldr.Tasks() <- t
+	<-t.Done()
+	if t.Err() != nil {
+		c.Fatalf("waitForStableConfig: %v", t.Err())
+	}
+}
+
 func (c *cluster) disconnect(rr ...*Raft) {
 	testln("disconnect:", hosts(rr))
 	if len(rr) == 0 {
