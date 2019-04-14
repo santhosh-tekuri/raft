@@ -168,14 +168,6 @@ func (u replUpdate) String() string {
 	}
 }
 
-func (info *liveInfo) String() string {
-	return fmt.Sprintf("M%d %d %s |", info.NID(), info.Term(), string(info.State()))
-}
-
-func (info *cachedInfo) String() string {
-	return fmt.Sprintf("M%d %d %s |", info.NID(), info.Term(), string(info.State()))
-}
-
 func (ne *newEntry) String() string {
 	switch ne.typ {
 	case entryUpdate:
