@@ -28,7 +28,6 @@ import (
 // It is recommended that all servers in cluster use same options.
 type Options struct {
 	HeartbeatTimeout time.Duration
-	QuorumWait       time.Duration
 
 	// PromoteThreshold determines the minimum round duration required
 	// for promoting a nonvoter.
@@ -88,7 +87,6 @@ func DefaultOptions() Options {
 	hbTimeout := 1000 * time.Millisecond
 	return Options{
 		HeartbeatTimeout:  hbTimeout,
-		QuorumWait:        0,
 		PromoteThreshold:  hbTimeout,
 		SnapshotInterval:  2 * time.Hour,
 		SnapshotThreshold: 8192,

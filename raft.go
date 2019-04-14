@@ -108,7 +108,6 @@ func New(opt Options, fsm FSM, storageDir string) (*Raft, error) {
 		storage:          store,
 		state:            Follower,
 		hbTimeout:        opt.HeartbeatTimeout,
-		quorumWait:       opt.QuorumWait,
 		promoteThreshold: opt.PromoteThreshold,
 		shutdownOnRemove: opt.ShutdownOnRemove,
 		logger:           opt.Logger,

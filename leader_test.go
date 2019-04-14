@@ -79,7 +79,7 @@ func TestLeader_stepDown(t *testing.T) {
 
 func TestLeader_quorumWait_unreachable(t *testing.T) {
 	c := newCluster(t)
-	c.opt.QuorumWait = 2 * time.Second
+	c.quorumWait = 2 * time.Second
 	ldr, followers := c.ensureLaunch(2)
 	defer c.shutdown()
 
@@ -113,7 +113,7 @@ func TestLeader_quorumWait_unreachable(t *testing.T) {
 
 	// ensure that leader waited for quorumConfigured before stepDown
 	if got := time.Now().Sub(start); got < 1*time.Second {
-		t.Fatalf("quorumWait: got %s, want %s", got, c.opt.QuorumWait)
+		t.Fatalf("quorumWait: got %s, want %s", got, c.quorumWait)
 	}
 
 	// should be no leaders
@@ -128,7 +128,7 @@ func TestLeader_quorumWait_unreachable(t *testing.T) {
 
 func TestLeader_quorumWait_reachable(t *testing.T) {
 	c := newCluster(t)
-	c.opt.QuorumWait = 30 * time.Minute
+	c.quorumWait = 30 * time.Minute
 	ldr, followers := c.ensureLaunch(2)
 	defer c.shutdown()
 

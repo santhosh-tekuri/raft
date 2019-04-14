@@ -256,10 +256,10 @@ func newCluster(t *testing.T) *cluster {
 		heartbeatTimeout: heartbeatTimeout,
 		longTimeout:      5 * time.Second,
 		commitTimeout:    5 * time.Millisecond,
+		quorumWait:       heartbeatTimeout,
 	}
 	c.opt = Options{
 		HeartbeatTimeout: heartbeatTimeout,
-		QuorumWait:       heartbeatTimeout,
 		PromoteThreshold: heartbeatTimeout,
 		Bandwidth:        256 * 1024,
 		LogSegmentSize:   4 * 1024,
@@ -286,6 +286,7 @@ type cluster struct {
 	longTimeout      time.Duration
 	commitTimeout    time.Duration
 	opt              Options
+	quorumWait       time.Duration
 	resolverMu       sync.RWMutex
 }
 
@@ -362,6 +363,7 @@ func (c *cluster) launch(n int, bootstrap bool) map[uint64]*Raft {
 		if err != nil {
 			c.Fatal(err)
 		}
+		r.quorumWait = c.quorumWait
 		launched[r.NID()] = r
 		c.rr[node.ID] = r
 		c.storage[node.ID] = storageDir
@@ -458,6 +460,7 @@ func (c *cluster) restart(r *Raft) *Raft {
 	if err != nil {
 		c.Fatal(err)
 	}
+	r.quorumWait = c.quorumWait
 	c.rr[r.NID()] = newr
 	c.serverErrMu.Lock()
 	c.serveErr[r.NID()] = make(chan error, 1)

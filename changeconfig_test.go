@@ -221,7 +221,7 @@ func TestChangeConfig_promote_newNode_singleRound(t *testing.T) {
 func TestChangeConfig_promote_newNode_uptodateButConfigChangeInProgress(t *testing.T) {
 	// create 2 node cluster, with long quorumWait
 	c := newCluster(t)
-	c.opt.QuorumWait = 10 * time.Second
+	c.quorumWait = 10 * time.Second
 	ldr, followers := c.ensureLaunch(2)
 	defer c.shutdown()
 

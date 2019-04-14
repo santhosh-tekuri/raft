@@ -84,7 +84,7 @@ func TestTransfer_fiveNodes(t *testing.T) {
 func setupTransferTimeout(t *testing.T, quorumWait, taskTimeout time.Duration) (c *cluster, ldr *Raft, flrs []*Raft, transfer Task) {
 	// launch 3 node cluster, with given quorumWait
 	c = newCluster(t)
-	c.opt.QuorumWait = quorumWait
+	c.quorumWait = quorumWait
 	ldr, flrs = c.ensureLaunch(3)
 
 	// wait for bootstrap config committed by all
