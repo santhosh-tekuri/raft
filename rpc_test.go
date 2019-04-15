@@ -78,7 +78,11 @@ func TestRPC_voteReq_opError(t *testing.T) {
 	// because of storage failure
 	select {
 	case e := <-shuttingDown.ch:
-		c.shutdownErr(e.err, c.rr[e.src])
+		flr := c.rr[e.src]
+		<-flr.closed
+		if got := c.serveError(flr); got != e.err {
+			t.Fatalf("serve=%v, want %v", got, e.err)
+		}
 	case <-time.After(c.longTimeout):
 		t.Fatal("one of the follower is expected to shutdown")
 	}

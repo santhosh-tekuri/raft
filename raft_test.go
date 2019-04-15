@@ -252,7 +252,7 @@ func newCluster(t *testing.T) *cluster {
 		rr:               make(map[uint64]*Raft),
 		ports:            make(map[uint64]int),
 		storage:          make(map[uint64]string),
-		serveErr:         make(map[uint64]chan error),
+		serveErr:         make(map[uint64]error),
 		heartbeatTimeout: heartbeatTimeout,
 		longTimeout:      5 * time.Second,
 		commitTimeout:    5 * time.Millisecond,
@@ -281,7 +281,7 @@ type cluster struct {
 	ports            map[uint64]int
 	storage          map[uint64]string
 	serverErrMu      sync.RWMutex
-	serveErr         map[uint64]chan error
+	serveErr         map[uint64]error
 	heartbeatTimeout time.Duration
 	longTimeout      time.Duration
 	commitTimeout    time.Duration
@@ -364,11 +364,11 @@ func (c *cluster) launch(n int, bootstrap bool) map[uint64]*Raft {
 			c.Fatal(err)
 		}
 		r.quorumWait = c.quorumWait
-		launched[r.NID()] = r
+		launched[r.nid] = r
 		c.rr[node.ID] = r
 		c.storage[node.ID] = storageDir
 		c.serverErrMu.Lock()
-		c.serveErr[r.NID()] = make(chan error, 1)
+		c.serveErr[r.nid] = nil
 		c.serverErrMu.Unlock()
 	}
 	for _, r := range launched {
@@ -396,9 +396,9 @@ func (c *cluster) serve(r *Raft) {
 	ee.statusMu.Unlock()
 	go func() {
 		err := r.Serve(l)
-		c.serverErrMu.RLock()
-		c.serveErr[r.NID()] <- err
-		c.serverErrMu.RUnlock()
+		c.serverErrMu.Lock()
+		c.serveErr[r.nid] = err
+		c.serverErrMu.Unlock()
 	}()
 }
 
@@ -410,7 +410,15 @@ func (c *cluster) ensureLaunch(n int) (ldr *Raft, flrs []*Raft) {
 	return
 }
 
-func (c *cluster) shutdownErr(err error, rr ...*Raft) {
+func (c *cluster) serveError(r *Raft) error {
+	c.serverErrMu.Lock()
+	err := c.serveErr[r.nid]
+	c.serveErr[r.nid] = ErrServerClosed
+	c.serverErrMu.Unlock()
+	return err
+}
+
+func (c *cluster) shutdown(rr ...*Raft) {
 	c.Helper()
 	checkLeak := false
 	if len(rr) == 0 {
@@ -424,13 +432,9 @@ func (c *cluster) shutdownErr(err error, rr ...*Raft) {
 	}
 	for _, r := range rr {
 		<-r.Shutdown()
-		c.serverErrMu.RLock()
-		ch := c.serveErr[r.NID()]
-		c.serverErrMu.RUnlock()
-		got := <-ch
-		ch <- ErrServerClosed
-		if got != err {
-			c.Errorf("M%d.shutdown: got %v, want %v", r.NID(), got, err)
+		err := c.serveError(r)
+		if err != ErrServerClosed {
+			c.Errorf("M%d.shutdown: got %v, want ErrServerClosed", r.NID(), err)
 		}
 	}
 	if c.Failed() {
@@ -445,11 +449,6 @@ func (c *cluster) shutdownErr(err error, rr ...*Raft) {
 	}
 }
 
-func (c *cluster) shutdown(rr ...*Raft) {
-	c.Helper()
-	c.shutdownErr(ErrServerClosed, rr...)
-}
-
 func (c *cluster) restart(r *Raft) *Raft {
 	c.Helper()
 	c.shutdown(r)
@@ -461,9 +460,9 @@ func (c *cluster) restart(r *Raft) *Raft {
 		c.Fatal(err)
 	}
 	r.quorumWait = c.quorumWait
-	c.rr[r.NID()] = newr
+	c.rr[r.nid] = newr
 	c.serverErrMu.Lock()
-	c.serveErr[r.NID()] = make(chan error, 1)
+	c.serveErr[r.nid] = nil
 	c.serverErrMu.Unlock()
 	testln("restarting", host(r))
 	c.serve(newr)

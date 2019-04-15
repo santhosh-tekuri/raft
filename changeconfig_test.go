@@ -388,7 +388,9 @@ func TestChangeConfig_removeLeader(t *testing.T) {
 	}
 
 	// check shutdown reason was ErrNodeRemoved
-	c.shutdownErr(ErrNodeRemoved, ldr)
+	if got := c.serveError(ldr); got != ErrNodeRemoved {
+		t.Fatalf("serve=%v, want ErrNodeRemoved", got)
+	}
 }
 
 // ---------------------------------------------------------
