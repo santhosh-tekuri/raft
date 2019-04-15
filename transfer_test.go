@@ -83,7 +83,7 @@ func TestTransfer_self(t *testing.T) {
 }
 
 // happy path: transfer leadership in 5 node cluster
-func TestTransfer_fiveNodes(t *testing.T) {
+func TestTransfer_anyTarget(t *testing.T) {
 	doTransfer := func(t *testing.T, targetsReady bool) {
 		// launch 5 node cluster
 		c, ldr, _ := launchCluster(t, 5)
@@ -116,6 +116,43 @@ func TestTransfer_fiveNodes(t *testing.T) {
 		doTransfer(t, true)
 	})
 	t.Run("targetsNotReady", func(t *testing.T) {
+		doTransfer(t, false)
+	})
+}
+
+func TestTransfer_givenTarget(t *testing.T) {
+	doTransfer := func(t *testing.T, targetsReady bool) {
+		// launch 5 node cluster
+		c, ldr, flrs := launchCluster(t, 5)
+		defer c.shutdown()
+		term := c.info(ldr).Term
+
+		c.sendUpdates(ldr, 1, 20)
+		if targetsReady {
+			c.waitFSMLen(20)
+		}
+
+		// transfer leadership, ensure no error
+		c.ensure(waitTask(ldr, TransferLeadership(flrs[0].nid, c.longTimeout), c.longTimeout))
+
+		// wait for new leader
+		newLdr := c.waitForLeader()
+
+		// check that leader is the target we gave
+		if newLdr.nid != flrs[0].nid {
+			c.Fatalf("newLeader=M%d, want M%d", newLdr.nid, flrs[0].nid)
+		}
+
+		// new leader term must be one greater than old leader term
+		if got := c.info(newLdr).Term; got != term+1 {
+			c.Fatalf("newLdr.term: got %d, want %d", got, term+1)
+		}
+	}
+
+	t.Run("targetReady", func(t *testing.T) {
+		doTransfer(t, true)
+	})
+	t.Run("targetNotReady", func(t *testing.T) {
 		doTransfer(t, false)
 	})
 }
