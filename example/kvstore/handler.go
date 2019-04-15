@@ -85,10 +85,6 @@ func (h handler) execute(t raft.FSMTask) (interface{}, error) {
 		return nil, raft.ErrServerClosed
 	case h.r.FSMTasks() <- t:
 	}
-	select {
-	case <-h.r.Closed():
-		return nil, raft.ErrServerClosed
-	case <-t.Done():
-		return t.Result(), t.Err()
-	}
+	<-t.Done()
+	return t.Result(), t.Err()
 }

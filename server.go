@@ -220,12 +220,7 @@ func (s *server) executeTask(t Task) {
 		return
 	case s.r.Tasks() <- t:
 	}
-	select {
-	case <-s.r.Closed():
-		t.reply(ErrServerClosed)
-		return
-	case <-t.Done():
-	}
+	<-t.Done()
 }
 
 func (s *server) shutdown() {
