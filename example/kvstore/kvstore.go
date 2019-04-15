@@ -64,7 +64,7 @@ func (s *kvStore) Snapshot() (raft.FSMState, error) {
 	return &kvState{data}, nil
 }
 
-func (s *kvStore) RestoreFrom(r io.Reader) error {
+func (s *kvStore) Restore(r io.Reader) error {
 	var data map[string]string
 	if err := gob.NewDecoder(r).Decode(&data); err != nil {
 		return err

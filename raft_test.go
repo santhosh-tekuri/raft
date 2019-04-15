@@ -1440,7 +1440,7 @@ func (fsm *fsmMock) Snapshot() (FSMState, error) {
 	return stateMock{fsm.cmds}, nil
 }
 
-func (fsm *fsmMock) RestoreFrom(r io.Reader) error {
+func (fsm *fsmMock) Restore(r io.Reader) error {
 	var cmds []string
 	if err := gob.NewDecoder(r).Decode(&cmds); err != nil {
 		return err

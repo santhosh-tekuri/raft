@@ -22,15 +22,44 @@ import (
 	"github.com/santhosh-tekuri/raft/log"
 )
 
+// FSM provides an interface that can be implemented by
+// clients replicate state across raft cluster.
+//
+// The methods in FSM are not called concurrently.
 type FSM interface {
+	// Update applies the given command to state machine.
+	// It is invoked once a log entry is committed.
+	// The value returned will be made available as result of
+	// UpdateFSM task.
 	Update(cmd []byte) interface{}
+
+	// Read executes the given command to state machine.
+	// The command should not modify the stateMachine.
+	// The value returned will be made available as result of
+	// ReadFSM task.
 	Read(cmd interface{}) interface{}
+
+	// Snapshot is used to support log compaction. This call should
+	// return an FSMState which can be used to save a point-in-time
+	// snapshot of the FSM.
 	Snapshot() (FSMState, error)
-	RestoreFrom(io.Reader) error
+
+	// Restore is used to restore an FSM from a snapshot. On success,
+	// FSM must discard all previous state. On failure, the FSM should be
+	// in the same state prior to this call.
+	Restore(io.Reader) error
 }
 
+// FSMState captures the current state of FSM.
+// It is returned by an FSM in response to a Snapshot.
+// It must be safe to invoke FSMState methods with concurrent
+// calls to FSM methods.
 type FSMState interface {
+	// Persist dumps all necessary state to given io.Writer.
 	Persist(w io.Writer) error
+
+	// Release is invoked when we are finished with the snapshot.
+	// FSM can release locks if any used during snapshot.
 	Release()
 }
 
@@ -146,8 +175,8 @@ func (fsm *stateMachine) onRestoreReq() error {
 		return opError(err, "snapshots.open")
 	}
 	defer snap.release()
-	if err = fsm.RestoreFrom(bufio.NewReader(snap.file)); err != nil {
-		return opError(err, "FSM.RestoreFrom")
+	if err = fsm.Restore(bufio.NewReader(snap.file)); err != nil {
+		return opError(err, "FSM.Restore")
 	}
 	fsm.index, fsm.term = snap.meta.index, snap.meta.term
 	return nil
