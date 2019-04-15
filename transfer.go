@@ -148,7 +148,11 @@ func (l *leader) tryTransfer() {
 }
 
 func (l *leader) onTransferTimeout() {
-	l.transfer.reply(TimeoutError("transferLeadership"))
+	l.replyTransfer(TimeoutError("transferLeadership"))
+}
+
+func (l *leader) replyTransfer(err error) {
+	l.transfer.reply(err)
 	l.checkConfigActions(nil, l.configs.Latest)
 }
 
@@ -170,7 +174,7 @@ func (l *leader) onTimeoutNowResult(rpc rpcResponse) {
 	}
 	if rpc.response.getResult() != success {
 		if l.transfer.target == 0 {
-			l.transfer.reply(fmt.Errorf("raft.transferLeadership: target rejected with %v", rpc.response.getResult()))
+			l.replyTransfer(fmt.Errorf("raft.transferLeadership: target rejected with %v", rpc.response.getResult()))
 			return
 		}
 		l.tryTransfer()
