@@ -67,9 +67,10 @@ type Raft struct {
 	fsmTaskCh  chan FSMTask
 	newEntryCh chan *newEntry
 
-	closeOnce sync.Once
-	close     chan struct{}
-	closed    chan struct{}
+	closeOnce   sync.Once
+	closeReason error
+	close       chan struct{}
+	closed      chan struct{}
 }
 
 func New(opt Options, fsm FSM, storageDir string) (*Raft, error) {
@@ -196,17 +197,17 @@ func (r *Raft) Serve(l net.Listener) error {
 	defer s.shutdown()
 
 	go r.runBatch()
-	err := r.stateLoop()
+	r.stateLoop()
 	for ne := range r.newEntryCh {
 		for ne != nil {
 			ne.reply(ErrServerClosed)
 			ne = ne.next
 		}
 	}
-	return err
+	return r.closeReason
 }
 
-func (r *Raft) stateLoop() (err error) {
+func (r *Raft) stateLoop() {
 	var (
 		f = &follower{Raft: r}
 		c = &candidate{Raft: r}
@@ -254,7 +255,7 @@ func (r *Raft) stateLoop() (err error) {
 		for r.state == state {
 			select {
 			case <-r.close:
-				return ErrServerClosed
+				return
 
 			case err := <-r.fsmRestoredCh:
 				if trace {
@@ -300,7 +301,7 @@ func (r *Raft) stateLoop() (err error) {
 					}
 				} else {
 					assert(r.isClosed())
-					return ErrServerClosed
+					return
 				}
 
 			case t := <-r.taskCh:
@@ -356,6 +357,7 @@ func (r *Raft) release() {
 
 func (r *Raft) doClose(reason error) {
 	r.closeOnce.Do(func() {
+		r.closeReason = reason
 		if trace {
 			println(r, ">> shutdown()", reason)
 		}
