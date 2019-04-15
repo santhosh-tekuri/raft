@@ -166,7 +166,7 @@ func testInstallSnapCase(t *testing.T, updateFSMAfterSnap bool) {
 	ldr, _ := c.ensureLaunch(3)
 	defer c.shutdown()
 
-	// send 100 updates, wait for them
+	// send 30 updates, wait for them
 	updates := uint64(30)
 	<-c.sendUpdates(ldr, 1, 30).Done()
 

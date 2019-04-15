@@ -381,6 +381,14 @@ func TestChangeConfig_removeLeader(t *testing.T) {
 	if ldr.nid == newLdr.nid {
 		t.Fatal()
 	}
+
+	// check leader is shutdown
+	if !ldr.isClosed() {
+		t.Fatalf("leader is not shutdown after removal")
+	}
+
+	// check shutdown reason was ErrNodeRemoved
+	c.shutdownErr(ErrNodeRemoved, ldr)
 }
 
 // ---------------------------------------------------------
