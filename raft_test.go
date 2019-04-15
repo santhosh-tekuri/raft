@@ -409,7 +409,7 @@ func (c *cluster) ensureLaunch(n int) (ldr *Raft, flrs []*Raft) {
 	return
 }
 
-func (c *cluster) shutdownErr(ok bool, rr ...*Raft) {
+func (c *cluster) shutdownErr(err error, rr ...*Raft) {
 	c.Helper()
 	checkLeak := false
 	if len(rr) == 0 {
@@ -428,8 +428,8 @@ func (c *cluster) shutdownErr(ok bool, rr ...*Raft) {
 		c.serverErrMu.RUnlock()
 		got := <-ch
 		ch <- ErrServerClosed
-		if ok != (got == ErrServerClosed) {
-			c.Errorf("M%d.shutdown: got %v, want ErrServerClosed=%v", r.NID(), got, ok)
+		if got != err {
+			c.Errorf("M%d.shutdown: got %v, want %v", r.NID(), got, err)
 		}
 	}
 	if c.Failed() {
@@ -446,7 +446,7 @@ func (c *cluster) shutdownErr(ok bool, rr ...*Raft) {
 
 func (c *cluster) shutdown(rr ...*Raft) {
 	c.Helper()
-	c.shutdownErr(true, rr...)
+	c.shutdownErr(ErrServerClosed, rr...)
 }
 
 func (c *cluster) restart(r *Raft) *Raft {
