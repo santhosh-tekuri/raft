@@ -326,14 +326,17 @@ func encodeTaskResp(t Task, w *bufio.Writer) (err error) {
 	return fmt.Errorf("unknown type: %T", t.Result())
 }
 
+// MarshalJSON implements the json.Marshaler interface.
 func (s State) MarshalJSON() ([]byte, error) {
 	return []byte(strconv.Quote(s.String())), nil
 }
 
+// MarshalJSON implements the json.Marshaler interface.
 func (a Action) MarshalJSON() ([]byte, error) {
 	return []byte(strconv.Quote(a.String())), nil
 }
 
+// UnmarshalJSON implements the json.Unmarshaler interface.
 func (a *Action) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		*a = None
