@@ -343,6 +343,9 @@ func (r *Raft) onInstallSnapRequest(req *installSnapReq, c *conn) (rpcResult, er
 // onTimeoutNowRequest -------------------------------------------------
 
 func (r *Raft) onTimeoutNowRequest() (rpcResult, error) {
+	if !r.configs.Latest.isVoter(r.nid) {
+		return nonVoter, nil
+	}
 	r.setState(Candidate)
 	r.setLeader(0)
 	r.cnd.transfer = true

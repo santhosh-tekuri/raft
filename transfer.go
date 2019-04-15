@@ -14,7 +14,10 @@
 
 package raft
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 type transfer struct {
 	// transfer task submitted by user. should be used
@@ -111,9 +114,11 @@ func (l *leader) tryTransfer() {
 	// chose ready target
 	var target uint64
 	if l.transfer.target != 0 {
-		repl := l.repls[l.transfer.target]
-		if repl.status.noContact.IsZero() && repl.status.matchIndex == l.lastLogIndex {
-			target = l.transfer.target
+		if l.configs.Latest.isVoter(l.transfer.target) {
+			repl := l.repls[l.transfer.target]
+			if repl.status.noContact.IsZero() && repl.status.matchIndex == l.lastLogIndex {
+				target = l.transfer.target
+			}
 		}
 	} else {
 		for id, n := range l.configs.Latest.Nodes {
@@ -161,10 +166,18 @@ func (l *leader) onTimeoutNowResult(rpc rpcResponse) {
 		if l.transfer.target == 0 {
 			l.tryTransfer()
 		}
-	} else {
-		// todo: make configurable, min 60ms required for persisting term and self-vote to disk
-		l.transfer.newTermTimer.reset(200 * time.Millisecond)
+		return
 	}
+	if rpc.response.getResult() != success {
+		if l.transfer.target == 0 {
+			l.transfer.reply(fmt.Errorf("raft.transferLeadership: target rejected with %v", rpc.response.getResult()))
+			return
+		}
+		l.tryTransfer()
+		return
+	}
+	// todo: make configurable, min 60ms required for persisting term and self-vote to disk
+	l.transfer.newTermTimer.reset(200 * time.Millisecond)
 }
 
 func (l *leader) onNewTermTimeout() {

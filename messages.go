@@ -177,6 +177,7 @@ const (
 	logNotUptodate
 	prevEntryNotFound
 	prevTermMismatch
+	nonVoter
 	readErr
 	unexpectedErr
 )
@@ -197,6 +198,8 @@ func (r rpcResult) String() string {
 		return "prevEntryNotFound"
 	case prevTermMismatch:
 		return "prevTermMismatch"
+	case nonVoter:
+		return "nonVoter"
 	case readErr:
 		return "readErr"
 	case unexpectedErr:
