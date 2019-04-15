@@ -33,7 +33,7 @@ package raft
 //  - replication send as many entries as it has
 //  - follower send one resp per batch of maxAppendEntries
 //  - last resp should be success with lastIndex==req.lastIndex
-//    or it sould be !success
+//    or it should be !success
 //  - pipeline writer should notify pipeline reader about req.lastIndex
 //    before writing entries, so that reader can read. otherwise writer
 //    might take long time to finish writing
