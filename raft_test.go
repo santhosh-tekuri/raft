@@ -263,6 +263,7 @@ func newCluster(t *testing.T) *cluster {
 		Bandwidth:        256 * 1024,
 		LogSegmentSize:   4 * 1024,
 		SnapshotsRetain:  1,
+		ShutdownOnRemove: true,
 	}
 	return c
 }
