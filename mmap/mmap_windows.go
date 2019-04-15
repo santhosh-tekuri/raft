@@ -78,6 +78,7 @@ func openFile(file *os.File, flag int, size int) (*File, error) {
 	}, nil
 }
 
+// Sync commits the current contents of the file to stable storage.
 func (f *File) Sync() error {
 	header := (*reflect.SliceHeader)(unsafe.Pointer(&f.Data))
 	errno := windows.FlushViewOfFile(header.Data, uintptr(header.Len))
@@ -93,6 +94,7 @@ func (f *File) Sync() error {
 	return nil
 }
 
+// Close closes the File, rendering it unusable for I/O.
 func (f *File) Close() error {
 	if err := f.Sync(); err != nil {
 		return err

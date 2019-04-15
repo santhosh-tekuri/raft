@@ -24,6 +24,7 @@ import (
 
 func openFile(file *os.File, flag int, size int) (*File, error) {
 	defer file.Close()
+	file.Sync()
 	var prot int
 	if flag == os.O_RDONLY {
 		prot = unix.PROT_READ
@@ -39,10 +40,12 @@ func openFile(file *os.File, flag int, size int) (*File, error) {
 	return &File{name: file.Name(), Data: b}, nil
 }
 
+// Sync commits the current contents of the file to stable storage.
 func (f *File) Sync() error {
 	return unix.Msync(f.Data, unix.MS_SYNC)
 }
 
+// Close closes the File, rendering it unusable for I/O.
 func (f File) Close() error {
 	return unix.Munmap(f.Data)
 }

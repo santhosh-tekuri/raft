@@ -12,18 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package mmap allows mapping files into memory.
 package mmap
 
 import (
 	"os"
 )
 
+// File represents a file mapped into memory.
 type File struct {
-	name   string
+	name string
+	// Data is the mmaped data of the file
 	Data   []byte
 	handle interface{}
 }
 
+// OpenFile maps given file into memory. The arguments are same as os.OpenFile.
 func OpenFile(name string, flag int, mode os.FileMode) (*File, error) {
 	f, err := os.OpenFile(name, flag, mode)
 	if err != nil {
@@ -36,6 +40,7 @@ func OpenFile(name string, flag int, mode os.FileMode) (*File, error) {
 	return openFile(f, flag, int(info.Size()))
 }
 
+// Name returns the name of the file as presented to OpenFile.
 func (f *File) Name() string {
 	return f.name
 }
