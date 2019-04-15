@@ -20,6 +20,33 @@ import (
 	"time"
 )
 
+// tests the behavior of voteReq when raft.leader!=0
+func TestRaft_voteReq_leaderKnown(t *testing.T) {
+	c, ldr, flrs := launchCluster(t, 3)
+	defer c.shutdown()
+
+	// wait until all nodes know who is leader
+	c.waitForLeader()
+
+	// a follower that thinks there's a leader should vote for that leader
+	granted, err := requestVote(ldr, flrs[0], false)
+	if err != nil {
+		t.Fatalf("requestVote failed: %v", err)
+	}
+	if !granted {
+		t.Fatalf("follower should grant vote to leader")
+	}
+
+	// a follower that thinks there's a leader shouldn't vote for a different candidate
+	granted, err = requestVote(flrs[0], flrs[1], false)
+	if err != nil {
+		t.Fatalf("requestVote failed: %v", err)
+	}
+	if granted {
+		t.Fatalf("follower should not grant vote candidate other than leader")
+	}
+}
+
 func TestRPC_voteReq_opError(t *testing.T) {
 	f := grantingVote
 	failNow := make(chan struct{})
