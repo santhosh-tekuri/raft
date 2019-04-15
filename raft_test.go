@@ -252,7 +252,7 @@ func newCluster(t *testing.T) *cluster {
 		rr:               make(map[uint64]*Raft),
 		ports:            make(map[uint64]int),
 		storage:          make(map[uint64]string),
-		serveErr:         make(map[uint64]error),
+		serveErr:         make(map[uint64]chan error),
 		heartbeatTimeout: heartbeatTimeout,
 		longTimeout:      5 * time.Second,
 		commitTimeout:    5 * time.Millisecond,
@@ -281,7 +281,7 @@ type cluster struct {
 	ports            map[uint64]int
 	storage          map[uint64]string
 	serverErrMu      sync.RWMutex
-	serveErr         map[uint64]error
+	serveErr         map[uint64]chan error
 	heartbeatTimeout time.Duration
 	longTimeout      time.Duration
 	commitTimeout    time.Duration
@@ -368,7 +368,7 @@ func (c *cluster) launch(n int, bootstrap bool) map[uint64]*Raft {
 		c.rr[node.ID] = r
 		c.storage[node.ID] = storageDir
 		c.serverErrMu.Lock()
-		c.serveErr[r.nid] = nil
+		c.serveErr[r.nid] = make(chan error, 1)
 		c.serverErrMu.Unlock()
 	}
 	for _, r := range launched {
@@ -396,9 +396,9 @@ func (c *cluster) serve(r *Raft) {
 	ee.statusMu.Unlock()
 	go func() {
 		err := r.Serve(l)
-		c.serverErrMu.Lock()
-		c.serveErr[r.nid] = err
-		c.serverErrMu.Unlock()
+		c.serverErrMu.RLock()
+		c.serveErr[r.nid] <- err
+		c.serverErrMu.RUnlock()
 	}()
 }
 
@@ -411,10 +411,11 @@ func (c *cluster) ensureLaunch(n int) (ldr *Raft, flrs []*Raft) {
 }
 
 func (c *cluster) serveError(r *Raft) error {
-	c.serverErrMu.Lock()
-	err := c.serveErr[r.nid]
-	c.serveErr[r.nid] = ErrServerClosed
-	c.serverErrMu.Unlock()
+	c.serverErrMu.RLock()
+	ch := c.serveErr[r.nid]
+	c.serverErrMu.RUnlock()
+	err := <-ch
+	ch <- ErrServerClosed
 	return err
 }
 
@@ -462,7 +463,7 @@ func (c *cluster) restart(r *Raft) *Raft {
 	r.quorumWait = c.quorumWait
 	c.rr[r.nid] = newr
 	c.serverErrMu.Lock()
-	c.serveErr[r.nid] = nil
+	c.serveErr[r.nid] = make(chan error, 1)
 	c.serverErrMu.Unlock()
 	testln("restarting", host(r))
 	c.serve(newr)

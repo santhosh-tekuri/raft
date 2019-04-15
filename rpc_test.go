@@ -79,7 +79,6 @@ func TestRPC_voteReq_opError(t *testing.T) {
 	select {
 	case e := <-shuttingDown.ch:
 		flr := c.rr[e.src]
-		<-flr.closed
 		if got := c.serveError(flr); got != e.err {
 			t.Fatalf("serve=%v, want %v", got, e.err)
 		}
