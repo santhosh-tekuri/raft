@@ -169,9 +169,7 @@ func openStorage(dir string, opt Options) (*storage, error) {
 
 func (s *storage) setTerm(term uint64) {
 	if s.term != term {
-		if term < s.term {
-			panic(fmt.Sprintf("term cannot be changed from %d to %d", s.term, term))
-		}
+		assert(term > s.term)
 		if err := s.termVal.set(term, 0); err != nil {
 			panic(opError(err, "storage.setTermVote(%d, %d)", term, 0))
 		}
@@ -182,17 +180,17 @@ func (s *storage) setTerm(term uint64) {
 var grantingVote = func(s *storage, term, candidate uint64) error { return nil }
 
 func (s *storage) setVotedFor(term, candidate uint64) {
-	if term < s.term {
-		panic(fmt.Sprintf("term cannot be changed from %d to %d", s.term, term))
+	if term != s.term || candidate != s.votedFor {
+		assert(term >= s.term)
+		err := grantingVote(s, term, candidate)
+		if err == nil {
+			err = s.termVal.set(term, candidate)
+		}
+		if err != nil {
+			panic(opError(err, "storage.setTermVote(%d, %d)", term, candidate))
+		}
+		s.term, s.votedFor = term, candidate
 	}
-	err := grantingVote(s, term, candidate)
-	if err == nil {
-		err = s.termVal.set(term, candidate)
-	}
-	if err != nil {
-		panic(opError(err, "storage.setTermVote(%d, %d)", term, candidate))
-	}
-	s.term, s.votedFor = term, candidate
 }
 
 // NOTE: this should not be called with snapIndex
