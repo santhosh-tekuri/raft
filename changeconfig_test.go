@@ -382,7 +382,7 @@ func TestChangeConfig_removeLeader(t *testing.T) {
 		t.Fatal()
 	}
 
-	// check leader is shutdown
+	// check old leader is shutdown
 	if !ldr.isClosed() {
 		t.Fatalf("leader is not shutdown after removal")
 	}
@@ -390,6 +390,20 @@ func TestChangeConfig_removeLeader(t *testing.T) {
 	// check shutdown reason was ErrNodeRemoved
 	if got := c.serveError(ldr); got != ErrNodeRemoved {
 		t.Fatalf("serve=%v, want ErrNodeRemoved", got)
+	}
+
+	// restart old leader and check that it aborts election with
+	// reason "not part of cluster"
+	electionAborted := c.registerFor(eventElectionAborted, ldr)
+	defer c.unregister(electionAborted)
+	c.restart(ldr)
+	select {
+	case e := <-electionAborted.ch:
+		if e.reason != "not part of cluster" {
+			t.Fatalf("electionAborted=%s, want %s", e.reason, "not part of cluster")
+		}
+	case <-time.After(c.longTimeout):
+		t.Fatal("no electionAborted detected")
 	}
 }
 
