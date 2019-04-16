@@ -84,21 +84,24 @@ func (c Client) ChangeConfig(config Config) error {
 	return err
 }
 
-func (c Client) WaitForStableConfig() error {
+func (c Client) WaitForStableConfig() (Config, error) {
 	conn, err := c.getConn()
 	if err != nil {
-		return err
+		return Config{}, err
 	}
 	defer conn.rwc.Close()
 
 	if err = conn.bufw.WriteByte(byte(taskWaitForStableConfig)); err != nil {
-		return err
+		return Config{}, err
 	}
 	if err = conn.bufw.Flush(); err != nil {
-		return err
+		return Config{}, err
 	}
-	_, err = decodeTaskResp(taskWaitForStableConfig, conn.bufr)
-	return err
+	result, err := decodeTaskResp(taskWaitForStableConfig, conn.bufr)
+	if err != nil {
+		return Config{}, err
+	}
+	return result.(Config), nil
 }
 
 func (c Client) TakeSnapshot(threshold uint64) (snapIndex uint64, err error) {
@@ -263,7 +266,17 @@ func decodeTaskResp(typ taskType, r io.Reader) (interface{}, error) {
 			info.Followers[status.ID] = status
 		}
 		return info, nil
-	case taskChangeConfig, taskWaitForStableConfig, taskTransferLdr:
+	case taskWaitForStableConfig:
+		e := &entry{}
+		if err = e.decode(r); err != nil {
+			return nil, err
+		}
+		var config Config
+		if err = config.decode(e); err != nil {
+			return nil, err
+		}
+		return config, nil
+	case taskChangeConfig, taskTransferLdr:
 		return nil, nil
 	case taskTakeSnapshot:
 		return readUint64(r)
@@ -288,6 +301,8 @@ func encodeTaskResp(t Task, w *bufio.Writer) (err error) {
 	case uint64:
 		_ = writeUint64(w, r)
 		return
+	case Config:
+		return r.encode().encode(w)
 	case Info:
 		_ = writeUint64(w, r.CID)
 		_ = writeUint64(w, r.NID)

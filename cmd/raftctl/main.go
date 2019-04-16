@@ -151,11 +151,17 @@ func setConfig(c raft.Client, args []string) {
 }
 
 func waitConfig(c raft.Client) {
-	err := c.WaitForStableConfig()
+	config, err := c.WaitForStableConfig()
 	if err != nil {
 		errln(err.Error())
 		os.Exit(1)
 	}
+	b, err := json.MarshalIndent(config, "", "    ")
+	if err != nil {
+		errln(err.Error())
+		os.Exit(1)
+	}
+	fmt.Println(string(b))
 }
 
 func snapshot(c raft.Client, args []string) {
