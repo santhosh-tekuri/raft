@@ -30,11 +30,11 @@ type Client struct {
 	dial dialFn
 }
 
-func NewClient(addr string) Client {
-	return Client{addr, net.DialTimeout}
+func NewClient(addr string) *Client {
+	return &Client{addr, net.DialTimeout}
 }
 
-func (c Client) getConn() (*conn, error) {
+func (c *Client) getConn() (*conn, error) {
 	netConn, err := c.dial("tcp", c.addr, 5*time.Second)
 	if err != nil {
 		return nil, err
@@ -46,7 +46,7 @@ func (c Client) getConn() (*conn, error) {
 	}, nil
 }
 
-func (c Client) GetInfo() (Info, error) {
+func (c *Client) GetInfo() (Info, error) {
 	conn, err := c.getConn()
 	if err != nil {
 		return Info{}, err
@@ -66,7 +66,7 @@ func (c Client) GetInfo() (Info, error) {
 	return result.(Info), nil
 }
 
-func (c Client) ChangeConfig(config Config) error {
+func (c *Client) ChangeConfig(config Config) error {
 	conn, err := c.getConn()
 	if err != nil {
 		return err
@@ -84,7 +84,7 @@ func (c Client) ChangeConfig(config Config) error {
 	return err
 }
 
-func (c Client) WaitForStableConfig() (Config, error) {
+func (c *Client) WaitForStableConfig() (Config, error) {
 	conn, err := c.getConn()
 	if err != nil {
 		return Config{}, err
@@ -104,7 +104,7 @@ func (c Client) WaitForStableConfig() (Config, error) {
 	return result.(Config), nil
 }
 
-func (c Client) TakeSnapshot(threshold uint64) (snapIndex uint64, err error) {
+func (c *Client) TakeSnapshot(threshold uint64) (snapIndex uint64, err error) {
 	conn, err := c.getConn()
 	if err != nil {
 		return 0, err
@@ -127,7 +127,7 @@ func (c Client) TakeSnapshot(threshold uint64) (snapIndex uint64, err error) {
 	return result.(uint64), nil
 }
 
-func (c Client) TransferLeadership(target uint64, timeout time.Duration) error {
+func (c *Client) TransferLeadership(target uint64, timeout time.Duration) error {
 	conn, err := c.getConn()
 	if err != nil {
 		return err
