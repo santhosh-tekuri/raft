@@ -16,6 +16,7 @@ package raft
 
 import (
 	"errors"
+	"io"
 	"time"
 )
 
@@ -209,6 +210,52 @@ type Replication struct {
 	Round       uint64     `json:"round,omitempty"`
 }
 
+func (repl *Replication) decode(r io.Reader) error {
+	var err error
+	if repl.ID, err = readUint64(r); err != nil {
+		return err
+	}
+	if repl.MatchIndex, err = readUint64(r); err != nil {
+		return err
+	}
+	unixNano, err := readUint64(r)
+	if err != nil {
+		return err
+	}
+	if unixNano != 0 {
+		t := time.Unix(0, int64(unixNano))
+		repl.Unreachable = &t
+	}
+	if repl.ErrMessage, err = readString(r); err != nil {
+		return err
+	}
+	if repl.ErrMessage != "" {
+		repl.Err = errors.New(repl.ErrMessage)
+	}
+	repl.Round, err = readUint64(r)
+	return err
+}
+
+func (repl *Replication) encode(w io.Writer) error {
+	if err := writeUint64(w, repl.ID); err != nil {
+		return err
+	}
+	if err := writeUint64(w, repl.MatchIndex); err != nil {
+		return err
+	}
+	var unixNano uint64
+	if repl.Unreachable != nil {
+		unixNano = uint64(repl.Unreachable.UnixNano())
+	}
+	if err := writeUint64(w, unixNano); err != nil {
+		return err
+	}
+	if err := writeString(w, repl.ErrMessage); err != nil {
+		return err
+	}
+	return writeUint64(w, repl.Round)
+}
+
 type Info struct {
 	CID           uint64                 `json:"cid"`
 	NID           uint64                 `json:"nid"`
@@ -224,6 +271,130 @@ type Info struct {
 	LastApplied   uint64                 `json:"lastApplied"`
 	Configs       Configs                `json:"configs"`
 	Followers     map[uint64]Replication `json:"followers,omitempty"`
+}
+
+func (info *Info) decode(r io.Reader) error {
+	var err error
+	if info.CID, err = readUint64(r); err != nil {
+		return err
+	}
+	if info.NID, err = readUint64(r); err != nil {
+		return err
+	}
+	if info.Addr, err = readString(r); err != nil {
+		return err
+	}
+	if info.Term, err = readUint64(r); err != nil {
+		return err
+	}
+	b, err := readUint8(r)
+	if err != nil {
+		return err
+	}
+	info.State = State(b)
+	if info.Leader, err = readUint64(r); err != nil {
+		return err
+	}
+	if info.SnapshotIndex, err = readUint64(r); err != nil {
+		return err
+	}
+	if info.FirstLogIndex, err = readUint64(r); err != nil {
+		return err
+	}
+	if info.LastLogIndex, err = readUint64(r); err != nil {
+		return err
+	}
+	if info.LastLogTerm, err = readUint64(r); err != nil {
+		return err
+	}
+	if info.Committed, err = readUint64(r); err != nil {
+		return err
+	}
+	if info.LastApplied, err = readUint64(r); err != nil {
+		return err
+	}
+	e := &entry{}
+	if err = e.decode(r); err != nil {
+		return err
+	}
+	if err = info.Configs.Committed.decode(e); err != nil {
+		return err
+	}
+	if err = e.decode(r); err != nil {
+		return err
+	}
+	if err = info.Configs.Latest.decode(e); err != nil {
+		return err
+	}
+	info.Followers = map[uint64]Replication{}
+	sz, err := readUint32(r)
+	if err != nil {
+		return err
+	}
+	for sz > 0 {
+		sz--
+		repl := Replication{}
+		if err = repl.decode(r); err != nil {
+			return err
+		}
+		info.Followers[repl.ID] = repl
+	}
+	return nil
+}
+
+func (info Info) encode(w io.Writer) error {
+	if err := writeUint64(w, info.CID); err != nil {
+		return err
+	}
+	if err := writeUint64(w, info.NID); err != nil {
+		return err
+	}
+	if err := writeString(w, info.Addr); err != nil {
+		return err
+	}
+	if err := writeUint64(w, info.Term); err != nil {
+		return err
+	}
+	if err := writeUint8(w, uint8(info.State)); err != nil {
+		return err
+	}
+	if err := writeUint64(w, info.Leader); err != nil {
+		return err
+	}
+	if err := writeUint64(w, info.SnapshotIndex); err != nil {
+		return err
+	}
+	if err := writeUint64(w, info.FirstLogIndex); err != nil {
+		return err
+	}
+	if err := writeUint64(w, info.LastLogIndex); err != nil {
+		return err
+	}
+	if err := writeUint64(w, info.LastLogTerm); err != nil {
+		return err
+	}
+	if err := writeUint64(w, info.Committed); err != nil {
+		return err
+	}
+	if err := writeUint64(w, info.LastApplied); err != nil {
+		return err
+	}
+	if err := info.Configs.Committed.encode().encode(w); err != nil {
+		return err
+	}
+	if err := info.Configs.Latest.encode().encode(w); err != nil {
+		return err
+	}
+	flrs := info.Followers
+	if err := writeUint32(w, uint32(len(flrs))); err != nil {
+		return err
+	}
+	for _, flr := range flrs {
+		if err := flr.encode(w); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ------------------------------------------------------------------------

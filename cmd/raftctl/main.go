@@ -59,7 +59,7 @@ func main() {
 	}
 }
 
-func info(c raft.Client) {
+func info(c *raft.Client) {
 	info, err := c.GetInfo()
 	if err != nil {
 		errln(err.Error())
@@ -80,7 +80,7 @@ func info(c raft.Client) {
 	fmt.Printf("%s\n", indented.Bytes())
 }
 
-func config(c raft.Client, args []string) {
+func config(c *raft.Client, args []string) {
 	if len(args) == 0 {
 		errln("usage: raft config <cmd>")
 		errln()
@@ -101,7 +101,7 @@ func config(c raft.Client, args []string) {
 	}
 }
 
-func getConfig(c raft.Client) {
+func getConfig(c *raft.Client) {
 	info, err := c.GetInfo()
 	if err != nil {
 		errln(err.Error())
@@ -122,7 +122,7 @@ func getConfig(c raft.Client) {
 	}
 }
 
-func setConfig(c raft.Client, args []string) {
+func setConfig(c *raft.Client, args []string) {
 	if len(args) == 0 {
 		errln("usage: raft config set <config-file>")
 		os.Exit(1)
@@ -150,7 +150,7 @@ func setConfig(c raft.Client, args []string) {
 	}
 }
 
-func waitConfig(c raft.Client) {
+func waitConfig(c *raft.Client) {
 	config, err := c.WaitForStableConfig()
 	if err != nil {
 		errln(err.Error())
@@ -164,7 +164,7 @@ func waitConfig(c raft.Client) {
 	fmt.Println(string(b))
 }
 
-func snapshot(c raft.Client, args []string) {
+func snapshot(c *raft.Client, args []string) {
 	if len(args) == 0 {
 		errln("usage: raft snapshot <threshold>")
 		os.Exit(1)
@@ -182,7 +182,7 @@ func snapshot(c raft.Client, args []string) {
 	fmt.Println("snapshot index:", snapIndex)
 }
 
-func transfer(c raft.Client, args []string) {
+func transfer(c *raft.Client, args []string) {
 	if len(args) == 0 {
 		errln("usage: raft transfer <target> <timeout>")
 		os.Exit(1)

@@ -181,91 +181,8 @@ func decodeTaskResp(typ taskType, r io.Reader) (interface{}, error) {
 	switch typ {
 	case taskInfo:
 		info := Info{}
-		if info.CID, err = readUint64(r); err != nil {
-			return nil, err
-		}
-		if info.NID, err = readUint64(r); err != nil {
-			return nil, err
-		}
-		if info.Addr, err = readString(r); err != nil {
-			return nil, err
-		}
-		if info.Term, err = readUint64(r); err != nil {
-			return nil, err
-		}
-		b, err := readUint8(r)
-		if err != nil {
-			return nil, err
-		}
-		info.State = State(b)
-		if info.Leader, err = readUint64(r); err != nil {
-			return nil, err
-		}
-		if info.SnapshotIndex, err = readUint64(r); err != nil {
-			return nil, err
-		}
-		if info.FirstLogIndex, err = readUint64(r); err != nil {
-			return nil, err
-		}
-		if info.LastLogIndex, err = readUint64(r); err != nil {
-			return nil, err
-		}
-		if info.LastLogTerm, err = readUint64(r); err != nil {
-			return nil, err
-		}
-		if info.Committed, err = readUint64(r); err != nil {
-			return nil, err
-		}
-		if info.LastApplied, err = readUint64(r); err != nil {
-			return nil, err
-		}
-		e := &entry{}
-		if err = e.decode(r); err != nil {
-			return nil, err
-		}
-		if err = info.Configs.Committed.decode(e); err != nil {
-			return nil, err
-		}
-		if err = e.decode(r); err != nil {
-			return nil, err
-		}
-		if err = info.Configs.Latest.decode(e); err != nil {
-			return nil, err
-		}
-		info.Followers = map[uint64]Replication{}
-		sz, err := readUint32(r)
-		if err != nil {
-			return nil, err
-		}
-		for sz > 0 {
-			sz--
-			status := Replication{}
-			if status.ID, err = readUint64(r); err != nil {
-				return nil, err
-			}
-			if status.MatchIndex, err = readUint64(r); err != nil {
-				return nil, err
-			}
-			unixNano, err := readUint64(r)
-			if err != nil {
-				return nil, err
-			}
-			if unixNano != 0 {
-				t := time.Unix(0, int64(unixNano))
-				status.Unreachable = &t
-			}
-			if status.ErrMessage, err = readString(r); err != nil {
-				return nil, err
-			}
-			if status.ErrMessage != "" {
-				status.Err = errors.New(status.ErrMessage)
-			}
-			if status.Round, err = readUint64(r); err != nil {
-				return nil, err
-			}
-			info.Followers[status.ID] = status
-		}
-		return info, nil
+		err = info.decode(r)
+		return info, err
 	case taskWaitForStableConfig:
 		e := &entry{}
 		if err = e.decode(r); err != nil {
@@ -284,59 +201,22 @@ func decodeTaskResp(typ taskType, r io.Reader) (interface{}, error) {
 	return nil, errors.New("invalidTaskType")
 }
 
-func encodeTaskResp(t Task, w *bufio.Writer) (err error) {
-	defer func() {
-		if err == nil {
-			err = w.Flush()
-		}
-	}()
+func encodeTaskResp(t Task, w io.Writer) error {
 	if t.Err() != nil {
-		_ = writeString(w, t.Err().Error())
-		return
+		return writeString(w, t.Err().Error())
 	}
-	_ = writeString(w, "")
+	if err := writeString(w, ""); err != nil {
+		return err
+	}
 	switch r := t.Result().(type) {
 	case nil:
-		return
+		return nil
 	case uint64:
-		_ = writeUint64(w, r)
-		return
+		return writeUint64(w, r)
 	case Config:
 		return r.encode().encode(w)
 	case Info:
-		_ = writeUint64(w, r.CID)
-		_ = writeUint64(w, r.NID)
-		_ = writeString(w, r.Addr)
-		_ = writeUint64(w, r.Term)
-		_ = writeUint8(w, uint8(r.State))
-		_ = writeUint64(w, r.Leader)
-		_ = writeUint64(w, r.SnapshotIndex)
-		_ = writeUint64(w, r.FirstLogIndex)
-		_ = writeUint64(w, r.LastLogIndex)
-		_ = writeUint64(w, r.LastLogTerm)
-		_ = writeUint64(w, r.Committed)
-		_ = writeUint64(w, r.LastApplied)
-		configs := r.Configs
-		if err = configs.Committed.encode().encode(w); err != nil {
-			return err
-		}
-		if err = configs.Latest.encode().encode(w); err != nil {
-			return err
-		}
-		flrs := r.Followers
-		_ = writeUint32(w, uint32(len(flrs)))
-		for _, flr := range flrs {
-			_ = writeUint64(w, flr.ID)
-			_ = writeUint64(w, flr.MatchIndex)
-			var unixNano uint64
-			if flr.Unreachable != nil {
-				unixNano = uint64(flr.Unreachable.UnixNano())
-			}
-			_ = writeUint64(w, unixNano)
-			_ = writeString(w, flr.ErrMessage)
-			_ = writeUint64(w, flr.Round)
-		}
-		return
+		return r.encode(w)
 	}
 	return fmt.Errorf("unknown type: %T", t.Result())
 }

@@ -168,11 +168,10 @@ func (s *server) handleConn(rwc net.Conn) error {
 }
 
 func (s *server) handleTask(typ taskType, c *conn) error {
+	var t Task
 	switch typ {
 	case taskInfo:
-		t := GetInfo()
-		s.executeTask(t)
-		return encodeTaskResp(t, c.bufw)
+		t = GetInfo()
 	case taskChangeConfig:
 		e := &entry{}
 		if err := e.decode(c.bufr); err != nil {
@@ -182,21 +181,15 @@ func (s *server) handleTask(typ taskType, c *conn) error {
 		if err := config.decode(e); err != nil {
 			return err
 		}
-		t := ChangeConfig(config)
-		s.executeTask(t)
-		return encodeTaskResp(t, c.bufw)
+		t = ChangeConfig(config)
 	case taskWaitForStableConfig:
-		t := WaitForStableConfig()
-		s.executeTask(t)
-		return encodeTaskResp(t, c.bufw)
+		t = WaitForStableConfig()
 	case taskTakeSnapshot:
 		threshold, err := readUint64(c.bufr)
 		if err != nil {
 			return err
 		}
-		t := TakeSnapshot(threshold)
-		s.executeTask(t)
-		return encodeTaskResp(t, c.bufw)
+		t = TakeSnapshot(threshold)
 	case taskTransferLdr:
 		target, err := readUint64(c.bufr)
 		if err != nil {
@@ -206,11 +199,15 @@ func (s *server) handleTask(typ taskType, c *conn) error {
 		if err != nil {
 			return err
 		}
-		t := TransferLeadership(target, time.Duration(int64(d)))
-		s.executeTask(t)
-		return encodeTaskResp(t, c.bufw)
+		t = TransferLeadership(target, time.Duration(int64(d)))
+	default:
+		panic(unreachable())
 	}
-	panic(unreachable())
+	s.executeTask(t)
+	if err := encodeTaskResp(t, c.bufw); err != nil {
+		return err
+	}
+	return c.bufw.Flush()
 }
 
 func (s *server) executeTask(t Task) {
