@@ -362,7 +362,7 @@ func TestChangeConfig_removeLeader(t *testing.T) {
 	// wait for commit ready
 	c.waitCommitReady(ldr)
 
-	// submit ChangeConfig with two voters removed
+	// submit ChangeConfig with leader removed
 	config := c.info(ldr).Configs.Latest
 	if err := config.SetAction(ldr.nid, Remove); err != nil {
 		t.Fatal(err)
@@ -401,6 +401,49 @@ func TestChangeConfig_removeLeader(t *testing.T) {
 	case e := <-electionAborted.ch:
 		if e.reason != "not part of cluster" {
 			t.Fatalf("electionAborted=%s, want %s", e.reason, "not part of cluster")
+		}
+	case <-time.After(c.longTimeout):
+		t.Fatal("no electionAborted detected")
+	}
+}
+
+func TestChangeConfig_demoteLeader(t *testing.T) {
+	// launch 3 node cluster
+	c, ldr, _ := launchCluster(t, 3)
+	defer c.shutdown()
+
+	// wait for commit ready
+	c.waitCommitReady(ldr)
+
+	// submit ChangeConfig with leader demoted
+	config := c.info(ldr).Configs.Latest
+	if err := config.SetAction(ldr.nid, Demote); err != nil {
+		t.Fatal(err)
+	}
+	c.ensure(waitTask(ldr, ChangeConfig(config), c.longTimeout))
+
+	// the leader must have become follower
+	if s := c.getState(ldr); s != Follower {
+		t.Fatalf("state=%v, want %v", s, Follower)
+	}
+
+	// wait for new leader
+	newLdr := c.waitForLeader()
+
+	// ensure that leader is not same
+	if ldr.nid == newLdr.nid {
+		t.Fatal()
+	}
+
+	// restart old leader and check that it aborts election with
+	// reason "not voter"
+	electionAborted := c.registerFor(eventElectionAborted, ldr)
+	defer c.unregister(electionAborted)
+	c.restart(ldr)
+	select {
+	case e := <-electionAborted.ch:
+		if e.reason != "not voter" {
+			t.Fatalf("electionAborted=%s, want %s", e.reason, "not voter")
 		}
 	case <-time.After(c.longTimeout):
 		t.Fatal("no electionAborted detected")
