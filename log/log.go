@@ -183,6 +183,9 @@ func (l *Log) Append(b []byte) error {
 		if len(b) > l.opt.SegmentSize-3*8 {
 			l.opt.SegmentSize = len(b) + 3*8
 		}
+		if err := l.Commit(); err != nil {
+			return err
+		}
 		s, err := openSegment(l.dir, l.LastIndex(), l.opt)
 		if err != nil {
 			return err
