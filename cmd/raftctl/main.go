@@ -29,7 +29,7 @@ import (
 func main() {
 	args := os.Args[1:]
 	if len(args) == 0 {
-		errln("usage: raft <command> <options>")
+		errln("usage: raftctl <command> <options>")
 		errln()
 		errln("list of commands:")
 		errln("  info       get information")
@@ -82,7 +82,7 @@ func info(c *raft.Client) {
 
 func config(c *raft.Client, args []string) {
 	if len(args) == 0 {
-		errln("usage: raft config <cmd>")
+		errln("usage: raftctl config <cmd>")
 		errln()
 		errln("list of commands:")
 		errln("  get    prints current config")
@@ -124,7 +124,7 @@ func getConfig(c *raft.Client) {
 
 func setConfig(c *raft.Client, args []string) {
 	if len(args) == 0 {
-		errln("usage: raft config set <config-file>")
+		errln("usage: raftctl config set <config-file>")
 		os.Exit(1)
 	}
 	b, err := ioutil.ReadFile(args[0])
@@ -166,7 +166,7 @@ func waitConfig(c *raft.Client) {
 
 func snapshot(c *raft.Client, args []string) {
 	if len(args) == 0 {
-		errln("usage: raft snapshot <threshold>")
+		errln("usage: raftctl snapshot <threshold>")
 		os.Exit(1)
 	}
 	i, err := strconv.ParseInt(args[0], 10, 64)
@@ -184,7 +184,7 @@ func snapshot(c *raft.Client, args []string) {
 
 func transfer(c *raft.Client, args []string) {
 	if len(args) == 0 {
-		errln("usage: raft transfer <target> <timeout>")
+		errln("usage: raftctl transfer <target> <timeout>")
 		os.Exit(1)
 	}
 	i, err := strconv.ParseInt(args[0], 10, 64)
