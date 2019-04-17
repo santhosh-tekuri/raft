@@ -248,8 +248,8 @@ func TestTransfer_onShutdownReplyServerClosed(t *testing.T) {
 	c, ldr, _, transfer := setupTransferTimeout(t, time.Second, 5*time.Second)
 	defer c.shutdown()
 
-	testln("shutting down leader")
-	ldr.Shutdown()
+	// shutdown ldr in background
+	go c.shutdown(ldr)
 
 	// transfer reply must be ErrServerClosed
 	c.waitTaskDone(transfer, 2*time.Second, ErrServerClosed)

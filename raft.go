@@ -15,6 +15,7 @@
 package raft
 
 import (
+	"context"
 	"net"
 	"path/filepath"
 	"sync"
@@ -376,9 +377,16 @@ func (r *Raft) doClose(reason error) {
 	})
 }
 
-func (r *Raft) Shutdown() <-chan struct{} {
+// Shutdown gracefully shuts down the server. If the provided context expires before
+// the shutdown is complete, Shutdown returns the context's error, otherwise it returns nil
+func (r *Raft) Shutdown(ctx context.Context) error {
 	r.doClose(ErrServerClosed)
-	return r.closed
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-r.closed:
+		return nil
+	}
 }
 
 func (r *Raft) Closed() <-chan struct{} {

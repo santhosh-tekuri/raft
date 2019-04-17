@@ -15,6 +15,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -52,7 +53,7 @@ func main() {
 		ch := make(chan os.Signal, 2)
 		signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
 		<-ch
-		<-r.Shutdown()
+		_ = r.Shutdown(context.Background())
 	}()
 
 	err = r.ListenAndServe(raftAddr)

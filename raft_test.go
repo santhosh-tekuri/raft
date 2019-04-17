@@ -16,6 +16,7 @@ package raft
 
 import (
 	"bytes"
+	"context"
 	"encoding/gob"
 	"errors"
 	"fmt"
@@ -427,12 +428,18 @@ func (c *cluster) shutdown(rr ...*Raft) {
 		checkLeak = true
 		rr = c.exclude()
 	}
+
+	var wg sync.WaitGroup
 	for _, r := range rr {
 		testln("shutting down", host(r))
-		r.Shutdown()
+		wg.Add(1)
+		go func(r *Raft) {
+			_ = r.Shutdown(context.Background())
+			wg.Done()
+		}(r)
 	}
+	wg.Wait()
 	for _, r := range rr {
-		<-r.Shutdown()
 		err := c.serveError(r)
 		if err != ErrServerClosed {
 			c.Errorf("M%d.shutdown: got %v, want ErrServerClosed", r.NID(), err)
