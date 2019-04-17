@@ -54,7 +54,7 @@ const (
 
 	// ForceRemove is similar to remove, but voter is removed immediately
 	// without demoting it first. This should be used only when the node
-	// removed has crashed and could not be restored. Note that if the
+	// has crashed and could not be restored. Note that if the
 	// removed node is restored, it can disrupt the cluster.
 	//
 	// The library implements the solution provided in 4.2.4 to handle
