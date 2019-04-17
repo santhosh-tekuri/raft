@@ -27,7 +27,15 @@ import (
 )
 
 func main() {
-	args := os.Args[1:]
+	addr, ok := os.LookupEnv("RAFT_ADDR")
+	if !ok {
+		errln("RAFT_ADDR environment variable not set")
+		os.Exit(1)
+	}
+	exec(raft.NewClient(addr), os.Args[1:])
+}
+
+func exec(c *raft.Client, args []string) {
 	if len(args) == 0 {
 		errln("usage: raftctl <command> <options>")
 		errln()
@@ -38,12 +46,6 @@ func main() {
 		errln("  transfer   transfer leadership")
 		os.Exit(1)
 	}
-	addr, ok := os.LookupEnv("RAFT_ADDR")
-	if !ok {
-		errln("RAFT_ADDR environment variable not set")
-		os.Exit(1)
-	}
-	c := raft.NewClient(addr)
 	cmd, args := args[0], args[1:]
 	switch cmd {
 	case "info":
@@ -56,6 +58,7 @@ func main() {
 		transfer(c, args)
 	default:
 		errln("unknown command:", cmd)
+		os.Exit(1)
 	}
 }
 
