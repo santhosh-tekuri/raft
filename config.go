@@ -156,27 +156,27 @@ func (n *Node) decode(r io.Reader) error {
 
 func (n Node) validate() error {
 	if n.ID == 0 {
-		return errors.New("id must be greater than zero")
+		return errors.New("raft.Config: id must be greater than zero")
 	}
 	if n.Addr == "" {
-		return errors.New("empty address")
+		return errors.New("raft.Config: empty address")
 	}
 	_, sport, err := net.SplitHostPort(n.Addr)
 	if err != nil {
-		return fmt.Errorf("invalid address %s: %v", n.Addr, err)
+		return fmt.Errorf("raft.Config: invalid address %s: %v", n.Addr, err)
 	}
 	port, err := strconv.Atoi(sport)
 	if err != nil {
-		return errors.New("port must be specified in address")
+		return errors.New("raft.Config: port must be specified in address")
 	}
 	if port <= 0 {
-		return errors.New("invalid port")
+		return errors.New("raft.Config: invalid port")
 	}
 	if n.Action == Promote && n.Voter {
-		return errors.New("voter can't be promoted")
+		return errors.New("raft.Config: voter can't be promoted")
 	}
 	if n.Action == Demote && !n.Voter {
-		return errors.New("nonvoter can't be demoted")
+		return errors.New("raft.Config: nonvoter can't be demoted")
 	}
 	return nil
 }
@@ -235,7 +235,7 @@ func (c Config) quorum() int {
 // This call fails if config is not bootstrap.
 func (c *Config) AddVoter(id uint64, addr string) error {
 	if !c.IsBootstrap() {
-		return fmt.Errorf("raft: voter cannot be added in bootstrapped config")
+		return fmt.Errorf("raft.Config: voter cannot be added in bootstrapped config")
 	}
 	return c.addNode(Node{ID: id, Addr: addr, Voter: true})
 }
@@ -258,7 +258,7 @@ func (c *Config) addNode(n Node) error {
 		return err
 	}
 	if _, ok := c.Nodes[n.ID]; ok {
-		return fmt.Errorf("raft: node %d already exists", n.ID)
+		return fmt.Errorf("raft.Config: node %d already exists", n.ID)
 	}
 	c.Nodes[n.ID] = n
 	return nil
@@ -267,7 +267,7 @@ func (c *Config) addNode(n Node) error {
 func (c *Config) SetAction(id uint64, action Action) error {
 	n, ok := c.Nodes[id]
 	if !ok {
-		return fmt.Errorf("raft: node %d not found", id)
+		return fmt.Errorf("raft.Config: node %d not found", id)
 	}
 	n.Action = action
 	if err := n.validate(); err != nil {
@@ -284,7 +284,7 @@ func (c *Config) SetAction(id uint64, action Action) error {
 func (c *Config) SetAddr(id uint64, addr string) error {
 	n, ok := c.Nodes[id]
 	if !ok {
-		return fmt.Errorf("raft: node %d not found", id)
+		return fmt.Errorf("raft.Config: node %d not found", id)
 	}
 	n.Addr = addr
 	if err := n.validate(); err != nil {
@@ -292,7 +292,7 @@ func (c *Config) SetAddr(id uint64, addr string) error {
 	}
 	cn, ok := c.nodeForAddr(addr)
 	if ok && cn.ID != id {
-		return fmt.Errorf("raft: address %s is used by node %d", addr, cn.ID)
+		return fmt.Errorf("raft.Config: address %s is used by node %d", addr, cn.ID)
 	}
 	c.Nodes[id] = n
 	return nil
@@ -301,7 +301,7 @@ func (c *Config) SetAddr(id uint64, addr string) error {
 func (c *Config) SetData(id uint64, data string) error {
 	n, ok := c.Nodes[id]
 	if !ok {
-		return fmt.Errorf("raft: node %d not found", id)
+		return fmt.Errorf("raft.Config: node %d not found", id)
 	}
 	n.Data = data
 	c.Nodes[id] = n
@@ -363,15 +363,15 @@ func (c Config) validate() error {
 			return err
 		}
 		if id != n.ID {
-			return fmt.Errorf("id mismatch for node %d", n.ID)
+			return fmt.Errorf("raft.Config: id mismatch for node %d", n.ID)
 		}
 		if addrs[n.Addr] {
-			return fmt.Errorf("duplicate address %s", n.Addr)
+			return fmt.Errorf("raft.Config: duplicate address %s", n.Addr)
 		}
 		addrs[n.Addr] = true
 	}
 	if c.numVoters() == 0 {
-		return errors.New("zero voters")
+		return errors.New("raft.Config: zero voters")
 	}
 	return nil
 }
@@ -425,16 +425,16 @@ func (r *Raft) bootstrap(t changeConfig) {
 		return
 	}
 	if err := t.newConf.validate(); err != nil {
-		t.reply(fmt.Errorf("raft.bootstrap: invalid config: %v", err))
+		t.reply(err)
 		return
 	}
 	self, ok := t.newConf.Nodes[r.nid]
 	if !ok {
-		t.reply(fmt.Errorf("raft.bootstrap: invalid config: self %d does not exist", r.nid))
+		t.reply(fmt.Errorf("raft.bootstrap: self %d does not exist", r.nid))
 		return
 	}
 	if !self.Voter {
-		t.reply(fmt.Errorf("raft.bootstrap: invalid config: self %d must be voter", r.nid))
+		t.reply(fmt.Errorf("raft.bootstrap: self %d must be voter", r.nid))
 		return
 	}
 	if !t.newConf.isStable() {

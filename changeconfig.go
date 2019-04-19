@@ -34,7 +34,7 @@ func (l *leader) onChangeConfig(t changeConfig) {
 		return
 	}
 	if err := t.newConf.validate(); err != nil {
-		t.reply(fmt.Errorf("raft.changeConfig: %v", err))
+		t.reply(err)
 		return
 	}
 
