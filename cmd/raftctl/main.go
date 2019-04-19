@@ -37,7 +37,7 @@ func main() {
 
 func exec(c *raft.Client, args []string) {
 	if len(args) == 0 {
-		errln("usage: raftctl <command> <options>")
+		errln("usage: raftctl <command> [options]")
 		errln()
 		errln("list of commands:")
 		errln("  info       get information")
@@ -85,12 +85,16 @@ func info(c *raft.Client) {
 
 func config(c *raft.Client, args []string) {
 	if len(args) == 0 {
-		errln("usage: raftctl config <cmd>")
+		errln("usage: raftctl config <command> [options]")
 		errln()
 		errln("list of commands:")
-		errln("  get    prints current config")
-		errln("  set    changes current config")
-		errln("  wait   waits until config is stable")
+		errln("  get            prints current config")
+		errln("  set            changes current config")
+		errln("  wait           waits until config is stable")
+		errln("  demote         demotes voter")
+		errln("  promote        promotes nonvoter")
+		errln("  remove         remove node")
+		errln("  force-remove   force remove node")
 		os.Exit(1)
 	}
 	cmd, args := args[0], args[1:]
@@ -101,6 +105,14 @@ func config(c *raft.Client, args []string) {
 		setConfig(c, args)
 	case "wait":
 		waitConfig(c)
+	case "demote":
+		configAction(c, raft.Demote, args)
+	case "promote":
+		configAction(c, raft.Promote, args)
+	case "remove":
+		configAction(c, raft.Remove, args)
+	case "force-remove":
+		configAction(c, raft.ForceRemove, args)
 	}
 }
 
@@ -126,7 +138,7 @@ func getConfig(c *raft.Client) {
 }
 
 func setConfig(c *raft.Client, args []string) {
-	if len(args) == 0 {
+	if len(args) != 1 {
 		errln("usage: raftctl config set <config-file>")
 		os.Exit(1)
 	}
@@ -167,8 +179,34 @@ func waitConfig(c *raft.Client) {
 	fmt.Println(string(b))
 }
 
+func configAction(c *raft.Client, action raft.Action, args []string) {
+	if len(args) != 1 {
+		errln("usage: raftctl config", action, "<nid>")
+		os.Exit(1)
+	}
+	i, err := strconv.ParseInt(args[0], 10, 64)
+	if err != nil {
+		errln(err.Error())
+		os.Exit(1)
+	}
+	info, err := c.GetInfo()
+	if err != nil {
+		errln(err.Error())
+		os.Exit(1)
+	}
+	config := info.Configs.Latest
+	if err := config.SetAction(uint64(i), action); err != nil {
+		errln(err.Error())
+		os.Exit(1)
+	}
+	if err = c.ChangeConfig(config); err != nil {
+		errln(err.Error())
+		os.Exit(1)
+	}
+}
+
 func snapshot(c *raft.Client, args []string) {
-	if len(args) == 0 {
+	if len(args) != 1 {
 		errln("usage: raftctl snapshot <threshold>")
 		os.Exit(1)
 	}
@@ -186,7 +224,7 @@ func snapshot(c *raft.Client, args []string) {
 }
 
 func transfer(c *raft.Client, args []string) {
-	if len(args) == 0 {
+	if len(args) != 2 {
 		errln("usage: raftctl transfer <target> <timeout>")
 		os.Exit(1)
 	}
