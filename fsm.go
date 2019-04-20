@@ -146,7 +146,7 @@ func (fsm *stateMachine) onApply(t fsmApply) {
 }
 
 func (fsm *stateMachine) onSnapReq(t fsmSnapReq) {
-	if fsm.index == 0 {
+	if fsm.index == fsm.snaps.index {
 		t.reply(ErrNoUpdates)
 		return
 	}

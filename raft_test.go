@@ -850,7 +850,7 @@ func (c *cluster) sendUpdates(r *Raft, from, to int) Task {
 func (c *cluster) waitBarrier(r *Raft, timeout time.Duration) {
 	c.Helper()
 	if _, err := waitFSMTask(r, BarrierFSM(), timeout); err != nil {
-		c.Fatalf("Barrer(M%d): timeout", r.NID())
+		c.Fatal(err)
 	}
 }
 
@@ -972,7 +972,7 @@ func waitFSMTask(r *Raft, t FSMTask, timeout time.Duration) (fsmReply, error) {
 	case r.FSMTasks() <- t:
 		break
 	case <-timer:
-		return fsmReply{}, errors.New("waitFSMTask: submit timeout")
+		return fsmReply{}, fmt.Errorf("M%d %v: submit timeout", r.nid, t)
 	}
 	select {
 	case <-t.Done():
@@ -985,7 +985,7 @@ func waitFSMTask(r *Raft, t FSMTask, timeout time.Duration) (fsmReply, error) {
 		}
 		return result, nil
 	case <-timer:
-		return fsmReply{}, errors.New("waitNewEntry: result timeout")
+		return fsmReply{}, fmt.Errorf("M%d %v: result timeout", r.nid, t)
 	}
 }
 

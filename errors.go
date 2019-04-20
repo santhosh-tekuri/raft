@@ -49,7 +49,7 @@ var (
 
 	ErrStaleConfig            = errors.New("raft.changeConfig: submitted config is stale")
 	ErrSnapshotThreshold      = errors.New("raft.takeSnapshot: not enough outstanding logs to snapshot")
-	ErrNoUpdates              = errors.New("raft.takeSnapshot: no updates to FSM")
+	ErrNoUpdates              = errors.New("raft.takeSnapshot: no updates since last snapshot")
 	ErrQuorumUnreachable      = errors.New("raft: quorum unreachable")
 	ErrTransferNoVoter        = errors.New("raft.transferLeadership: no other voter to transfer")
 	ErrTransferSelf           = errors.New("raft.transferLeadership: target is already leader")

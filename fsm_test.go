@@ -27,6 +27,21 @@ func TestFSM_takeSnap_emptyLog(t *testing.T) {
 	c.takeSnapshot(ldr, 0, ErrNoUpdates)
 }
 
+func TestFSM_takeSnap_noUpdates(t *testing.T) {
+	c, ldr, _ := launchCluster(t, 3)
+	defer c.shutdown()
+
+	// commit a log of things
+	c.sendUpdates(ldr, 1, 10)
+	c.waitBarrier(ldr, 0)
+
+	// take snapshot with zero threshold
+	c.takeSnapshot(ldr, 0, nil)
+
+	// take snapshot again, it should return ErrNoUpdates
+	c.takeSnapshot(ldr, 0, ErrNoUpdates)
+}
+
 func TestFSM_takeSnap_thresholdNotReached(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 1)
 	defer c.shutdown()
