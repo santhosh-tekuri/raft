@@ -204,7 +204,6 @@ func recoverErr(r interface{}) error {
 	}
 	if _, ok := r.(error); ok {
 		return r.(error)
-	} else {
-		return fmt.Errorf("unexpected error: %v", r)
 	}
+	return fmt.Errorf("unexpected error: %v", r)
 }

@@ -54,11 +54,11 @@ func openSnapshots(dir string, opt Options) (*snapshots, error) {
 	}
 	if len(snaps) > 0 {
 		s.index = snaps[0]
-		if meta, err := s.meta(); err != nil {
+		meta, err := s.meta()
+		if err != nil {
 			return nil, err
-		} else {
-			s.term = meta.term
 		}
+		s.term = meta.term
 	}
 	return s, nil
 }
@@ -255,11 +255,11 @@ func (m *snapshotMeta) decode(r io.Reader) (err error) {
 	if err = m.config.decode(e); err != nil {
 		return err
 	}
-	if size, err := readUint64(r); err != nil {
+	size, err := readUint64(r)
+	if err != nil {
 		return err
-	} else {
-		m.size = int64(size)
 	}
+	m.size = int64(size)
 	return nil
 }
 

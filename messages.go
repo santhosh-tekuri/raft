@@ -271,11 +271,11 @@ func (resp *resp) decode(r io.Reader) error {
 	if resp.term, err = readUint64(r); err != nil {
 		return err
 	}
-	if result, err := readUint8(r); err != nil {
+	result, err := readUint8(r)
+	if err != nil {
 		return err
-	} else {
-		resp.result = rpcResult(result)
 	}
+	resp.result = rpcResult(result)
 	if resp.result == unexpectedErr {
 		op, err := readString(r)
 		if err != nil {
@@ -502,11 +502,11 @@ func (req *installSnapReq) decode(r io.Reader) error {
 		return err
 	}
 
-	if size, err := readUint64(r); err != nil {
+	size, err := readUint64(r)
+	if err != nil {
 		return err
-	} else {
-		req.size = int64(size)
 	}
+	req.size = int64(size)
 	return nil
 }
 

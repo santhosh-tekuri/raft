@@ -283,12 +283,11 @@ func (r *replication) replicate(c *conn, req *appendReq) error {
 				if resp.result == staleTerm {
 					drainRespsTimeout(r.hbTimeout / 2)
 					return r.onAppendEntriesResp(resp, result.lastIndex) // notifies ldr and return errStop
-				} else {
-					if err = drainResps(); err != nil {
-						return err
-					}
-					break
 				}
+				if err = drainResps(); err != nil {
+					return err
+				}
+				break
 			}
 		}
 	}

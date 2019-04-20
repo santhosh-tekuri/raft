@@ -148,11 +148,11 @@ func (n *Node) decode(r io.Reader) error {
 	if n.Data, err = readString(r); err != nil {
 		return err
 	}
-	if action, err := readUint8(r); err != nil {
+	action, err := readUint8(r)
+	if err != nil {
 		return err
-	} else {
-		n.Action = Action(action)
 	}
+	n.Action = Action(action)
 	return nil
 }
 
