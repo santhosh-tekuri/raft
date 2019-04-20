@@ -55,11 +55,25 @@ type Options struct {
 	// and InstallSnapshotRequest RPCs
 	Bandwidth int64
 
-	LogSegmentSize  int
+	// LogSegmentSize is the size of logSegmentFile in bytes. Raft log is
+	// a collection of segment files. When current segment file is full,
+	// new segment file is created. Value must be >=1024.
+	LogSegmentSize int
+
+	// SnapshotsRetain is the number of snapshots to be retained locally.
+	// When new snapshot is taken, older snapshots are removed accordingly.
+	// Value must be >=1.
 	SnapshotsRetain int
 
-	Logger   Logger
-	Alerts   Alerts
+	// Logger used for logging messages. If nil, nothing is logged.
+	Logger Logger
+
+	// Alerts used to consume alerts that are raised. If nil, no alerts
+	// will be raised.
+	Alerts Alerts
+
+	// Resolver used to resolved node id to transport address. If nill,
+	// Node.Address is used.
 	Resolver Resolver
 }
 
@@ -98,12 +112,23 @@ func DefaultOptions() Options {
 	}
 }
 
+// Resolver used to resolve node id to transport address.
+// Without resolver, config must be updated with new address.
+// Resolves becomes handy, when raft is deployed in container or cloud
+// environment, where the address can be resolved using tags.
 type Resolver interface {
+	// LookupID returns the transport address for given node id.
+	// On error, the transport address specified in config is used.
 	LookupID(id uint64, timeout time.Duration) (addr string, err error)
 }
 
+// Logger is the interface to be implemented for
+// consuming logs.
 type Logger interface {
+	// Info consumes information message.
 	Info(v ...interface{})
+
+	// Warn consumes warning message.
 	Warn(v ...interface{})
 }
 
@@ -130,11 +155,47 @@ func (l *defaultLogger) Warn(v ...interface{}) {
 	l.mu.Unlock()
 }
 
+// Alerts allows to consume any alerts raised by raft.
+// This is useful in raising/resolving tickets to devops
+// automatically.
 type Alerts interface {
+	// Error alerts that an error is occurred but raft is
+	// able to continue to run. For example:
+	// - error in taking snapshot
+	// - error in log compaction
+	// - error in Resolver.LookupID
 	Error(err error)
+
+	// UnReachable alert is raised by leader, when it finds that
+	// a follower node is not unreachable. The err tells the reason
+	// whey the node is treated as unreachable. A node is treated as
+	// unreachable in following cases:
+	// - error in dialing
+	// - unexpected error in I/O, including timeout.
+	// - node is reachable, but behaving un-appropriately, such as
+	//   rejecting matchIndex. this happens if node is restarted with
+	//   empty storage dir
+	//
+	// It is recommended to treat this as serious if "Reachable" alert
+	// is not raised within some configurable time.
 	UnReachable(id uint64, err error)
+
+	// Reachable alert is raised by leader, when a node that was unreachable
+	// is now reachable.
 	Reachable(id uint64)
+
+	// QuorumUnreachable alert is raised by leader, on detecting that quorum
+	// is no longer available and it is stepping down to follower state.
+	//
+	// It is recommended to treat this as serious, if leader got election after
+	// this alert within some configurable time.
 	QuorumUnreachable()
+
+	// ShuttingDown alert is raised when raft server is shutting down.
+	//
+	// If is recommended to treat this as serious if reason is something other
+	// than ErrServerClosed and ErrNodeRemoved. For example, OpError signals
+	// that there is some issue with storage or FSM.
 	ShuttingDown(reason error)
 }
 
