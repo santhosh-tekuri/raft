@@ -21,6 +21,8 @@ import (
 )
 
 var (
+	// ErrLockExists is returned by Raft.Serve and SetIdentity if the storageDir
+	// already contains a lock file
 	ErrLockExists = errors.New("raft: lock file exists in storageDir")
 
 	// ErrServerClosed is returned by the Raft.Serve if it was closed due to Shutdown call
@@ -99,12 +101,18 @@ func notLeaderError(r *Raft, lost bool) NotLeaderError {
 
 // -----------------------------------------------------------
 
+// InProgressError is returned by leader node if it cannot
+// complete a request currently because of another request
+// is in progress. This is temporary error and the request
+// can be retried after some time.
 type InProgressError string
 
 func (e InProgressError) Error() string {
 	return fmt.Sprintf("raft: another %s in progress", string(e))
 }
 
+// Temporary flags this error as temporary and can be retried
+// later.
 func (e InProgressError) Temporary() {}
 
 type TimeoutError string
@@ -113,6 +121,8 @@ func (e TimeoutError) Error() string {
 	return fmt.Sprintf("raft: %s timeout", string(e))
 }
 
+// Temporary flags this error as temporary and can be retried
+// later.
 func (e TimeoutError) Temporary() {}
 
 // -----------------------------------------------------------
@@ -146,6 +156,10 @@ type remoteError struct {
 
 // -----------------------------------------------------------
 
+// IdentityError signals that identity of node at given transport
+// address does not match. This happens if a node with different
+// identity is running at a transport address than the specified
+// node in config.
 type IdentityError struct {
 	Cluster uint64
 	Node    uint64
