@@ -15,7 +15,6 @@
 package raft
 
 import (
-	"errors"
 	"fmt"
 	"runtime"
 )
@@ -23,48 +22,54 @@ import (
 var (
 	// ErrLockExists is returned by Raft.Serve and SetIdentity if the storageDir
 	// already contains a lock file
-	ErrLockExists = errors.New("raft: lock file exists in storageDir")
+	ErrLockExists = plainError("raft: lock file exists in storageDir")
 
 	// ErrServerClosed is returned by the Raft.Serve if it was closed due to Shutdown call
-	ErrServerClosed = errors.New("raft: server closed")
+	ErrServerClosed = plainError("raft: server closed")
 
 	// ErrNodeRemoved is returned by the Raft.Serve if current node is removed from cluster
-	ErrNodeRemoved = errors.New("raft: node removed")
+	ErrNodeRemoved = plainError("raft: node removed")
 
 	// ErrIdentityAlreadySet is returned by Storage.SetIdentity, if you are trying
 	// to override current identity.
-	ErrIdentityAlreadySet = errors.New("raft: identity already set")
+	ErrIdentityAlreadySet = plainError("raft: identity already set")
 
 	// ErrIdentityNotSet is returned by Raft.New, if no identity set in storage.
-	ErrIdentityNotSet = errors.New("raft: identity not set")
+	ErrIdentityNotSet = plainError("raft: identity not set")
 
 	// ErrFaultyFollower signals that the follower is faulty, and should be
 	// removed from cluster. Such follower is treated as unreachable by leader.
 	// This used use by Alerts.Unreachable and Replication.Err.
-	ErrFaultyFollower = errors.New("raft: faulty follower, denies matchIndex")
+	ErrFaultyFollower = plainError("raft: faulty follower, denies matchIndex")
 
 	// ErrNotCommitReady is returned by ChangeConfig, if leader is not yet ready to commit.
 	// User can retry ChangeConfig after some time in case of this error.
 	ErrNotCommitReady = temporaryError("raft.configChange: not ready to commit")
 
-	ErrStaleConfig            = errors.New("raft.changeConfig: submitted config is stale")
-	ErrSnapshotThreshold      = errors.New("raft.takeSnapshot: not enough outstanding logs to snapshot")
-	ErrNoUpdates              = errors.New("raft.takeSnapshot: no updates since last snapshot")
-	ErrQuorumUnreachable      = errors.New("raft: quorum unreachable")
-	ErrTransferNoVoter        = errors.New("raft.transferLeadership: no other voter to transfer")
-	ErrTransferSelf           = errors.New("raft.transferLeadership: target is already leader")
-	ErrTransferTargetNonvoter = errors.New("raft.transferLeadership: target is nonvoter")
-	ErrTransferInvalidTarget  = errors.New("raft.transferLeadership: no such target found")
+	ErrStaleConfig            = plainError("raft.changeConfig: submitted config is stale")
+	ErrSnapshotThreshold      = plainError("raft.takeSnapshot: not enough outstanding logs to snapshot")
+	ErrNoUpdates              = plainError("raft.takeSnapshot: no updates since last snapshot")
+	ErrQuorumUnreachable      = plainError("raft: quorum unreachable")
+	ErrTransferNoVoter        = plainError("raft.transferLeadership: no other voter to transfer")
+	ErrTransferSelf           = plainError("raft.transferLeadership: target is already leader")
+	ErrTransferTargetNonvoter = plainError("raft.transferLeadership: target is nonvoter")
+	ErrTransferInvalidTarget  = plainError("raft.transferLeadership: no such target found")
 )
 
 var (
-	errAssertion   = errors.New("raft: assertion failed")
-	errUnreachable = errors.New("raft: unreachable")
-	errInvalidTask = errors.New("raft: invalid task")
-	errStop        = errors.New("raft: got stop signal")
+	errAssertion   = plainError("raft: assertion failed")
+	errUnreachable = plainError("raft: unreachable")
+	errInvalidTask = plainError("raft: invalid task")
+	errStop        = plainError("raft: got stop signal")
 )
 
 // -----------------------------------------------------------
+
+type plainError string
+
+func (e plainError) Error() string {
+	return string(e)
+}
 
 // NotLeaderError is returned by non-leader node if it cannot
 // complete a request or node lost its leadership before

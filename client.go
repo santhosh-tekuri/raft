@@ -25,11 +25,14 @@ import (
 	"time"
 )
 
+// Client is an RPC client used for performing admin tasks,
+// such as membership change, transfer leadership etc.
 type Client struct {
 	addr string
 	dial dialFn
 }
 
+// NewClient creates new client for given raft server.
 func NewClient(addr string) *Client {
 	return &Client{addr, net.DialTimeout}
 }
@@ -46,6 +49,7 @@ func (c *Client) getConn() (*conn, error) {
 	}, nil
 }
 
+// GetInfo return Info containing raft current state.
 func (c *Client) GetInfo() (Info, error) {
 	conn, err := c.getConn()
 	if err != nil {
@@ -66,6 +70,16 @@ func (c *Client) GetInfo() (Info, error) {
 	return result.(Info), nil
 }
 
+// ChangeConfig is used to change raft server config.
+// If this method return nil, it means the change is accepted
+// by quorum of nodes, but changes may not be still applied.
+// The changes are carried as per raft protocol and changes
+// are carried out by new leader if leader changes meanwhile.
+// So it is guaranteed that submitted config change is completed
+// in spite of leader change.
+//
+// use WaitForStableConfig, in order to wait for the changes
+// submitted for completion.
 func (c *Client) ChangeConfig(config Config) error {
 	conn, err := c.getConn()
 	if err != nil {
@@ -84,6 +98,9 @@ func (c *Client) ChangeConfig(config Config) error {
 	return err
 }
 
+// WaitForStableConfig blocks the caller until all config changes are
+// completed. if there are no config changes left, this method returns
+// immediately.
 func (c *Client) WaitForStableConfig() (Config, error) {
 	conn, err := c.getConn()
 	if err != nil {
@@ -171,12 +188,38 @@ func (t taskType) isValid() bool {
 }
 
 func decodeTaskResp(typ taskType, r io.Reader) (interface{}, error) {
-	s, err := readString(r)
+	errType, err := readString(r)
 	if err != nil {
 		return nil, err
 	}
-	if s != "" {
-		return nil, errors.New(s)
+	if errType != "" {
+		switch errType {
+		case "raft.NotLeaderError":
+			node := Node{}
+			if err := node.decode(r); err != nil {
+				return nil, err
+			}
+			lost, err := readBool(r)
+			if err != nil {
+				return nil, err
+			}
+			return nil, NotLeaderError{node, lost}
+		default:
+			s, err := readString(r)
+			if err != nil {
+				return nil, err
+			}
+			switch errType {
+			case "raft.plainError":
+				return nil, plainError(s)
+			case "raft.temporaryError":
+				return nil, temporaryError(s)
+			case "raft.InProgressError":
+				return nil, InProgressError(s)
+			default:
+				return nil, errors.New(s)
+			}
+		}
 	}
 	switch typ {
 	case taskInfo:
@@ -203,7 +246,18 @@ func decodeTaskResp(typ taskType, r io.Reader) (interface{}, error) {
 
 func encodeTaskResp(t Task, w io.Writer) error {
 	if t.Err() != nil {
-		return writeString(w, t.Err().Error())
+		if err := writeString(w, fmt.Sprintf("%T", t.Err())); err != nil {
+			return err
+		}
+		switch err := t.Err().(type) {
+		case NotLeaderError:
+			if err := err.Leader.encode(w); err != nil {
+				return err
+			}
+			return writeBool(w, err.Lost)
+		default:
+			return writeString(w, err.Error())
+		}
 	}
 	if err := writeString(w, ""); err != nil {
 		return err
