@@ -159,7 +159,7 @@ func GetInfo() Task {
 func (r *Raft) info() Info {
 	var flrs map[uint64]Replication
 	if r.state == Leader {
-		flrs := make(map[uint64]Replication)
+		flrs = make(map[uint64]Replication)
 		for id, repl := range r.ldr.repls {
 			errMessage := ""
 			if repl.status.err != nil {
