@@ -189,7 +189,7 @@ type Config struct {
 	Term  uint64          `json:"term"`
 }
 
-func (c Config) IsBootstrapped() bool {
+func (c Config) isBootstrapped() bool {
 	return c.Index > 0
 }
 
@@ -234,7 +234,7 @@ func (c Config) quorum() int {
 //
 // This call fails if config is not bootstrap.
 func (c *Config) AddVoter(id uint64, addr string) error {
-	if c.IsBootstrapped() {
+	if c.isBootstrapped() {
 		return fmt.Errorf("raft.Config: voter cannot be added in bootstrapped config")
 	}
 	return c.addNode(Node{ID: id, Addr: addr, Voter: true})
@@ -406,7 +406,7 @@ func (c Configs) clone() Configs {
 }
 
 func (c Configs) IsBootstrapped() bool {
-	return c.Latest.IsBootstrapped()
+	return c.Latest.isBootstrapped()
 }
 
 func (c Configs) IsCommitted() bool {
