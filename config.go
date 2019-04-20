@@ -93,10 +93,12 @@ type Node struct {
 	Voter bool `json:"voter"`
 
 	// Data can be used by application to associate some information
-	// with node. For example application address
+	// with node. Data is opaque to raft and is not interpreted.
+	// For example application address
 	Data string `json:"data,omitempty"`
 
 	// Action tells the action to be taken by leader, when appropriate.
+	// None action signifies that no action to be taken.
 	Action Action `json:"action,omitempty"`
 }
 
@@ -183,10 +185,18 @@ func (n Node) validate() error {
 
 // ------------------------------------------------------------------------------
 
+// Config tracks which nodes are in the cluster, whether there are
+// votes, any actions to be taken on nodes.
 type Config struct {
+	// Nodes is the nodes in the cluster.
+	// Key is the node ID.
 	Nodes map[uint64]Node `json:"nodes"`
-	Index uint64          `json:"index"`
-	Term  uint64          `json:"term"`
+
+	// Index is the log index of this config.
+	Index uint64 `json:"index"`
+
+	// Term in which the config is created.
+	Term uint64 `json:"term"`
 }
 
 func (c Config) isBootstrapped() bool {
@@ -264,6 +274,7 @@ func (c *Config) addNode(n Node) error {
 	return nil
 }
 
+// SetAction sets the action to be token on given node.
 func (c *Config) SetAction(id uint64, action Action) error {
 	n, ok := c.Nodes[id]
 	if !ok {
@@ -298,6 +309,7 @@ func (c *Config) SetAddr(id uint64, addr string) error {
 	return nil
 }
 
+// SetData changes data associated with given node.
 func (c *Config) SetData(id uint64, data string) error {
 	n, ok := c.Nodes[id]
 	if !ok {
@@ -394,6 +406,9 @@ func (c Config) String() string {
 
 // ------------------------------------------------------------------------------
 
+// Configs captures the committed and latest config.
+// If committed and latest are same, it means latest config
+// is committed.
 type Configs struct {
 	Committed Config `json:"committed"`
 	Latest    Config `json:"latest"`
@@ -405,14 +420,20 @@ func (c Configs) clone() Configs {
 	return c
 }
 
+// IsBootstrapped returns true if the server is
+// already bootstrapped.
 func (c Configs) IsBootstrapped() bool {
 	return c.Latest.isBootstrapped()
 }
 
+// IsCommitted return true, if current config is
+// committed.
 func (c Configs) IsCommitted() bool {
 	return c.Latest.Index == c.Committed.Index
 }
 
+// IsStable return true, if current config is committed
+// and no further actions are pending in config.
 func (c Configs) IsStable() bool {
 	return c.IsCommitted() && c.Latest.isStable()
 }
