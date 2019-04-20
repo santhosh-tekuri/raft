@@ -53,7 +53,7 @@ func (f *follower) onTimeout() {
 }
 
 func (f *follower) canStartElection() (can bool, reason string) {
-	if f.configs.IsBootstrap() {
+	if !f.configs.IsBootstrapped() {
 		return false, "not bootstrapped yet"
 	}
 	n, ok := f.configs.Latest.Nodes[f.nid]
