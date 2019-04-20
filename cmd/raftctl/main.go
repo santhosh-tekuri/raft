@@ -36,7 +36,7 @@ func main() {
 }
 
 func exec(c *raft.Client, args []string) {
-	if len(args) == 0 {
+	printUsage := func() {
 		errln("usage: raftctl <command> [options]")
 		errln()
 		errln("list of commands:")
@@ -44,6 +44,9 @@ func exec(c *raft.Client, args []string) {
 		errln("  config     configuration related tasks")
 		errln("  snapshot   take snapshot")
 		errln("  transfer   transfer leadership")
+	}
+	if len(args) == 0 {
+		printUsage()
 		os.Exit(1)
 	}
 	cmd, args := args[0], args[1:]
@@ -58,6 +61,7 @@ func exec(c *raft.Client, args []string) {
 		transfer(c, args)
 	default:
 		errln("unknown command:", cmd)
+		printUsage()
 		os.Exit(1)
 	}
 }
@@ -84,7 +88,7 @@ func info(c *raft.Client) {
 }
 
 func config(c *raft.Client, args []string) {
-	if len(args) == 0 {
+	printUsage := func() {
 		errln("usage: raftctl config <command> [options]")
 		errln()
 		errln("list of commands:")
@@ -95,6 +99,9 @@ func config(c *raft.Client, args []string) {
 		errln("  promote        promotes nonvoter")
 		errln("  remove         remove node")
 		errln("  force-remove   force remove node")
+	}
+	if len(args) == 0 {
+		printUsage()
 		os.Exit(1)
 	}
 	cmd, args := args[0], args[1:]
@@ -113,6 +120,10 @@ func config(c *raft.Client, args []string) {
 		configAction(c, raft.Remove, args)
 	case "force-remove":
 		configAction(c, raft.ForceRemove, args)
+	default:
+		errln("unknown config command:", cmd)
+		printUsage()
+		os.Exit(1)
 	}
 }
 
