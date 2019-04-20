@@ -128,7 +128,7 @@ func getConfig(c *raft.Client) {
 		os.Exit(1)
 	}
 	fmt.Println(string(b))
-	if info.Configs.IsBootstrap() {
+	if !info.Configs.IsBootstrapped() {
 		errln("raft is not bootstrapped yet")
 	} else if !info.Configs.IsCommitted() {
 		errln("config is not yet committed")
