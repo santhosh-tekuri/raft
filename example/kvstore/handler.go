@@ -54,14 +54,14 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			h.replyErr(w, r, err)
 		} else {
-			w.WriteHeader(http.StatusOK)
+			w.WriteHeader(http.StatusNoContent)
 		}
 	case http.MethodDelete:
 		_, err := h.execute(raft.UpdateFSM(encodeCmd(del{key})))
 		if err != nil {
 			h.replyErr(w, r, err)
 		} else {
-			w.WriteHeader(http.StatusOK)
+			w.WriteHeader(http.StatusNoContent)
 		}
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
