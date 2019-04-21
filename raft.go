@@ -25,6 +25,7 @@ import (
 // when running tests this is set to true
 var testMode bool
 
+// Raft implements raft node.
 type Raft struct {
 	rtime randTime
 	timer *safeTimer
@@ -74,6 +75,9 @@ type Raft struct {
 	closed      chan struct{}
 }
 
+// New is used to construct a new Raft node.
+// If storageDir already contains lock file, it returns ErrLockExists.
+// If identity is not set in storageDir, it returns ErrIdentityNotSet.
 func New(opt Options, fsm FSM, storageDir string) (*Raft, error) {
 	if err := opt.validate(); err != nil {
 		return nil, err
@@ -137,6 +141,19 @@ func New(opt Options, fsm FSM, storageDir string) (*Raft, error) {
 
 // todo: note that we dont support multiple listeners
 
+// ListenAndServe listens on the TCP network address addr and
+// then calls Serve.
+//
+// ListenAndServe always returns a non-nil error. If raft is
+// closed by Shutdown call, it returns ErrServerClosed. If
+// raft is closed because it is removed from cluster, it returns
+// ErrNodeRemoved. If there is any error with storage or FSM, it
+// returns OpError.
+//
+// Note that the address specified here could be different than
+// the address specified in config. The address specified in config
+// is the advertised address, which should be reachable from other
+// nodes in the cluster.
 func (r *Raft) ListenAndServe(addr string) error {
 	lr, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -145,6 +162,18 @@ func (r *Raft) ListenAndServe(addr string) error {
 	return r.Serve(lr)
 }
 
+// Serve accepts incoming connections from raft nodes on the listener.
+//
+// Serve always returns a non-nil error. If raft is
+// closed by Shutdown call, it returns ErrServerClosed. If
+// raft is closed because it is removed from cluster, it returns
+// ErrNodeRemoved. If there is any error with storage or FSM, it
+//// returns OpError.
+//
+// Note that the address specified here could be different than
+// the address specified in config. The address specified in config
+// is the advertised address, which should be reachable from other
+// nodes in the cluster.
 func (r *Raft) Serve(l net.Listener) error {
 	defer safeClose(r.closed)
 	if r.isClosed() {
@@ -389,6 +418,16 @@ func (r *Raft) Shutdown(ctx context.Context) error {
 	}
 }
 
+// Closed returns a channel which is closed when the raft
+// initiated shutdown process. You should check this before
+// submitting any task as shown below:
+//
+//     t := raft.GetInfo()
+//     select {
+//         case <-r.Closed():
+//             return nil, ErrServerClosed
+//         case r.Tasks() <-t:
+//     }
 func (r *Raft) Closed() <-chan struct{} {
 	return r.close
 }
@@ -441,6 +480,7 @@ func (r *Raft) NID() uint64 {
 	return r.nid
 }
 
+// FSM return the FSM.
 func (r *Raft) FSM() FSM {
 	return r.fsm.FSM
 }
@@ -460,6 +500,7 @@ func (r *Raft) leaderAddr() string {
 
 // state ----------------------------------
 
+// State captures the state of a Raft node: Follower, Candidate, Leader.
 type State byte
 
 const (
