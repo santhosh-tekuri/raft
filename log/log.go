@@ -79,7 +79,7 @@ func Open(dir string, dirMode os.FileMode, opt Options) (*Log, error) {
 	}, nil
 }
 
-// View create a view with bounds [prevIndex, lastIndex]. View is
+// ViewAt create a view with bounds [prevIndex, lastIndex]. View is
 // safer to use in another goroutine while Appending in another
 // goroutine. Only reading methods should be used in the view.
 func (l *Log) ViewAt(prevIndex, lastIndex uint64) *Log {
