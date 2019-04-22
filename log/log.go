@@ -20,9 +20,14 @@ import (
 	"os"
 )
 
+// ErrNotFound is returned by Get, GetN if the entry index is <=PrevIndex.
 var ErrNotFound = errors.New("log: entry not found")
+
+// ErrExceedsSegmentSize is returned by Append, when size of given entry
+// does not fit in empty segment.
 var ErrExceedsSegmentSize = errors.New("log: entry exceeds segment size")
 
+// Options contains necessary configuration.
 type Options struct {
 	FileMode    os.FileMode
 	SegmentSize int
@@ -38,6 +43,7 @@ func (o Options) validate() error {
 	return nil
 }
 
+// Log implements append only list of entries persisted to disk.
 type Log struct {
 	dir string
 	opt Options
@@ -47,6 +53,8 @@ type Log struct {
 	index []uint64 // for view: index[0] is prevIndex, index[1] is lastIndex
 }
 
+// Open opens log from given directory. if dir does not exist it is created
+// with given dirMode.
 func Open(dir string, dirMode os.FileMode, opt Options) (*Log, error) {
 	if err := opt.validate(); err != nil {
 		return nil, err
@@ -71,6 +79,9 @@ func Open(dir string, dirMode os.FileMode, opt Options) (*Log, error) {
 	}, nil
 }
 
+// View create a view with bounds [prevIndex, lastIndex]. View is
+// safer to use in another goroutine while Appending in another
+// goroutine. Only reading methods should be used in the view.
 func (l *Log) ViewAt(prevIndex, lastIndex uint64) *Log {
 	if lastIndex > l.LastIndex() {
 		panic(fmt.Sprintf("log: %d>lastIndex(%d)", lastIndex, l.LastIndex()))
@@ -94,10 +105,13 @@ func (l *Log) ViewAt(prevIndex, lastIndex uint64) *Log {
 	}
 }
 
+// View is equivalent to ViewAt(PrevIndex, LastIndex)
 func (l *Log) View() *Log {
 	return l.ViewAt(l.PrevIndex(), l.LastIndex())
 }
 
+// PrevIndex returns prevIndex in log.
+// log starts from PrevIndex+1.
 func (l *Log) PrevIndex() uint64 {
 	if l.index != nil {
 		return l.index[0]
@@ -105,6 +119,8 @@ func (l *Log) PrevIndex() uint64 {
 	return l.first.prevIndex
 }
 
+// LastIndex returns lastIndex in log.
+// If Count() is zero, there is no entry at i.
 func (l *Log) LastIndex() uint64 {
 	if l.index != nil {
 		return l.index[1]
@@ -112,6 +128,7 @@ func (l *Log) LastIndex() uint64 {
 	return l.last.lastIndex()
 }
 
+// Count returns number of entries in log.
 func (l *Log) Count() uint64 {
 	return l.LastIndex() - l.PrevIndex()
 }
@@ -136,10 +153,20 @@ func (l *Log) segment(i uint64) *segment {
 	}
 }
 
+// Contains returns true if index i exists in log.
+// Index exists in log if it is >PrevIndex and <=LastIndex.
 func (l *Log) Contains(i uint64) bool {
 	return i > l.PrevIndex() && i <= l.LastIndex()
 }
 
+// Get returns i-th entry. It is equivalent to GetN(i, 1).
+// The returned []byte is mmapped data. It can be used as long as
+// Close, RemoveLTE, RemoveGTE is not called. Any of these three calls
+// might invalidate the data returned and further use of it will
+// cause errors.
+//
+// if index is >LastIndex it panics. If index <PrevIndex, it returns
+// ErrNotFound.
 func (l *Log) Get(i uint64) ([]byte, error) {
 	s := l.segment(i)
 	if s == nil {
@@ -148,6 +175,15 @@ func (l *Log) Get(i uint64) ([]byte, error) {
 	return s.get(i, 1), nil
 }
 
+// GetN returns n entries from i. that is entries i, i+1,...,i+n-1.
+// The returned [][]byte is mmapped data. It returns one []byte per
+// segment file. The returned data can be used as long as Close,
+// RemoveLTE, RemoveGTE is not called. Any of these three calls
+// might invalidate the data returned and further use of it will
+// cause errors.
+//
+// if index is >LastIndex it panics. If index <PrevIndex, it returns
+// ErrNotFound.
 func (l *Log) GetN(i uint64, n uint64) ([][]byte, error) {
 	if i+(n-1) > l.LastIndex() {
 		panic(fmt.Sprintf("log: %d>lastIndex(%d)", i+(n-1), l.LastIndex()))
@@ -175,6 +211,8 @@ func (l *Log) GetN(i uint64, n uint64) ([][]byte, error) {
 	return buffs, nil
 }
 
+// Append appends an entry to log. the param []byte
+// is opaque to Log and is not interpreted.
 func (l *Log) Append(b []byte) error {
 	if l.last.available() < len(b) {
 		if l.last.n == 0 {
@@ -197,6 +235,12 @@ func (l *Log) Append(b []byte) error {
 	return nil
 }
 
+// CanLTE tells which entries will be removed if RemoveLTE(i)
+// is called. You can only remove segment completely or not.
+// for example if log has two segments, with first segment
+// entries 1 to 100, second segment from 101 t0 150, then
+// you can remove entries <=100, that is CanLTE(110)=100,
+// CanLTE(50)=0
 func (l *Log) CanLTE(i uint64) uint64 {
 	s := l.first
 	for s != l.last {
@@ -209,6 +253,11 @@ func (l *Log) CanLTE(i uint64) uint64 {
 	return s.prevIndex
 }
 
+// RemoveLTE requests to remove all entries <=i. It removes
+// a segment completely or not. So it might not remove all
+// entries <=i. You can use CanLTE to check which entries
+// can be removed. Before removing entries it implicitly
+// commits the log.
 func (l *Log) RemoveLTE(i uint64) error {
 	if err := l.Commit(); err != nil {
 		return err
@@ -228,6 +277,8 @@ func (l *Log) RemoveLTE(i uint64) error {
 	return nil
 }
 
+// RemoveGTE removes all entries >=i from log.
+// Before removing entries it implicitly commits the log.
 func (l *Log) RemoveGTE(i uint64) error {
 	if err := l.Commit(); err != nil {
 		return err
@@ -308,7 +359,7 @@ func (l *Log) Commit() error {
 	return l.CommitN(l.LastIndex())
 }
 
-// Close commits all entries and closes
+// Close commits all entries and closes the log.
 func (l *Log) Close() error {
 	err := l.Commit()
 	for s := l.last; s != nil; s = s.prev {
