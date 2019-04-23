@@ -326,18 +326,20 @@ func (info *Info) decode(r io.Reader) error {
 	if err = info.Configs.Latest.decode(e); err != nil {
 		return err
 	}
-	info.Followers = map[uint64]Replication{}
 	sz, err := readUint32(r)
 	if err != nil {
 		return err
 	}
-	for sz > 0 {
-		sz--
-		repl := Replication{}
-		if err = repl.decode(r); err != nil {
-			return err
+	if sz > 0 {
+		info.Followers = map[uint64]Replication{}
+		for sz > 0 {
+			sz--
+			repl := Replication{}
+			if err = repl.decode(r); err != nil {
+				return err
+			}
+			info.Followers[repl.ID] = repl
 		}
-		info.Followers[repl.ID] = repl
 	}
 	return nil
 }
