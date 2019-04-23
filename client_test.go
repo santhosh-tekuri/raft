@@ -40,3 +40,24 @@ func TestClient_GetInfo(t *testing.T) {
 		}
 	}
 }
+
+func TestClient_TakeSnapshot(t *testing.T) {
+	c, ldr, _ := launchCluster(t, 3)
+	defer c.shutdown()
+
+	c.sendUpdates(ldr, 1, 10)
+	c.waitFSMLen(10)
+
+	client := NewClient(c.id2Addr(ldr.nid))
+	client.dial = ldr.dialFn
+	snapIndex, err := client.TakeSnapshot(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapIndex != 12 {
+		t.Fatalf("snapIndex=%d, want %d", snapIndex, 12)
+	}
+	if info := ldr.info(); info.SnapshotIndex != snapIndex {
+		t.Fatalf("info.snapshotIndex=%d", info.SnapshotIndex)
+	}
+}
