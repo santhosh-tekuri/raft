@@ -60,4 +60,28 @@ func TestClient_TakeSnapshot(t *testing.T) {
 	if info := ldr.info(); info.SnapshotIndex != snapIndex {
 		t.Fatalf("info.snapshotIndex=%d", info.SnapshotIndex)
 	}
+
+	if _, err := client.TakeSnapshot(0); err != ErrNoUpdates {
+		t.Fatalf("got %v, want %v", err, ErrNoUpdates)
+	}
+}
+
+func TestClient_TransferLeadership(t *testing.T) {
+	c, ldr, flrs := launchCluster(t, 3)
+	defer c.shutdown()
+
+	client := NewClient(c.id2Addr(ldr.nid))
+	client.dial = ldr.dialFn
+	if err := client.TransferLeadership(7, c.longTimeout); err != ErrTransferInvalidTarget {
+		t.Fatalf("got %v, want %v", err, ErrTransferInvalidTarget)
+	}
+	if err := client.TransferLeadership(ldr.nid, c.longTimeout); err != ErrTransferSelf {
+		t.Fatalf("got %v, want %v", err, ErrTransferSelf)
+	}
+	if err := client.TransferLeadership(flrs[0].nid, c.longTimeout); err != nil {
+		t.Fatal(err)
+	}
+	if newLdr := c.leader(); newLdr != flrs[0] {
+		t.Fatalf("newLdr=%d, want %d", newLdr.nid, flrs[0].nid)
+	}
 }
