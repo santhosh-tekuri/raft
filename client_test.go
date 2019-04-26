@@ -81,7 +81,8 @@ func TestClient_TransferLeadership(t *testing.T) {
 	if err := client.TransferLeadership(flrs[0].nid, c.longTimeout); err != nil {
 		t.Fatal(err)
 	}
-	if newLdr := c.leader(); newLdr != flrs[0] {
+	newLdr := c.waitForLeader()
+	if newLdr != flrs[0] {
 		t.Fatalf("newLdr=%d, want %d", newLdr.nid, flrs[0].nid)
 	}
 }
