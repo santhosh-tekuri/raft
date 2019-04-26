@@ -34,6 +34,41 @@ func TestChangeConfig_validations(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// adding voter to bootstrapped config should fail
+	if err := configs.Latest.AddVoter(4, "localhost:2222"); err == nil {
+		t.Fatal(err)
+	}
+
+	// setting action on non existing node should fail
+	if err := configs.Latest.SetAction(4, Promote); err == nil {
+		t.Fatal(err)
+	}
+
+	// promoting voter should fail
+	if err := configs.Latest.SetAction(3, Promote); err == nil {
+		t.Fatal(err)
+	}
+
+	// setting addr on non existing node should fail
+	if err := configs.Latest.SetAddr(4, "localhost:2222"); err == nil {
+		t.Fatal(err)
+	}
+
+	// setting invalid addr should fail
+	if err := configs.Latest.SetAddr(3, "localhost"); err == nil {
+		t.Fatal(err)
+	}
+
+	// setting existing addr should fail
+	if err := configs.Latest.SetAddr(3, c.id2Addr(2)); err == nil {
+		t.Fatal(err)
+	}
+
+	// setting data on non existing node should fail
+	if err := configs.Latest.SetData(4, "localhost:2222"); err == nil {
+		t.Fatal(err)
+	}
+
 	// adding node with empty addr should fail
 	if err := c.waitAddNonvoter(ldr, 10, "", false); err == nil {
 		t.Fatal(err)
