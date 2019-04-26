@@ -140,7 +140,7 @@ func (l *leader) storeEntry(ne *newEntry) {
 				if ne.typ == entryConfig {
 					config := Config{}
 					if err := config.decode(ne.entry); err != nil {
-						panic(bug(1, "config.decode: %v", err))
+						panic(bug{"config.decode", err})
 					}
 					l.changeConfig(config)
 				}

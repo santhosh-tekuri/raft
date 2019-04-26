@@ -65,6 +65,15 @@ var (
 
 // -----------------------------------------------------------
 
+type bug struct {
+	msg string
+	err error
+}
+
+func (e bug) Error() string {
+	return fmt.Sprintf("raft-bug: %s: %v", e.msg, e.err)
+}
+
 type plainError string
 
 func (e plainError) Error() string {
@@ -218,11 +227,11 @@ func recoverErr(r interface{}) error {
 	if r == errAssertion || r == errUnreachable {
 		panic(r)
 	}
-	if _, ok := r.(runtime.Error); ok {
-		panic(r)
-	}
-	if _, ok := r.(error); ok {
-		return r.(error)
+	switch e := r.(type) {
+	case bug, runtime.Error:
+		panic(e)
+	case error:
+		return e
 	}
 	return fmt.Errorf("unexpected error: %v", r)
 }

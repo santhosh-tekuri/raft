@@ -225,19 +225,6 @@ func durationFor(bandwidth int64, n int64) time.Duration {
 
 // -------------------------------------------------------------------------
 
-func bug(calldepth int, format string, v ...interface{}) error {
-	_, file, line, ok := runtime.Caller(calldepth)
-	if !ok {
-		file = "???"
-		line = 0
-	}
-	if i := strings.LastIndex(file, "/"); i != -1 {
-		file = file[i+1:]
-	}
-	prefix := fmt.Sprintf("[RAFT-BUG] %s:%d ", file, line)
-	return fmt.Errorf(prefix+format, v...)
-}
-
 func trimPrefix(err error) string {
 	return strings.TrimPrefix(err.Error(), "raft: ")
 }

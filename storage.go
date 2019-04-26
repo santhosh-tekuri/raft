@@ -220,7 +220,7 @@ func (s *storage) getEntry(index uint64, e *entry) error {
 
 func (s *storage) mustGetEntry(index uint64, e *entry) {
 	if err := s.getEntry(index, e); err != nil {
-		panic(bug(2, "storage.MustGetEntry(%d): %v", index, err))
+		panic(bug{fmt.Sprintf("storage.MustGetEntry(%d)", index), err})
 	}
 }
 
@@ -229,7 +229,7 @@ func (s *storage) appendEntry(e *entry) {
 	assert(e.index == s.lastLogIndex+1)
 	w := new(bytes.Buffer)
 	if err := e.encode(w); err != nil {
-		panic(bug(2, "entry.encode(%d): %v", e.index, err))
+		panic(bug{fmt.Sprintf("entry.encode(%d)", e.index), err})
 	}
 	if err := s.log.Append(w.Bytes()); err != nil {
 		panic(opError(err, "Log.Append"))
