@@ -14,7 +14,14 @@
 
 package raft
 
-import "testing"
+import (
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/pkg/errors"
+)
 
 // tests that dialed conn is validated for cid and nid
 func TestConnPool_getConn_IdentityError(t *testing.T) {
@@ -87,6 +94,92 @@ func TestConnPool_getConn_Resolver(t *testing.T) {
 	// restart follower at different address with resolver addr updated
 	c.resolverMu.Lock()
 	c.ports[flrs[0].nid] = 9999
+	c.resolverMu.Unlock()
+	c.restart(flrs[0])
+
+	// wait for leader to detect that follower is reachable at new addr
+	c.waitReachableDetected(ldr, flrs[0])
+}
+
+type testResolver struct {
+	delegate Resolver
+	mu       sync.RWMutex
+	err      error
+}
+
+func (r *testResolver) LookupID(id uint64, timeout time.Duration) (addr string, err error) {
+	r.mu.RLock()
+	err = r.err
+	r.mu.RUnlock()
+	if err != nil {
+		return "", err
+	}
+	return r.delegate.LookupID(id, timeout)
+}
+
+// tests that if resolver.LookupID fails:
+//  - raises alert
+//  - uses the address from config
+func TestResolver_LookupID_failure(t *testing.T) {
+	// launch 3 node cluster with Resolver set
+	c := newCluster(t)
+	resolver := &testResolver{delegate: c}
+	c.opt.Resolver = resolver
+	ldr, flrs := c.ensureLaunch(3)
+	defer c.shutdown()
+
+	// stop one of follower
+	c.shutdown(flrs[0])
+
+	// wait for leader to detect that follower is unreachable
+	_ = c.waitUnreachableDetected(ldr, flrs[0])
+
+	// restart follower at different address with resolver addr updated
+	c.resolverMu.Lock()
+	c.ports[flrs[0].nid] = 9999
+	c.resolverMu.Unlock()
+	flrs[0] = c.restart(flrs[0])
+
+	// wait for leader to detect that follower is reachable at new addr
+	c.waitReachableDetected(ldr, flrs[0])
+
+	// stop one of follower, wait until leaders detected it
+	c.shutdown(flrs[0])
+	_ = c.waitUnreachableDetected(ldr, flrs[0])
+
+	alerts := c.alerts[ldr.nid]
+	alerts.mu.Lock()
+	ch := make(chan error, 1024)
+	alerts.error = func(e error) {
+		ch <- e
+	}
+	alerts.mu.Unlock()
+
+	err := errors.New("lookupID failed")
+	resolver.mu.Lock()
+	resolver.err = err
+	resolver.mu.Unlock()
+
+	select {
+	case e := <-ch:
+		switch e := e.(type) {
+		case OpError:
+			if !strings.HasPrefix(e.Op, "Resolver.LookupID") {
+				t.Fatalf("op=%s, want=Resolver.LookupID", e.Op)
+			}
+			if e.Err != err {
+				t.Fatalf("got %v, want %v", e, err)
+			}
+		default:
+			t.Fatalf("got %T, want OpError", e)
+		}
+	case <-time.After(c.longTimeout):
+		t.Fatal("no alert on Resolver.LookupID failure")
+	}
+
+	// restart follower at address old address that is specified in config
+	c.resolverMu.Lock()
+	c.ports[flrs[0].nid] = c.port
 	c.resolverMu.Unlock()
 	c.restart(flrs[0])
 

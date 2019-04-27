@@ -1374,7 +1374,7 @@ func init() {
 
 type alerts struct {
 	mu                sync.RWMutex
-	err               func(error)
+	error             func(error)
 	unreachable       func(id uint64, err error)
 	reachable         func(id uint64)
 	quorumUnreachable func()
@@ -1384,8 +1384,8 @@ type alerts struct {
 func (a *alerts) Error(err error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	if a.err != nil {
-		a.err(err)
+	if a.error != nil {
+		a.error(err)
 	}
 }
 
