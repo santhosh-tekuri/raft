@@ -232,7 +232,7 @@ func (l *leader) checkReplUpdates(u replUpdate) {
 					l.alerts.Reachable(status.id)
 				} else {
 					l.logger.Warn("node", status.id, "is unreachable, reason:", u.err)
-					l.alerts.UnReachable(status.id, u.err)
+					l.alerts.Unreachable(status.id, u.err)
 				}
 				if tracer.unreachable != nil {
 					tracer.unreachable(l.Raft, status.id, u.time, u.err)

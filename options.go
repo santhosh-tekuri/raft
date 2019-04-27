@@ -166,7 +166,7 @@ type Alerts interface {
 	// - error in Resolver.LookupID
 	Error(err error)
 
-	// UnReachable alert is raised by leader, when it finds that
+	// Unreachable alert is raised by leader, when it finds that
 	// a follower node is not unreachable. The err tells the reason
 	// whey the node is treated as unreachable. A node is treated as
 	// unreachable in following cases:
@@ -178,7 +178,7 @@ type Alerts interface {
 	//
 	// It is recommended to treat this as serious if "Reachable" alert
 	// is not raised within some configurable time.
-	UnReachable(id uint64, err error)
+	Unreachable(id uint64, err error)
 
 	// Reachable alert is raised by leader, when a node that was unreachable
 	// is now reachable.
@@ -202,7 +202,7 @@ type Alerts interface {
 type nopAlerts struct{}
 
 func (nopAlerts) Error(err error)                  {}
-func (nopAlerts) UnReachable(id uint64, err error) {}
+func (nopAlerts) Unreachable(id uint64, err error) {}
 func (nopAlerts) Reachable(id uint64)              {}
 func (nopAlerts) QuorumUnreachable()               {}
 func (nopAlerts) ShuttingDown(reason error)        {}
