@@ -486,16 +486,14 @@ func (r *Raft) FSM() FSM {
 }
 
 func (r *Raft) addr() string {
-	addr, _ := r.resolver.lookupID(r.nid, 10*time.Second)
-	return addr
+	return r.resolver.lookupID(r.nid, 10*time.Second)
 }
 
 func (r *Raft) leaderAddr() string {
 	if r.leader == 0 {
 		return ""
 	}
-	addr, _ := r.resolver.lookupID(r.leader, 10*time.Second)
-	return addr
+	return r.resolver.lookupID(r.leader, 10*time.Second)
 }
 
 // state ----------------------------------

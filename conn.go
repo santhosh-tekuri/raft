@@ -86,11 +86,11 @@ func (r *resolver) update(config Config) {
 	}
 }
 
-func (r *resolver) lookupID(id uint64, timeout time.Duration) (string, error) {
+func (r *resolver) lookupID(id uint64, timeout time.Duration) string {
 	if r.delegate != nil {
 		addr, err := r.delegate.LookupID(id, timeout)
 		if err == nil {
-			return addr, nil
+			return addr
 		}
 		err = opError(err, "Resolver.LookupID(%q)", id)
 		r.logger.Warn(trimPrefix(err))
@@ -100,7 +100,7 @@ func (r *resolver) lookupID(id uint64, timeout time.Duration) (string, error) {
 	// fallback
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.addrs[id], nil
+	return r.addrs[id]
 }
 
 // --------------------------------------------------------------------
@@ -131,11 +131,8 @@ func (pool *connPool) getConn(deadline time.Time) (*conn, error) {
 	}
 
 	// dial ---------
-	addr, err := pool.resolver.lookupID(pool.nid, deadline.Sub(time.Now()))
-	if err != nil {
-		return nil, err
-	}
-	c, err = dial(pool.dialFn, addr, deadline.Sub(time.Now()))
+	addr := pool.resolver.lookupID(pool.nid, deadline.Sub(time.Now()))
+	c, err := dial(pool.dialFn, addr, deadline.Sub(time.Now()))
 	if err != nil {
 		return nil, err
 	}
