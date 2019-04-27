@@ -253,6 +253,7 @@ func newCluster(t *testing.T) *cluster {
 		rr:               make(map[uint64]*Raft),
 		ports:            make(map[uint64]int),
 		storage:          make(map[uint64]string),
+		alerts:           make(map[uint64]*alerts),
 		serveErr:         make(map[uint64]chan error),
 		heartbeatTimeout: heartbeatTimeout,
 		longTimeout:      5 * time.Second,
@@ -281,6 +282,7 @@ type cluster struct {
 	rr               map[uint64]*Raft
 	ports            map[uint64]int
 	storage          map[uint64]string
+	alerts           map[uint64]*alerts
 	serverErrMu      sync.RWMutex
 	serveErr         map[uint64]chan error
 	heartbeatTimeout time.Duration
@@ -360,7 +362,10 @@ func (c *cluster) launch(n int, bootstrap bool) map[uint64]*Raft {
 			}
 		}
 		fsm := &fsmMock{id: identity{c.id, node.ID}, changed: ee.onFMSChanged}
-		r, err := New(c.opt, fsm, storageDir)
+		c.alerts[node.ID] = new(alerts)
+		opt := c.opt
+		opt.Alerts = c.alerts[node.ID]
+		r, err := New(opt, fsm, storageDir)
 		if err != nil {
 			c.Fatal(err)
 		}
@@ -462,8 +467,10 @@ func (c *cluster) restart(r *Raft) *Raft {
 	c.shutdown(r)
 
 	newFSM := &fsmMock{id: identity{r.cid, r.nid}, changed: ee.onFMSChanged}
-	storage := c.storage[r.NID()]
-	newr, err := New(c.opt, newFSM, storage)
+	storage := c.storage[r.nid]
+	opt := c.opt
+	opt.Alerts = c.alerts[r.nid]
+	newr, err := New(opt, newFSM, storage)
 	if err != nil {
 		c.Fatal(err)
 	}
@@ -1360,6 +1367,57 @@ func init() {
 			action:    action,
 			numRounds: numRounds,
 		})
+	}
+}
+
+// alerts ---------------------------------------------
+
+type alerts struct {
+	mu                sync.RWMutex
+	err               func(error)
+	unreachable       func(id uint64, err error)
+	reachable         func(id uint64)
+	quorumUnreachable func()
+	shuttingDown      func(error)
+}
+
+func (a *alerts) Error(err error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if a.err != nil {
+		a.err(err)
+	}
+}
+
+func (a *alerts) Unreachable(id uint64, err error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if a.unreachable != nil {
+		a.unreachable(id, err)
+	}
+}
+
+func (a *alerts) Reachable(id uint64) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if a.reachable != nil {
+		a.reachable(id)
+	}
+}
+
+func (a *alerts) QuorumUnreachable() {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if a.quorumUnreachable != nil {
+		a.quorumUnreachable()
+	}
+}
+
+func (a *alerts) ShuttingDown(reason error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if a.shuttingDown != nil {
+		a.shuttingDown(reason)
 	}
 }
 
