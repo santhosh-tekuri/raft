@@ -26,7 +26,7 @@ func TestClient_GetInfo(t *testing.T) {
 	c.waitCatchup()
 
 	for _, r := range c.rr {
-		want := r.info()
+		want := c.info(r)
 		client := NewClient(c.id2Addr(r.nid))
 		client.dial = r.dialFn
 		got, err := client.GetInfo()
@@ -57,7 +57,7 @@ func TestClient_TakeSnapshot(t *testing.T) {
 	if snapIndex != 12 {
 		t.Fatalf("snapIndex=%d, want %d", snapIndex, 12)
 	}
-	if info := ldr.info(); info.SnapshotIndex != snapIndex {
+	if info := c.info(ldr); info.SnapshotIndex != snapIndex {
 		t.Fatalf("info.snapshotIndex=%d", info.SnapshotIndex)
 	}
 

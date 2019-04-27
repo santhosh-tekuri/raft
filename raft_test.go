@@ -756,33 +756,32 @@ func (c *cluster) waitForCommitted(index uint64, rr ...*Raft) {
 func (c *cluster) waitCatchup(rr ...*Raft) {
 	c.Helper()
 	testln("waitCatchup:", hosts(rr))
-	leaders := c.getInState(Leader)
-	if len(leaders) != 1 {
-		c.Fatalf("leaders: got %d, want 1", len(leaders))
-	}
 	if len(rr) == 0 {
-		rr = c.exclude(leaders[0])
+		rr = c.exclude()
 	}
-	ldr := c.info(leaders[0])
 	log := false
 	condition := func() bool {
+		info := c.info(c.leader())
+		if log {
+			c.Logf("waitCatchup: %#v", info)
+		}
+		if info.Committed != info.LastLogIndex {
+			return false
+		}
 		for _, r := range rr {
-			info := c.info(r)
-			if info.LastLogIndex < ldr.LastLogIndex ||
-				info.Committed < ldr.Committed {
-				if log {
-					c.Logf("waitCatchup: M%d lastLogIndex:%d committed:%d", r.NID(), info.LastLogIndex, info.Committed)
+			if r.nid != info.NID {
+				repl := info.Followers[r.nid]
+				if repl.MatchIndex != info.LastLogIndex {
+					return false
 				}
-				return false
 			}
 		}
 		return true
 	}
 	if !waitForCondition(condition, c.commitTimeout, c.longTimeout) {
-		c.Logf("waitCatchup: ldr M%d lastLogIndex:%d committed:%d", ldr.NID, ldr.LastLogIndex, ldr.Committed)
 		log = true
 		condition()
-		c.Fatal("waitCatchup: timeout")
+		c.Fatalf("waitCatchup(%s): timeout", hosts(rr))
 	}
 }
 
