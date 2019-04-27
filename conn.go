@@ -92,7 +92,7 @@ func (r *resolver) lookupID(id uint64, timeout time.Duration) string {
 		if err == nil {
 			return addr
 		}
-		err = opError(err, "Resolver.LookupID(%q)", id)
+		err = opError(err, "Resolver.LookupID(%d)", id)
 		r.logger.Warn(trimPrefix(err))
 		r.alerts.Error(err)
 	}
