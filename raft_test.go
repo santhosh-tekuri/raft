@@ -46,6 +46,23 @@ func TestRaft_shutdown_twice(t *testing.T) {
 	c.shutdown()
 }
 
+// tests that calling Raft.Server after Raft.Shutdown
+// returns ErrServerClosed
+func TestRaft_shutdown_serve(t *testing.T) {
+	c := newCluster(t)
+	r := c.launch(1, true)[1]
+	c.shutdown()
+	host := network.Host(id2Host(r.NID()))
+	lr, err := host.Listen("tcp", c.id2Addr(r.nid))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lr.Close()
+	if err := r.Serve(lr); err != ErrServerClosed {
+		t.Fatalf("got %v, want ErrServerClosed", err)
+	}
+}
+
 func TestRaft_bootstrap(t *testing.T) {
 	c := newCluster(t)
 
