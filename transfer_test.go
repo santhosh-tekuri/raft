@@ -22,6 +22,18 @@ import (
 // todo: add test for timeoutError
 // todo: if ldr knows that a node is unreachable it should not try sending timeoutNow
 
+// non leader should reply NotLeaderError for transfer request
+func TestTransfer_nonLeader(t *testing.T) {
+	// launch single node cluster
+	c, _, flrs := launchCluster(t, 2)
+	defer c.shutdown()
+
+	_, err := waitTask(flrs[0], TransferLeadership(0, c.longTimeout), c.longTimeout)
+	if _, ok := err.(NotLeaderError); !ok {
+		c.Fatalf("err: got %v, want NotLeaderError", err)
+	}
+}
+
 // in cluster with single voter, leader should reject transfer
 // requests with ErrTransferNoVoter
 func TestTransfer_noVoter(t *testing.T) {
