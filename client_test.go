@@ -23,7 +23,7 @@ func TestClient_GetInfo(t *testing.T) {
 	c, _, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
-	c.waitCatchup()
+	c.waitForCommitted(2)
 
 	for _, r := range c.rr {
 		want := c.info(r)
