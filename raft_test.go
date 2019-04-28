@@ -127,6 +127,47 @@ func TestRaft_bootstrap(t *testing.T) {
 	c.waitForLeader(c.exclude(ldr)...)
 }
 
+func TestRaft_bootstrap_errors(t *testing.T) {
+	c := newCluster(t)
+
+	// launch cluster without bootstrapping
+	c.launch(3, false)
+	defer c.shutdown()
+
+	ldr := c.rr[1]
+	validConfig := c.info(ldr).Configs.Latest
+	for _, r := range c.rr {
+		if err := validConfig.AddVoter(r.NID(), c.id2Addr(r.NID())); err != nil {
+			c.Fatal(err)
+		}
+	}
+
+	// bootstrap without self
+	config := validConfig.clone()
+	delete(config.Nodes, ldr.nid)
+	if err := waitBootstrap(ldr, config, c.longTimeout); err == nil {
+		t.Fatal("error expected")
+	}
+
+	// bootstrap self as nonVoter
+	config = validConfig.clone()
+	self := config.Nodes[ldr.nid]
+	self.Voter = false
+	config.Nodes[ldr.nid] = self
+	if err := waitBootstrap(ldr, config, c.longTimeout); err == nil {
+		t.Fatal("error expected")
+	}
+
+	// bootstrap with unstable config
+	config = validConfig.clone()
+	self = config.Nodes[ldr.nid]
+	self.Action = Demote
+	config.Nodes[ldr.nid] = self
+	if err := waitBootstrap(ldr, config, c.longTimeout); err == nil {
+		t.Fatal("error expected")
+	}
+}
+
 func TestRaft_singleNode(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 1)
 	defer c.shutdown()
