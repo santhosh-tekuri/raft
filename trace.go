@@ -73,6 +73,48 @@ func println(args ...interface{}) {
 
 // Stringers ----------------------------------------------------------
 
+func (t entryType) String() string {
+	switch t {
+	case entryBarrier:
+		return "barrier"
+	case entryUpdate:
+		return "update"
+	case entryRead:
+		return "read"
+	case entryNop:
+		return "nop"
+	case entryConfig:
+		return "config"
+	}
+	return fmt.Sprintf("entryType(%d)", uint8(t))
+}
+
+func (r rpcResult) String() string {
+	switch r {
+	case success:
+		return "success"
+	case staleTerm:
+		return "staleTerm"
+	case alreadyVoted:
+		return "alreadyVoted"
+	case leaderKnown:
+		return "leaderKnown"
+	case logNotUptodate:
+		return "logNotUptodate"
+	case prevEntryNotFound:
+		return "prevEntryNotFound"
+	case prevTermMismatch:
+		return "prevTermMismatch"
+	case nonVoter:
+		return "nonVoter"
+	case readErr:
+		return "readErr"
+	case unexpectedErr:
+		return "unexpectedErr"
+	}
+	return fmt.Sprintf("rpcResult(%d)", r)
+}
+
 func (resp resp) String() string {
 	if resp.result == unexpectedErr {
 		return fmt.Sprintf("T%d %s %v", resp.term, resp.result, resp.err)

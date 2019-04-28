@@ -31,22 +31,6 @@ const (
 	entryConfig
 )
 
-func (t entryType) String() string {
-	switch t {
-	case entryBarrier:
-		return "barrier"
-	case entryUpdate:
-		return "update"
-	case entryRead:
-		return "read"
-	case entryNop:
-		return "nop"
-	case entryConfig:
-		return "config"
-	}
-	return fmt.Sprintf("entryType(%d)", uint8(t))
-}
-
 type entry struct {
 	index uint64
 	term  uint64
@@ -181,32 +165,6 @@ const (
 	readErr
 	unexpectedErr
 )
-
-func (r rpcResult) String() string {
-	switch r {
-	case success:
-		return "success"
-	case staleTerm:
-		return "staleTerm"
-	case alreadyVoted:
-		return "alreadyVoted"
-	case leaderKnown:
-		return "leaderKnown"
-	case logNotUptodate:
-		return "logNotUptodate"
-	case prevEntryNotFound:
-		return "prevEntryNotFound"
-	case prevTermMismatch:
-		return "prevTermMismatch"
-	case nonVoter:
-		return "nonVoter"
-	case readErr:
-		return "readErr"
-	case unexpectedErr:
-		return "unexpectedErr"
-	}
-	return fmt.Sprintf("rpcResult(%d)", r)
-}
 
 type message interface {
 	getTerm() uint64
