@@ -95,6 +95,7 @@ func config(c *raft.Client, args []string) {
 		errln("  get            prints current config")
 		errln("  set            changes current config")
 		errln("  wait           waits until config is stable")
+		errln("  add            adds node")
 		errln("  demote         demotes voter")
 		errln("  promote        promotes nonvoter")
 		errln("  remove         remove node")
@@ -112,6 +113,8 @@ func config(c *raft.Client, args []string) {
 		setConfig(c, args)
 	case "wait":
 		waitConfig(c)
+	case "add":
+		addNode(c, args)
 	case "demote":
 		configAction(c, raft.Demote, args)
 	case "promote":
@@ -190,12 +193,59 @@ func waitConfig(c *raft.Client) {
 	fmt.Println(string(b))
 }
 
+func addNode(c *raft.Client, args []string) {
+	if len(args) < 2 {
+		errln("usage: raftctl add <nid> <address> [data] [promote]")
+		errln()
+		errln("if bootstrapped, adds nonvoter otherwise adds voter")
+		os.Exit(1)
+	}
+	nid, err := strconv.ParseInt(args[0], 10, 64)
+	if err != nil {
+		errln(err.Error())
+		os.Exit(1)
+	}
+	addr := args[1]
+	data, promote := "", false
+	if len(args) > 2 {
+		data = args[2]
+	}
+	if len(args) > 3 {
+		promote = args[3] == "promote"
+	}
+	info, err := c.GetInfo()
+	if err != nil {
+		errln(err.Error())
+		os.Exit(1)
+	}
+	config := info.Configs.Latest
+	if info.Configs.IsBootstrapped() {
+		if err = config.AddNonvoter(uint64(nid), addr, promote); err != nil {
+			errln(err.Error())
+			os.Exit(1)
+		}
+	} else {
+		if err = config.AddVoter(uint64(nid), addr); err != nil {
+			errln(err.Error())
+			os.Exit(1)
+		}
+	}
+	if err = config.SetData(uint64(nid), data); err != nil {
+		errln(err.Error())
+		os.Exit(1)
+	}
+	if err = c.ChangeConfig(config); err != nil {
+		errln(err.Error())
+		os.Exit(1)
+	}
+}
+
 func configAction(c *raft.Client, action raft.Action, args []string) {
 	if len(args) != 1 {
 		errln("usage: raftctl config", action, "<nid>")
 		os.Exit(1)
 	}
-	i, err := strconv.ParseInt(args[0], 10, 64)
+	nid, err := strconv.ParseInt(args[0], 10, 64)
 	if err != nil {
 		errln(err.Error())
 		os.Exit(1)
@@ -206,7 +256,7 @@ func configAction(c *raft.Client, action raft.Action, args []string) {
 		os.Exit(1)
 	}
 	config := info.Configs.Latest
-	if err := config.SetAction(uint64(i), action); err != nil {
+	if err := config.SetAction(uint64(nid), action); err != nil {
 		errln(err.Error())
 		os.Exit(1)
 	}
@@ -239,7 +289,7 @@ func transfer(c *raft.Client, args []string) {
 		errln("usage: raftctl transfer <target> <timeout>")
 		os.Exit(1)
 	}
-	i, err := strconv.ParseInt(args[0], 10, 64)
+	nid, err := strconv.ParseInt(args[0], 10, 64)
 	if err != nil {
 		errln(err.Error())
 		os.Exit(1)
@@ -249,7 +299,7 @@ func transfer(c *raft.Client, args []string) {
 		errln(err.Error())
 		os.Exit(1)
 	}
-	err = c.TransferLeadership(uint64(i), d)
+	err = c.TransferLeadership(uint64(nid), d)
 	if err != nil {
 		errln(err.Error())
 		os.Exit(1)
