@@ -21,6 +21,7 @@ import (
 	"io/ioutil"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/santhosh-tekuri/raft"
@@ -100,6 +101,8 @@ func config(c *raft.Client, args []string) {
 		errln("  promote        promotes nonvoter")
 		errln("  remove         remove node")
 		errln("  force-remove   force remove node")
+		errln("  addr           change node address")
+		errln("  data           change node data")
 	}
 	if len(args) == 0 {
 		printUsage()
@@ -123,6 +126,10 @@ func config(c *raft.Client, args []string) {
 		configAction(c, raft.Remove, args)
 	case "force-remove":
 		configAction(c, raft.ForceRemove, args)
+	case "addr":
+		changeAddr(c, args)
+	case "data":
+		changeData(c, args)
 	default:
 		errln("unknown config command:", cmd)
 		printUsage()
@@ -259,6 +266,74 @@ func configAction(c *raft.Client, action raft.Action, args []string) {
 	if err := config.SetAction(uint64(nid), action); err != nil {
 		errln(err.Error())
 		os.Exit(1)
+	}
+	if err = c.ChangeConfig(config); err != nil {
+		errln(err.Error())
+		os.Exit(1)
+	}
+}
+
+func changeAddr(c *raft.Client, args []string) {
+	if len(args) == 0 {
+		errln("usage: raftctl config addr <nid>=<addr> ...")
+		os.Exit(1)
+	}
+	info, err := c.GetInfo()
+	if err != nil {
+		errln(err.Error())
+		os.Exit(1)
+	}
+	config := info.Configs.Latest
+	for _, arg := range args {
+		i := strings.Index(arg, "=")
+		if i == -1 {
+			errln("no '=' sign in argument:", arg)
+			os.Exit(1)
+		}
+		nid, err := strconv.ParseInt(arg[:i], 10, 64)
+		if err != nil {
+			errln(err.Error())
+			os.Exit(1)
+		}
+		addr := arg[i+1:]
+		if err = config.SetAddr(uint64(nid), addr); err != nil {
+			errln(err.Error())
+			os.Exit(1)
+		}
+	}
+	if err = c.ChangeConfig(config); err != nil {
+		errln(err.Error())
+		os.Exit(1)
+	}
+}
+
+func changeData(c *raft.Client, args []string) {
+	if len(args) == 0 {
+		errln("usage: raftctl config data <nid>=<data> ...")
+		os.Exit(1)
+	}
+	info, err := c.GetInfo()
+	if err != nil {
+		errln(err.Error())
+		os.Exit(1)
+	}
+	config := info.Configs.Latest
+	for _, arg := range args {
+		i := strings.Index(arg, "=")
+		if i == -1 {
+			errln("no '=' sign in argument:", arg)
+			os.Exit(1)
+		}
+		nid, err := strconv.ParseInt(arg[:i], 10, 64)
+		if err != nil {
+			errln(err.Error())
+			os.Exit(1)
+		}
+		addr := arg[i+1:]
+		if err = config.SetData(uint64(nid), addr); err != nil {
+			errln(err.Error())
+			os.Exit(1)
+		}
 	}
 	if err = c.ChangeConfig(config); err != nil {
 		errln(err.Error())
