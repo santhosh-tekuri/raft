@@ -15,12 +15,11 @@
 package raft
 
 import (
+	"errors"
 	"strings"
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/pkg/errors"
 )
 
 // tests that dialed conn is validated for cid and nid
