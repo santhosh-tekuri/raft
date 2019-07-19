@@ -28,7 +28,7 @@ import (
 
 func main() {
 	if len(os.Args) != 4 {
-		errln("usage: raft <storage-dir> <raft-addr> <http-addr>")
+		errln("usage: kvstore <storage-dir> <raft-addr> <http-addr>")
 		os.Exit(1)
 	}
 	storageDir, raftAddr, httpAddr := os.Args[1], os.Args[2], os.Args[3]
