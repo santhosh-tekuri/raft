@@ -32,6 +32,8 @@ func newKVStore() *kvStore {
 	return &kvStore{make(map[string]string)}
 }
 
+var _ raft.FSM = (*kvStore)(nil)
+
 func (s *kvStore) Update(b []byte) interface{} {
 	cmd, err := decodeCmd(b)
 	if err != nil {
@@ -140,6 +142,8 @@ func encodeCmd(cmd interface{}) []byte {
 type kvState struct {
 	data map[string]string
 }
+
+var _ raft.FSMState = (*kvState)(nil)
 
 func (s *kvState) Persist(w io.Writer) error {
 	return gob.NewEncoder(w).Encode(s.data)
