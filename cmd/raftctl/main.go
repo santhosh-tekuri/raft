@@ -95,6 +95,7 @@ func config(c *raft.Client, args []string) {
 		errln("list of commands:")
 		errln("  get            prints current config")
 		errln("  set            changes current config")
+		errln("  apply          apply changes current config")
 		errln("  wait           waits until config is stable")
 		errln("  add            adds node")
 		errln("  demote         demotes voter")
@@ -114,6 +115,8 @@ func config(c *raft.Client, args []string) {
 		getConfig(c)
 	case "set":
 		setConfig(c, args)
+	case "apply":
+		applyConfig(c, args)
 	case "wait":
 		waitConfig(c)
 	case "add":
@@ -186,6 +189,113 @@ func setConfig(c *raft.Client, args []string) {
 	}
 }
 
+func applyConfig(c *raft.Client, args []string) {
+	if len(args) == 0 {
+		errln("usage: raftctl config apply <change>...")
+		errln()
+		errln("change          example")
+		errln("-----------------------------------------------------------------------------------------")
+		errln("add             +nid=2,voter=true,addr=localhost:7001,data=localhost:8001")
+		errln("                +nid=3,voter=false,addr=localhost:7001,data=localhost:8001,action=promote")
+		errln("demote          nid=2,action=demote")
+		errln("promote         nid=3,action=promote")
+		errln("remove          nid=2,action=remove")
+		errln("force-remove    nid=2,action=forceRemove")
+		errln("change-addr     nid=2,addr=localhost:5001")
+		errln("change-data     nid=2,data=localhost:9001")
+		errln("clear-action    nid=2,action=none")
+		os.Exit(1)
+	}
+	info, err := c.GetInfo()
+	if err != nil {
+		errln(err.Error())
+		os.Exit(1)
+	}
+	config := info.Configs.Latest
+	for _, arg := range args {
+		add := false
+		if strings.HasPrefix(arg, "+") {
+			add = true
+			arg = strings.TrimPrefix(arg, "+")
+		}
+		// parse fields into map
+		m := make(map[string]string)
+		for _, f := range strings.Split(arg, ",") {
+			i := strings.Index(f, "=")
+			if i == -1 {
+				errln("no '=' sign in argument:", arg)
+				os.Exit(1)
+			}
+			m[f[:i]] = f[i+1:]
+		}
+
+		// apply change
+		if _, ok := m["nid"]; !ok {
+			errln("nid missing in argument:", arg)
+			os.Exit(1)
+		}
+		nid, err := strconv.ParseInt(m["nid"], 10, 64)
+		if err != nil {
+			errln(err.Error())
+			os.Exit(1)
+		}
+		n, ok := config.Nodes[uint64(nid)]
+		if add {
+			if ok {
+				errln("node", nid, "already exists")
+				os.Exit(1)
+			}
+		} else {
+			if !ok {
+				errln("node", nid, "does not exit")
+				os.Exit(1)
+			}
+		}
+		n.ID = uint64(nid)
+		for k, v := range m {
+			switch k {
+			case "nid":
+				continue
+			case "voter":
+				voter, err := strconv.ParseBool(v)
+				if err != nil {
+					errln(err.Error())
+					os.Exit(1)
+				}
+				n.Voter = voter
+			case "addr":
+				n.Addr = v
+			case "data":
+				n.Data = v
+			case "action":
+				switch v {
+				case raft.None.String():
+					n.Action = raft.None
+				case raft.Promote.String():
+					n.Action = raft.Promote
+				case raft.Demote.String():
+					n.Action = raft.Demote
+				case raft.Remove.String():
+					n.Action = raft.Remove
+				case raft.ForceRemove.String():
+					n.Action = raft.ForceRemove
+				default:
+					errln("invalid action in argument:", arg)
+					os.Exit(1)
+				}
+			default:
+				errln("unknown field", k, "in argument:", arg)
+				os.Exit(1)
+			}
+		}
+		config.Nodes[uint64(nid)] = n
+	}
+	if err = c.ChangeConfig(config); err != nil {
+		errln(err.Error())
+		os.Exit(1)
+	}
+}
+
 func waitConfig(c *raft.Client) {
 	config, err := c.WaitForStableConfig()
 	if err != nil {
@@ -202,7 +312,7 @@ func waitConfig(c *raft.Client) {
 
 func addNode(c *raft.Client, args []string) {
 	if len(args) < 2 {
-		errln("usage: raftctl add <nid> <address> [data] [promote]")
+		errln("usage: raftctl add <nid> <address> [[<data>] promote]")
 		errln()
 		errln("if bootstrapped, adds nonvoter otherwise adds voter")
 		os.Exit(1)
@@ -218,7 +328,11 @@ func addNode(c *raft.Client, args []string) {
 		data = args[2]
 	}
 	if len(args) > 3 {
-		promote = args[3] == "promote"
+		if args[3] != "promote" {
+			errln("fourth argument must be 'promote' if specified")
+			os.Exit(1)
+		}
+		promote = true
 	}
 	info, err := c.GetInfo()
 	if err != nil {

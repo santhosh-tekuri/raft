@@ -12,6 +12,35 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package kvstore demonstrates how to use raft package to implement simple kvstore.
+//
+//   usage: kvstore <storage-dir> <raft-addr> <http-addr>
+//
+//   storage-dir: where raft stores its data. Created if the directory does not exist
+//   raft-addr:   raft server listens on this address
+//   http-addr:   http server listens on this address
+//
+// in addition to this you should pass cluster-id and node-id using environment
+// variables CID, NID respectively. value is uint64 greater than zero.
+//
+// Launch 3 nodes as shown below:
+//   $ CID=1234 NID=1 kvstore data1 localhost:7001 localhost:8001
+//   $ CID=1234 NID=2 kvstore data2 localhost:7002 localhost:8002
+//   $ CID=1234 NID=3 kvstore data3 localhost:7003 localhost:8003
+//
+// Note: we are using Node.Data to store http-addr, which enables us to enable http redirects.
+//
+// to bootstrap cluster:
+//   $ RAFT_ADDR=localhost:7001 raftctl config apply \
+//        +nid=1,voter=true,addr=localhost:7001,data=localhost:8001 \
+//        +nid=2,voter=true,addr=localhost:7002,data=localhost:8002 \
+//        +nid=3,voter=true,addr=localhost:7003,data=localhost:8003
+//   $ RAFT_ADDR=localhost:7001 raftctl config get
+//
+// to test kvstore:
+//   $ curl -v -X POST localhost:8001/k1 -d v1
+//   $ curl -v localhost:8001/k1
+//   $ curl -v -L localhost:8002/k1
 package main
 
 import (
