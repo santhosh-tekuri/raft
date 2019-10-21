@@ -25,13 +25,13 @@ func TestLeader_stepDown(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
-	// should be able to apply
+	// should be able to update
 	resp, err := waitUpdate(ldr, "test", c.longTimeout)
 	if err != nil {
-		t.Fatalf("apply failed: %v", err)
+		t.Fatalf("update failed: %v", err)
 	}
 	if resp.msg != "test" {
-		t.Fatalf("apply response mismatch. got %s, want test", resp.msg)
+		t.Fatalf("update response mismatch. got %s, want test", resp.msg)
 	}
 	if resp.index != 1 {
 		t.Fatalf("fsmReplyIndex: got %d want 1", resp.index)
@@ -53,15 +53,15 @@ func TestLeader_stepDown(t *testing.T) {
 		t.Fatalf("expected new leader term: newLdrTerm=%d, ldrTerm=%d", newLdrTerm, ldrTerm)
 	}
 
-	// apply should not work on old leader
+	// update should not work on old leader
 	_, err = waitUpdate(ldr, "reject", c.longTimeout)
-	if err, ok := err.(NotLeaderError); !ok {
+	if nle, ok := err.(NotLeaderError); !ok {
 		t.Fatalf("got %v, want NotLeaderError", err)
-	} else if err.Leader.Addr != "" {
-		t.Fatalf("got %s, want ", err.Leader.Addr)
+	} else if nle.Leader.Addr != "" {
+		t.Fatalf("got %s, want ", nle.Leader.Addr)
 	}
 
-	// apply should work on new leader
+	// update should work on new leader
 	if _, err = waitUpdate(newLdr, "accept", c.longTimeout); err != nil {
 		t.Fatalf("got %v, want nil", err)
 	}
@@ -173,15 +173,15 @@ func TestLeader_updateFSM_nonLeader(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
-	// apply should work not work on non-leader
+	// update should not work on non-leader
 	ldrAddr := c.info(ldr).Addr
 	for _, r := range c.rr {
 		if r != ldr {
 			_, err := waitUpdate(r, "reject", c.longTimeout)
-			if err, ok := err.(NotLeaderError); !ok {
+			if nle, ok := err.(NotLeaderError); !ok {
 				t.Fatalf("got %v, want NotLeaderError", err)
-			} else if err.Leader.Addr != ldrAddr {
-				t.Fatalf("got %s, want %s", err.Leader.Addr, ldrAddr)
+			} else if nle.Leader.Addr != ldrAddr {
+				t.Fatalf("got %s, want %s", nle.Leader.Addr, ldrAddr)
 			}
 		}
 	}
@@ -191,7 +191,7 @@ func TestLeader_updateFSM_concurrent(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
-	// concurrently apply
+	// concurrently update
 	var wg sync.WaitGroup
 	n := uint64(100)
 	for i := uint64(0); i < n; i++ {
@@ -210,7 +210,7 @@ func TestLeader_updateFSM_concurrent(t *testing.T) {
 
 	// check If anything failed
 	if t.Failed() {
-		t.Fatal("one or more of the apply operations failed")
+		t.Fatal("one or more of the update operations failed")
 	}
 
 	// check the FSMs

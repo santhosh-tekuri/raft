@@ -62,7 +62,7 @@ func TestRaft_bootstrap(t *testing.T) {
 	c.waitForLeader(ldr)
 	c.waitForFollowers()
 
-	// should be able to apply
+	// should be able to update
 	if _, err := waitUpdate(ldr, "hello", 0); err != nil {
 		t.Fatal(err)
 	}

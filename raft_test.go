@@ -67,15 +67,15 @@ func TestRaft_singleNode(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 1)
 	defer c.shutdown()
 
-	// should be able to apply
+	// should be able to update
 	resp, err := waitUpdate(ldr, "test", c.longTimeout)
 	if err != nil {
-		t.Fatalf("apply failed: %v", err)
+		t.Fatalf("update failed: %v", err)
 	}
 
 	// check response
 	if resp.msg != "test" {
-		t.Fatalf("apply response mismatch. got %s, want test", resp.msg)
+		t.Fatalf("update response mismatch. got %s, want test", resp.msg)
 	}
 
 	// check index
@@ -105,13 +105,13 @@ func TestRaft_tripleNode(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
-	// should be able to apply
+	// should be able to update
 	resp, err := waitUpdate(ldr, "test", c.longTimeout)
 	if err != nil {
-		t.Fatalf("apply failed: %v", err)
+		t.Fatalf("update failed: %v", err)
 	}
 	if resp.msg != "test" {
-		t.Fatalf("apply response mismatch. got %s, want test", resp.msg)
+		t.Fatalf("update response mismatch. got %s, want test", resp.msg)
 	}
 	if resp.index != 1 {
 		t.Fatalf("fsmReplyIndex: got %d want 1", resp.index)
