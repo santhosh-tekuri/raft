@@ -81,6 +81,9 @@ func (fsm *stateMachine) runLoop() {
 		switch t := t.(type) {
 		case fsmApply:
 			fsm.onApply(t)
+		case fsmDirtyRead:
+			resp := fsm.Read(t.ne.cmd)
+			t.ne.reply(resp)
 		case fsmSnapReq:
 			fsm.onSnapReq(t)
 		case fsmRestoreReq:
@@ -132,7 +135,7 @@ func (fsm *stateMachine) onApply(t fsmApply) {
 			println(fsm, "apply", ne.typ, ne.index)
 		}
 		var resp interface{}
-		if ne.typ == entryRead {
+		if ne.typ == entryRead || ne.typ == entryDirtyRead {
 			resp = fsm.Read(ne.cmd)
 		} else if ne.typ == entryUpdate {
 			resp = fsm.Update(ne.data)
@@ -185,6 +188,10 @@ func (fsm *stateMachine) onRestoreReq() error {
 type fsmApply struct {
 	neHead *newEntry
 	log    *log.Log
+}
+
+type fsmDirtyRead struct {
+	ne *newEntry
 }
 
 type lastApplied struct {

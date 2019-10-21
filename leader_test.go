@@ -339,3 +339,48 @@ func TestLeader_readFSM(t *testing.T) {
 	// ensure fsm has all commands but not queries
 	c.ensureFSMLen(101, ldr)
 }
+
+func TestLeader_readFSM_nonLeader(t *testing.T) {
+	c, ldr, _ := launchCluster(t, 3)
+	defer c.shutdown()
+
+	fsmLen := uint64(10)
+	c.sendUpdates(ldr, 1, 10)
+	c.waitBarrier(ldr, 0)
+	c.waitFSMLen(fsmLen)
+
+	// read should not work on non-leader
+	ldrAddr := c.info(ldr).Addr
+	for _, r := range c.rr {
+		if r != ldr {
+			_, err := waitRead(r, "last", c.longTimeout)
+			if err, ok := err.(NotLeaderError); !ok {
+				t.Fatalf("got %v, want NotLeaderError", err)
+			} else if err.Leader.Addr != ldrAddr {
+				t.Fatalf("got %s, want %s", err.Leader.Addr, ldrAddr)
+			}
+		}
+	}
+}
+
+func TestLeader_dirtyReadFSM(t *testing.T) {
+	c, ldr, _ := launchCluster(t, 3)
+	defer c.shutdown()
+
+	fsmLen := uint64(10)
+	c.sendUpdates(ldr, 1, 10)
+	c.waitBarrier(ldr, 0)
+	c.waitFSMLen(fsmLen)
+
+	// dirtyRead should work on non-leader
+	want := fsmReply{msg: "update:10", index: 9}
+	for _, r := range c.rr {
+		got, err := waitDirtyRead(r, "last", c.longTimeout)
+		if err != nil {
+			t.Fatalf("dirtyRead: %v", err)
+		}
+		if got != want {
+			t.Fatalf("got: %v, want: %v", got, want)
+		}
+	}
+}

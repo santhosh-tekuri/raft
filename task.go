@@ -139,6 +139,10 @@ func ReadFSM(cmd interface{}) FSMTask {
 	return fsmTask(entryRead, cmd, nil)
 }
 
+func DirtyReadFSM(cmd interface{}) FSMTask {
+	return fsmTask(entryDirtyRead, cmd, nil)
+}
+
 // BarrierFSM is used to issue a command that blocks until all preceding
 // commands have been applied to the FSM. It can be used to ensure the
 // FSM reflects all queued commands.

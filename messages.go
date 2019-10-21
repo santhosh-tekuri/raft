@@ -27,6 +27,7 @@ const (
 	entryBarrier entryType = iota + 1
 	entryUpdate
 	entryRead
+	entryDirtyRead
 	entryNop
 	entryConfig
 )
@@ -39,10 +40,12 @@ type entry struct {
 }
 
 func (e *entry) isLogEntry() bool {
-	if e.typ == entryRead || e.typ == entryBarrier {
+	switch e.typ {
+	case entryRead, entryDirtyRead, entryBarrier:
 		return false
+	default:
+		return true
 	}
-	return true
 }
 
 func (e *entry) decode(r io.Reader) error {

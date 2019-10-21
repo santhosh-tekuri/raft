@@ -956,6 +956,10 @@ func waitRead(r *Raft, read interface{}, timeout time.Duration) (fsmReply, error
 	return waitFSMTask(r, ReadFSM(read), timeout)
 }
 
+func waitDirtyRead(r *Raft, read interface{}, timeout time.Duration) (fsmReply, error) {
+	return waitFSMTask(r, DirtyReadFSM(read), timeout)
+}
+
 func requestVote(from, to *Raft, transfer bool) (granted bool, err error) {
 	fn := func(r *Raft) {
 		req := &voteReq{

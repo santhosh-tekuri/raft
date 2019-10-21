@@ -81,6 +81,8 @@ func (t entryType) String() string {
 		return "update"
 	case entryRead:
 		return "read"
+	case entryDirtyRead:
+		return "dirtyRead"
 	case entryNop:
 		return "nop"
 	case entryConfig:
@@ -216,6 +218,8 @@ func (ne *newEntry) String() string {
 		return fmt.Sprintf("update{%s}", string(ne.data))
 	case entryRead:
 		return fmt.Sprintf("read{%s}", string(ne.data))
+	case entryDirtyRead:
+		return fmt.Sprintf("dirtyRead{%s}", string(ne.data))
 	case entryBarrier:
 		return "barrier"
 	default:

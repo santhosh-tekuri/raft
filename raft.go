@@ -325,7 +325,11 @@ func (r *Raft) stateLoop() {
 						l.storeEntry(ne)
 					} else {
 						for ne != nil {
-							ne.reply(notLeaderError(r, false))
+							if ne.typ == entryDirtyRead {
+								r.fsm.ch <- fsmDirtyRead{ne}
+							} else {
+								ne.reply(notLeaderError(r, false))
+							}
 							ne = ne.next
 						}
 					}
