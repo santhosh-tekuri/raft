@@ -36,7 +36,11 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	key := parts[1]
 	switch r.Method {
 	case http.MethodGet:
-		res, err := h.execute(raft.ReadFSM(get{key}))
+		task := raft.ReadFSM(get{key})
+		if _, ok := r.URL.Query()["dirty"]; ok {
+			task = raft.DirtyReadFSM(get{key})
+		}
+		res, err := h.execute(task)
 		if err != nil {
 			h.replyErr(w, r, err)
 		} else {

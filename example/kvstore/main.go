@@ -41,6 +41,7 @@
 //   $ curl -v -X POST localhost:8001/k1 -d v1
 //   $ curl -v localhost:8001/k1
 //   $ curl -v -L localhost:8002/k1
+//   $ curl -v 'localhost:8002/k1?dirty'
 package main
 
 import (
