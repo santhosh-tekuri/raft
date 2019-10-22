@@ -53,6 +53,10 @@ func TestRaft_shutdown_serve(t *testing.T) {
 	r := c.launch(1, true)[1]
 	c.shutdown()
 	host := network.Host(id2Host(r.NID()))
+	if runtime.GOOS == "windows" {
+		// https://docs.microsoft.com/en-us/windows/win32/winsock/using-so-reuseaddr-and-so-exclusiveaddruse?redirectedfrom=MSDN
+		time.Sleep(1*time.Second)
+	}
 	lr, err := host.Listen("tcp", c.id2Addr(r.nid))
 	if err != nil {
 		t.Fatal(err)
