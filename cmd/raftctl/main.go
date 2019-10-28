@@ -42,6 +42,7 @@ func exec(c *raft.Client, args []string) {
 		errln()
 		errln("list of commands:")
 		errln("  info       get information")
+		errln("  leader     get leader details")
 		errln("  config     configuration related tasks")
 		errln("  snapshot   take snapshot")
 		errln("  transfer   transfer leadership")
@@ -54,6 +55,8 @@ func exec(c *raft.Client, args []string) {
 	switch cmd {
 	case "info":
 		info(c)
+	case "leader":
+		leader(c)
 	case "config":
 		config(c, args)
 	case "snapshot":
@@ -86,6 +89,34 @@ func info(c *raft.Client) {
 		os.Exit(1)
 	}
 	fmt.Printf("%s\n", indented.Bytes())
+}
+
+func leader(c *raft.Client) {
+	info, err := c.GetInfo()
+	if err != nil {
+		errln(err.Error())
+		os.Exit(1)
+	}
+	if info.Leader == 0 {
+		fmt.Println("{}")
+		os.Exit(0)
+	}
+	for _, n := range info.Configs.Latest.Nodes {
+		if n.ID == info.Leader {
+			ldr := struct {
+				ID   uint64 `json:"id"`
+				Addr string `json:"addr"`
+				Data string `json:"data,omitempty"`
+			}{n.ID, n.Addr, n.Data}
+			b, err := json.MarshalIndent(ldr, "", "    ")
+			if err != nil {
+				errln(err.Error())
+				os.Exit(1)
+			}
+			fmt.Println(string(b))
+			break
+		}
+	}
 }
 
 func config(c *raft.Client, args []string) {
