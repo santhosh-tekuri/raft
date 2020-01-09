@@ -451,6 +451,13 @@ type takeSnapshot struct {
 	threshold uint64
 }
 
+// TakeSnapshot task takes snapshot if there are atleast threshold edits since
+// last snapshot. if threshold is zero, than snapshot is taken if there is atleast
+// one edit since last snapshot. This task returns the log index where snapshot is taken.
+//
+// ErrSnapshotThreshold: the threshold is not satisfied.
+// ErrNoUpdates: there are no edits since last snapshot.
+// InProgressError: if there is already another TakeSnapshot task is in progress.
 func TakeSnapshot(threshold uint64) Task {
 	return takeSnapshot{task: newTask(), threshold: threshold}
 }
@@ -461,6 +468,17 @@ type transferLdr struct {
 	timeout time.Duration
 }
 
+// TransferLeadership task trasfers current leadership to given target server.
+// If target is 0, then leadership is transfered to most eligible voter node.
+// This task returns just error if any.
+//
+// During trasfer, leader rejects any log commands with InProgressError.
+//
+// TimeoutError: leadership failed to transfer in specified timeout.
+// ErrTransferNoVoter: number of voters in cluster is one.
+// ErrTransferSelf: the target node is already leader.
+// ErrTransferTargetNonvoter: the target node is non-voter.
+// ErrTransferInvalidTarget: the target node does not exist.
 func TransferLeadership(target uint64, timeout time.Duration) Task {
 	return transferLdr{
 		task:    newTask(),

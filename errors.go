@@ -46,14 +46,30 @@ var (
 	// User can retry ChangeConfig after some time in case of this error.
 	ErrNotCommitReady = temporaryError("raft.configChange: not ready to commit")
 
-	ErrStaleConfig            = plainError("raft.changeConfig: submitted config is stale")
-	ErrSnapshotThreshold      = plainError("raft.takeSnapshot: not enough outstanding logs to snapshot")
-	ErrNoUpdates              = plainError("raft.takeSnapshot: no updates since last snapshot")
-	ErrQuorumUnreachable      = plainError("raft: quorum unreachable")
-	ErrTransferNoVoter        = plainError("raft.transferLeadership: no other voter to transfer")
-	ErrTransferSelf           = plainError("raft.transferLeadership: target is already leader")
+	// ErrStaleConfig indicates that the index of config submitted for change does not match
+	// with latest config's index.
+	ErrStaleConfig = plainError("raft.changeConfig: submitted config is stale")
+
+	// ErrSnapshotThreshold indicates that TakeSnapshot task failed because there less than threshold edits
+	// since last snapshot.
+	ErrSnapshotThreshold = plainError("raft.takeSnapshot: not enough outstanding logs to snapshot")
+
+	// ErrNoUpdates indicates that TakeSnapshot task failed because there are no edits since last snapshot.
+	ErrNoUpdates = plainError("raft.takeSnapshot: no updates since last snapshot")
+
+	ErrQuorumUnreachable = plainError("raft: quorum unreachable")
+
+	// ErrTransferNoVoter indicates that TransferLeadership task failed because number of voters in cluster is one.
+	ErrTransferNoVoter = plainError("raft.transferLeadership: no other voter to transfer")
+
+	// ErrTransferSelf indicates that TransferLeadership task failed because the target node is already leader.
+	ErrTransferSelf = plainError("raft.transferLeadership: target is already leader")
+
+	// ErrTransferTargetNonvoter indicates that TransferLeadership task failed because the target node is non-voter.
 	ErrTransferTargetNonvoter = plainError("raft.transferLeadership: target is nonvoter")
-	ErrTransferInvalidTarget  = plainError("raft.transferLeadership: no such target found")
+
+	// ErrTransferInvalidTarget indicates that TransferLeadership task failed because the target node does not exist.
+	ErrTransferInvalidTarget = plainError("raft.transferLeadership: no such target found")
 )
 
 var (
