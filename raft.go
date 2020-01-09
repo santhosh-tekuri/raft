@@ -505,6 +505,7 @@ func (r *Raft) leaderAddr() string {
 // State captures the state of a Raft node: Follower, Candidate, Leader.
 type State byte
 
+// Possible states of a raft node.
 const (
 	Follower  State = 'F'
 	Candidate       = 'C'

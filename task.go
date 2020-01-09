@@ -20,14 +20,27 @@ import (
 	"time"
 )
 
+// Tasks returns a channel to which non-FSMTasks
+// has to be submitted. Should be used as below:
+// 	 select {
+//       case <-r.Closed():
+//       case r.Tasks() <- t:
+//   }
 func (r *Raft) Tasks() chan<- Task {
 	return r.taskCh
 }
 
+// Task represents a raft task.
 type Task interface {
+	// Done returns a channel that is closed when task is completed.
 	Done() <-chan struct{}
+
+	// Err returns the error if any. Must be called only one completed task.
 	Err() error
+
+	// Result returns the result. Must be called only one completed task.
 	Result() interface{}
+
 	reply(interface{})
 }
 
@@ -71,6 +84,7 @@ func (t *task) reply(result interface{}) {
 
 // ------------------------------------------------------------------------
 
+// FSMTask represents FSM related task.
 type FSMTask interface {
 	Task
 	newEntry() *newEntry
@@ -87,6 +101,12 @@ func (ne *newEntry) newEntry() *newEntry {
 	return ne
 }
 
+// FMSTasks returns a channel to which FSMTasks
+// has to be submitted. Should be used as below:
+// 	 select {
+//       case <-r.Closed():
+//       case r.FSMTasks() <- t:
+//   }
 func (r *Raft) FSMTasks() chan<- FSMTask {
 	return r.fsmTaskCh
 }
@@ -428,6 +448,13 @@ type changeConfig struct {
 	newConf Config
 }
 
+// ChangeConfig task applies changes to cluster provides by the actions
+// specified in the newConfig. Multiple actions can be specified in
+// newConfig, but leader applies them sequentially as per raft protocol.
+//
+// ErrStaleConfig: if newConfig.index != latestConfig.index.
+// InProgressError: if there is already another TakeSnapshot task is in progress.
+//                  or if latest config is not committed i.e, another configChange step is in progress.
 func ChangeConfig(newConf Config) Task {
 	return changeConfig{
 		task:    newTask(),
@@ -439,6 +466,8 @@ type waitForStableConfig struct {
 	*task
 }
 
+// WaitForStableConfig task waits until all pending config changes are completed.
+// This task returns just error if any.
 func WaitForStableConfig() Task {
 	return waitForStableConfig{task: newTask()}
 }
@@ -472,13 +501,14 @@ type transferLdr struct {
 // If target is 0, then leadership is transfered to most eligible voter node.
 // This task returns just error if any.
 //
-// During trasfer, leader rejects any log commands with InProgressError.
+// During trasfer, leader rejects any new FSMTasks with InProgressError("transferLeadership").
 //
 // TimeoutError: leadership failed to transfer in specified timeout.
 // ErrTransferNoVoter: number of voters in cluster is one.
 // ErrTransferSelf: the target node is already leader.
 // ErrTransferTargetNonvoter: the target node is non-voter.
 // ErrTransferInvalidTarget: the target node does not exist.
+// ErrQuorumUnreachable: quorum of voters is unreachable resulting loss of leadership.
 func TransferLeadership(target uint64, timeout time.Duration) Task {
 	return transferLdr{
 		task:    newTask(),

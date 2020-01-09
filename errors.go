@@ -57,6 +57,7 @@ var (
 	// ErrNoUpdates indicates that TakeSnapshot task failed because there are no edits since last snapshot.
 	ErrNoUpdates = plainError("raft.takeSnapshot: no updates since last snapshot")
 
+	// ErrQuorumUnreachable indicates that TransferLeadership failed because quorum of voters is unreachable.
 	ErrQuorumUnreachable = plainError("raft: quorum unreachable")
 
 	// ErrTransferNoVoter indicates that TransferLeadership task failed because number of voters in cluster is one.
@@ -145,6 +146,9 @@ func (e InProgressError) Error() string {
 // later.
 func (e InProgressError) Temporary() {}
 
+// TimeoutError indicates that timeout occurred in peforming a task.
+// Its value represents the task name, for example "transferLeadership",
+// "configChange" etc.
 type TimeoutError string
 
 func (e TimeoutError) Error() string {
