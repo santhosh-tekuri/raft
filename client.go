@@ -152,7 +152,7 @@ func (c *Client) TakeSnapshot(threshold uint64) (snapIndex uint64, err error) {
 }
 
 // TransferLeadership task trasfers current leadership to given target server.
-// If target is 0, then leadership is transfered to most eligible voter node.
+// If target is 0, then leadership is transferred to most eligible voter node.
 // This task returns just error if any.
 //
 // During trasfer, leader rejects any new FSMTasks with InProgressError("transferLeadership").
