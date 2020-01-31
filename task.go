@@ -101,7 +101,7 @@ func (ne *newEntry) newEntry() *newEntry {
 	return ne
 }
 
-// FMSTasks returns a channel to which FSMTasks
+// FSMTasks returns a channel to which FSMTasks
 // has to be submitted. Should be used as below:
 // 	 select {
 //       case <-r.Closed():
@@ -151,14 +151,21 @@ func fsmTask(typ entryType, cmd interface{}, data []byte) FSMTask {
 	}
 }
 
+// UpdateFSM task is used to modify state in FSM.
+// This eventually calls FSM.Update(data).
 func UpdateFSM(data []byte) FSMTask {
 	return fsmTask(entryUpdate, nil, data)
 }
 
+// ReadFSM task is used to read state from FSM.
+// This eventually calls FSM.Read(cmd).
 func ReadFSM(cmd interface{}) FSMTask {
 	return fsmTask(entryRead, cmd, nil)
 }
 
+// DirtyReadFSM task is used to read state from FSM.
+// This eventually calls FSM.Read(cmd). Unlike ReadFSM
+// task, this task can be submitted to non-voter.
 func DirtyReadFSM(cmd interface{}) FSMTask {
 	return fsmTask(entryDirtyRead, cmd, nil)
 }
@@ -176,6 +183,8 @@ type infoTask struct {
 	*task
 }
 
+// GetInfo task is used to get raft state information.
+// This rask returns Info object.
 func GetInfo() Task {
 	return infoTask{newTask()}
 }
@@ -225,6 +234,7 @@ func (r *Raft) info() Info {
 	}
 }
 
+// Replication captures state of replication of a node.
 type Replication struct {
 	ID          uint64     `json:"-"`
 	MatchIndex  uint64     `json:"matchIndex"`
@@ -280,6 +290,7 @@ func (repl *Replication) encode(w io.Writer) error {
 	return writeUint64(w, repl.Round)
 }
 
+// Info captures state of a node.
 type Info struct {
 	CID           uint64                 `json:"cid"`
 	NID           uint64                 `json:"nid"`

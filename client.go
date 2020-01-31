@@ -121,6 +121,13 @@ func (c *Client) WaitForStableConfig() (Config, error) {
 	return result.(Config), nil
 }
 
+// TakeSnapshot takes snapshot if there are atleast threshold edits since
+// last snapshot. if threshold is zero, than snapshot is taken if there is atleast
+// one edit since last snapshot. This task returns the log index where snapshot is taken.
+//
+// ErrSnapshotThreshold: the threshold is not satisfied.
+// ErrNoUpdates: there are no edits since last snapshot.
+// InProgressError: if there is already another TakeSnapshot task is in progress.
 func (c *Client) TakeSnapshot(threshold uint64) (snapIndex uint64, err error) {
 	conn, err := c.getConn()
 	if err != nil {
@@ -144,6 +151,18 @@ func (c *Client) TakeSnapshot(threshold uint64) (snapIndex uint64, err error) {
 	return result.(uint64), nil
 }
 
+// TransferLeadership task trasfers current leadership to given target server.
+// If target is 0, then leadership is transfered to most eligible voter node.
+// This task returns just error if any.
+//
+// During trasfer, leader rejects any new FSMTasks with InProgressError("transferLeadership").
+//
+// TimeoutError: leadership failed to transfer in specified timeout.
+// ErrTransferNoVoter: number of voters in cluster is one.
+// ErrTransferSelf: the target node is already leader.
+// ErrTransferTargetNonvoter: the target node is non-voter.
+// ErrTransferInvalidTarget: the target node does not exist.
+// ErrQuorumUnreachable: quorum of voters is unreachable resulting loss of leadership.
 func (c *Client) TransferLeadership(target uint64, timeout time.Duration) error {
 	conn, err := c.getConn()
 	if err != nil {

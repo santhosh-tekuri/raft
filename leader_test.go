@@ -218,7 +218,7 @@ func TestLeader_updateFSM_concurrent(t *testing.T) {
 	c.ensureFSMSame(nil)
 }
 
-func TODO_TestLeader_backPressure(t *testing.T) {
+func TODOTestLeaderBackPressure(t *testing.T) {
 	c, ldr, _ := launchCluster(t, 3)
 	defer c.shutdown()
 
