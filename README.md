@@ -6,4 +6,13 @@
 [![Build Status](https://travis-ci.org/santhosh-tekuri/raft.svg?branch=master)](https://travis-ci.org/santhosh-tekuri/raft) 
 [![codecov.io](https://codecov.io/github/santhosh-tekuri/raft/coverage.svg?branch=master)](https://codecov.io/github/santhosh-tekuri/raft?branch=master)
 
-Development in progress...
+Package raft implements Raft Concensus Algorithm as described in https://raft.github.io/raft.pdf.
+
+Features implemented:
+- Leader Election
+- Log Replication
+- Membership Changes
+- Log Compaction
+- `raftctl` command line tool to inspect and modify cluster
+
+see example/kvstore for usage

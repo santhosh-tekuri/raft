@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package raft implements Raft Concensus Algorithm as described in https://raft.github.io/raft.pdf.
+//
+// It implements Leader Election, Log Replication, Membership Changes and Log Compaction.
 package raft
 
 // todo: ErrConfigInProgress should contains configs
